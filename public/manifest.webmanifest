@@ -1,0 +1,13 @@
+{
+  "name": "破砖深渊 · Break the Brick",
+  "short_name": "破砖深渊",
+  "description": "扫雷 × Roguelite 地牢探索，竖屏即点即玩。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b0810",
+  "theme_color": "#0b0810",
+  "lang": "zh-CN",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

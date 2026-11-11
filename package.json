@@ -1,0 +1,13 @@
+{
+  "name": "break-the-brick",
+  "version": "1.0.0",
+  "private": true,
+  "description": "破砖深渊 —— 扫雷 × Roguelite 地牢探索（竖屏手机浏览器）",
+  "type": "module",
+  "scripts": {
+    "dev": "node tools/serve.mjs",
+    "test": "node --test tests/game.test.mjs",
+    "sim": "node tests/simulate.mjs 200",
+    "deploy": "wrangler pages deploy public --project-name=break-the-brick --commit-dirty=true"
+  }
+}
