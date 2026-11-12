@@ -1,7 +1,7 @@
 // 自动玩家：用于平衡性与稳定性验证（node tests/simulate.mjs [runs] [difficulty]）
 import {
   createRun, tapTile, attack, usePotion, buy, altarChoose, tryDescend, closePending,
-  forecast, neighbors, canDescend, SIZE, MAX_FLOOR, score, shopPrice, setMode,
+  forecast, neighbors, canDescend, SIZE, MAX_FLOOR, score, shopPrice, setMode, chooseRelic,
 } from '../public/src/game.js';
 
 const isMob = (t) => t.mob && t.mob.hp > 0;
@@ -53,11 +53,32 @@ function shopPass(s) {
   }
 }
 
-export function playRun(difficulty, seed, verbose = false) {
+const RELIC_PREF = ['momentum', 'dragonWard', 'ironStomach', 'vampiricEdge', 'guardianBane', 'thornMail',
+  'alchemist', 'whetSoul', 'spikeSoles', 'carefulStep', 'mint', 'deepPockets', 'altarGrace', 'prospector',
+  'blastWave', 'trapSalvage', 'bloodPact', 'glassCannon', 'greedyHeart', 'bannerLord'];
+
+function pickRelic(s, prefer) {
+  if (prefer) {
+    if (s.relicChoices.includes(prefer)) return prefer;
+    const idle = RELIC_PREF.slice().reverse().find((id) => s.relicChoices.includes(id));
+    return idle || s.relicChoices[0];
+  }
+  const hurt = s.player.hp < s.player.maxHp * 0.6;
+  const val = (id) => {
+    let v = RELIC_PREF.length - RELIC_PREF.indexOf(id);
+    if (hurt && ['ironStomach', 'vampiricEdge', 'alchemist', 'dragonWard', 'altarGrace'].includes(id)) v += 12;
+    if (!hurt && ['whetSoul', 'bloodPact', 'glassCannon', 'momentum'].includes(id)) v += 8;
+    if (id === 'bannerLord') v -= 20; // 自动玩家不插旗，这条对它等于白板
+    return v;
+  };
+  return s.relicChoices.slice().sort((a, b) => val(b) - val(a))[0];
+}
+
+export function playRun(difficulty, seed, verbose = false, prefer = null) {
   const s = createRun(difficulty, seed);
   const trace = [];
   const floors = [];
-  let guard = 0, dmg = 0, healed = 0, potionsUsed = 0, blocked = 0;
+  let guard = 0, dmg = 0, healed = 0, potionsUsed = 0, blocked = 0, aggroDmg = 0, aggroHits = 0;
   let mark = { floor: 1, dmg: 0, healed: 0 };
   const snap = () => {
     floors.push({ floor: mark.floor, hp: s.player.hp, maxHp: s.player.maxHp, lv: s.player.lv, atk: s.player.atk, def: s.player.def, gold: s.player.gold, potions: s.player.potions, dmg: dmg - mark.dmg, healed: healed - mark.healed });
@@ -67,12 +88,14 @@ export function playRun(difficulty, seed, verbose = false) {
     const evs = fn(s, ...a);
     for (const e of evs) {
       if (e.type === 'damage') dmg += e.amount;
+      if (e.type === 'aggro') { aggroDmg += e.amount; aggroHits++; }
       if (e.type === 'heal') healed += e.amount;
       if (e.type === 'descend' || e.type === 'win') snap();
     }
     return evs;
   };
   while (s.status === 'playing' && guard++ < 4000) {
+    if (s.relicChoices) { run(chooseRelic, pickRelic(s, prefer)); continue; }
     if (s.pendingAltar >= 0) {
       const p = s.player;
       const choice = p.hp < p.maxHp * 0.6 ? 'pray' : p.hp > 20 ? 'blood' : 'greed';
@@ -122,7 +145,8 @@ export function playRun(difficulty, seed, verbose = false) {
   const res = {
     seed, difficulty, status: s.status, floor: s.floor, lv: s.player.lv, hp: s.player.hp, maxHp: s.player.maxHp,
     atk: s.player.atk, def: s.player.def, kills: s.stats.kills, turns: s.stats.turns, score: score(s), guard,
-    stuck: guard >= 4000, dmg, healed, potionsUsed, blocked, trace: trace.join('>'), floors,
+    stuck: guard >= 4000, dmg, healed, potionsUsed, blocked, aggroDmg, aggroHits, trace: trace.join('>'), floors,
+    relics: s.relics.slice(), whet: s.relicState.whet,
   };
   if (verbose) { console.log(res); for (const f of floors) console.log(JSON.stringify(f)); }
   return res;
@@ -146,7 +170,10 @@ if (process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('simulate.mj
       const avgHeal = out.reduce((a, r) => a + r.healed, 0) / out.length;
       const hist = {};
       for (const r of out) hist[r.floor] = (hist[r.floor] || 0) + 1;
-      console.log(`${d.padEnd(7)} 胜率 ${(wins / runs * 100).toFixed(1)}%  层数 ${avgFloor.toFixed(2)}  等级 ${avgLv.toFixed(1)}  操作 ${avgTurns.toFixed(0)}  受伤 ${avgDmg.toFixed(0)}  治疗 ${avgHeal.toFixed(0)}  卡死 ${stuck}  分布 ${JSON.stringify(hist)}`);
+      const avgRelics = out.reduce((a, r) => a + r.relics.length, 0) / out.length;
+      const avgAggro = out.reduce((a, r) => a + r.aggroDmg, 0) / out.length;
+      const avgHits = out.reduce((a, r) => a + r.aggroHits, 0) / out.length;
+      console.log(`${d.padEnd(7)} 胜率 ${(wins / runs * 100).toFixed(1)}%  层数 ${avgFloor.toFixed(2)}  等级 ${avgLv.toFixed(1)}  遗物 ${avgRelics.toFixed(1)}  操作 ${avgTurns.toFixed(0)}  受伤 ${avgDmg.toFixed(0)}  骚扰 ${avgAggro.toFixed(0)}(${(avgAggro / avgDmg * 100).toFixed(0)}%,${avgHits.toFixed(0)}次)  治疗 ${avgHeal.toFixed(0)}  卡死 ${stuck}  分布 ${JSON.stringify(hist)}`);
     }
   }
 }

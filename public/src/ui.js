@@ -14,11 +14,13 @@ const el = {
   hpFill: $('#hpFill'), hpText: $('#hpText'), hpBar: document.querySelector('.hp-bar'),
   atk: $('#atkVal'), def: $('#defVal'), gold: $('#goldVal'), lv: $('#lvNum'), ring: $('#xpRing'),
   threat: $('#threatVal'), flagv: $('#flagVal'), keyChip: $('#keyChip'),
+  aggroChip: $('#aggroChip'), aggroCount: $('#aggroCount'), aggroNext: $('#aggroNext'),
   potion: $('#potionCount'), bomb: $('#bombCount'), scroll: $('#scrollCount'),
   descend: $('#btnDescend'), log: $('#logLine'), ticker: document.querySelector('.ticker'),
   scrim: $('#scrim'), sheet: $('#sheet'), sheetBody: $('#sheetBody'),
   toast: $('#toast'), floorCard: $('#floorCard'), fcDepth: $('#fcDepth'), fcName: $('#fcName'),
   diffGrid: $('#diffGrid'), record: $('#record'), btnContinue: $('#btnContinue'), actionbar: $('#actionbar'),
+  relicBar: $('#relicBar'), relicSlots: $('#relicSlots'),
 };
 
 let S = null;
@@ -96,7 +98,7 @@ function bindTile(b, i) {
 
 function tileView(t) {
   const rev = t.revealed;
-  let cls = 'tile', inner = '', n = 0, label = G.tileLabel(t);
+  let cls = 'tile', inner = '', n = 0, label = G.tileLabel(t, S.aggroClock);
   if (!rev) {
     cls += t.flagged ? ' tile-hidden tile-flag' : ' tile-hidden';
     if (t.flagged) inner = svg('flag');
@@ -111,6 +113,10 @@ function tileView(t) {
     if (alive) {
       inner += `<span class="tile-badge">${t.mob.hp}</span>`;
       if (t.kind !== 'monster') inner += `<span class="tile-crown">${svg(t.kind === 'boss' ? 'crown' : 'key')}</span>`;
+      if (t.mob.awake && S.aggroClock != null) {
+        cls += ' tile-awake';
+        if (t.i === aggroTopIdx) inner += `<span class="tile-aggro">${S.aggroClock}</span>`;
+      }
       label += ` 生命${t.mob.hp} 攻击${t.mob.atk}`;
     }
     return { cls, inner, n, label };
@@ -172,6 +178,14 @@ function renderHud() {
   el.threat.textContent = S.generated ? G.remainingThreats(S) : S.threatTotal;
   el.flagv.textContent = '/' + S.flags;
   el.keyChip.hidden = !S.hasKey;
+  const ag = G.aggroSummary(S);
+  el.aggroChip.hidden = !ag;
+  if (ag) {
+    el.aggroCount.textContent = ag.count;
+    el.aggroNext.textContent = `·${ag.next}→-${ag.dmg}`;
+    el.aggroChip.classList.toggle('soon', ag.next <= 2);
+    el.aggroChip.setAttribute('aria-label', `${ag.count} 只怪物被惊扰，${ag.next} 回合后承受 ${ag.dmg} 点骚扰伤害`);
+  }
   el.potion.textContent = p.potions; el.bomb.textContent = p.bombs; el.scroll.textContent = p.scrolls;
   el.potion.parentElement.classList.toggle('empty', p.potions === 0);
   el.bomb.parentElement.classList.toggle('empty', p.bombs === 0);
@@ -196,7 +210,100 @@ function renderHud() {
   }
 }
 
-function render(popSet) { renderBoard(popSet); renderHud(); }
+function render(popSet) { syncAggroTop(); renderBoard(popSet); renderHud(); renderRelics(); }
+
+// 惊扰时钟全场共用，只有最凶的那只出手——角标只标它，其余惊扰怪只亮红环。
+let aggroTopIdx = -1;
+function syncAggroTop() {
+  aggroTopIdx = -1;
+  let best = -1;
+  for (const t of S.tiles) {
+    if (!t.mob || t.mob.hp <= 0 || !t.mob.awake) continue;
+    const d = G.aggroDamage(S.player, t.mob);
+    if (d > best) { best = d; aggroTopIdx = t.i; }
+  }
+}
+
+/* ─────────── 遗物 ─────────── */
+const rarityColor = (r) => G.RELIC_RARITY[r.rarity].color;
+
+function relicNote(s, r) {
+  if (r.id === 'whetSoul') return `${s.relicState.whet}/${G.RELIC_WHET_CAP}`;
+  if (r.id === 'carefulStep') return `${s.relicState.trapWard}`;
+  if (r.id === 'momentum') return s.relicState.firstKill ? '已用' : '待发';
+  return '';
+}
+
+function renderRelics() {
+  const list = S.relics;
+  el.relicBar.hidden = !list.length;
+  if (!list.length) { el.relicSlots.innerHTML = ''; return; }
+  const html = list.map((id) => {
+    const r = G.relicById(id), note = relicNote(S, r);
+    return `<button class="relic-chip" data-act="codex" style="--rc:${rarityColor(r)}" aria-label="${r.name}：${r.desc}">
+      ${svg(r.icon)}${note ? `<em>${note}</em>` : ''}</button>`;
+  }).join('');
+  if (el.relicSlots.innerHTML !== html) el.relicSlots.innerHTML = html;
+}
+
+function openRelicDraw() {
+  const cards = S.relicChoices.map((id) => {
+    const r = G.relicById(id), ra = G.RELIC_RARITY[r.rarity];
+    return `<button class="rcard" data-sheet="relic" data-id="${id}" style="--rc:${ra.color}">
+      <span class="rcard-rar">${ra.name}</span>
+      <span class="rcard-ic">${svg(r.icon)}</span>
+      <b class="rcard-name">${r.name}</b>
+      <span class="rcard-cat">${G.RELIC_CATS[r.cat]}</span>
+      <span class="rcard-desc">${r.desc}</span>
+      <span class="rcard-flavor">${r.flavor}</span>
+    </button>`;
+  }).join('');
+  openSheet('relic', `
+    <div class="sheet-head">
+      <div><h2 class="sheet-title">遗物抉择</h2><p class="sheet-sub">守卫的残骸中浮起三件遗物，只能带走一件。已持有 ${S.relics.length} 件。</p></div>
+      <button class="icon-btn sheet-close" data-sheet="codex" aria-label="查看图鉴">${svg('relic')}</button>
+    </div>
+    <div class="rcards">${cards}</div>
+    <p class="rcard-hint">遗物永久生效，本局不会重复出现。点击卡片带走它。</p>
+    <div class="sheet-actions"><button class="btn btn-ghost" data-sheet="codex">${svg('relic')}<span>查看遗物图鉴</span></button></div>`, true);
+}
+
+function openCodex() {
+  const owned = S ? S.relics : [];
+  const back = S && S.relicChoices ? 'relicBack' : 'close';
+  const groups = Object.entries(G.RELIC_CATS).map(([cat, label]) => {
+    const rows = G.RELICS.filter((r) => r.cat === cat).map((r) => {
+      const ra = G.RELIC_RARITY[r.rarity], has = owned.includes(r.id);
+      return `<div class="cx ${has ? 'has' : ''}" style="--rc:${ra.color}">
+        <span class="cx-ic">${svg(r.icon)}</span>
+        <span class="cx-tx">
+          <b>${r.name}<i class="cx-rar">${ra.name}</i>${has ? '<i class="cx-own">已持有</i>' : ''}</b>
+          <span class="cx-desc">${r.desc}</span>
+          <span class="cx-fl">${r.flavor}</span>
+        </span>
+      </div>`;
+    }).join('');
+    const n = G.RELICS.filter((r) => r.cat === cat && owned.includes(r.id)).length;
+    const total = G.RELICS.filter((r) => r.cat === cat).length;
+    return `<div class="help-sec"><h3 class="help-h">${label}<i class="cx-count">${n}/${total}</i></h3>${rows}</div>`;
+  }).join('');
+  const rar = Object.values(G.RELIC_RARITY);
+  const wsum = rar.reduce((a, r) => a + r.weight, 0);
+  const odds = rar.map((r) => `<span style="color:${r.color}">${r.name} ${Math.round(r.weight / wsum * 100)}%</span>`).join(' · ');
+  openSheet('codex', `
+    <div class="sheet-head">
+      <div><h2 class="sheet-title">遗物图鉴</h2><p class="sheet-sub">共 ${G.RELICS.length} 件 · 本局已收集 ${owned.length} 件</p></div>
+      <button class="icon-btn sheet-close" data-sheet="${back}" aria-label="关闭">${svg('close')}</button>
+    </div>
+    <div class="help-sec">
+      <h3 class="help-h">怎么获得</h3>
+      <p class="help-p">第 2～7 层各有一名<b>钥匙守卫</b>。击败它（或用炸弹炸掉它）就会浮起 <b>${G.RELIC_DRAW_COUNT} 件</b>遗物，<b>三选一</b>，一局最多 ${G.MAX_FLOOR - 2} 件。<br>
+      抽取按稀有度加权：${odds}。已持有的不会再出现，所以越到后期越容易见到史诗。<br>
+      遗物<b>只改变代价与收益，不改变信息量</b>——没有任何遗物会替你标雷或透视威胁，战斗数字也永远等于实际结算。</p>
+    </div>
+    ${groups}
+    <div class="sheet-actions"><button class="btn btn-primary btn-lg" data-sheet="${back}">${S && S.relicChoices ? '回到抉择' : '关闭图鉴'}</button></div>`, !!(S && S.relicChoices));
+}
 
 /* ─────────── 事件 → 反馈 ─────────── */
 function tileCenter(i) { return fx.center(tiles[i]); }
@@ -214,8 +321,14 @@ function consume(events) {
       }
       case 'encounter': audio.play('open'); fx.buzz(12); break;
       case 'flag': audio.play(e.on ? 'flag' : 'unflag'); break;
+      case 'aggro': {
+        if (S.tiles[e.i] && S.tiles[e.i].revealed) { const c = tileCenter(e.i); fx.ring(c.x, c.y, '#ff3b5c', 90); }
+        break;
+      }
       case 'damage': {
-        const at = e.at >= 0 ? e.at : S.pendingCombat;
+        // 骚扰可能来自未探明的怪物：特效不能落在它的格子上，否则等于透视。
+        const src = e.at >= 0 ? e.at : S.pendingCombat;
+        const at = src >= 0 && S.tiles[src] && S.tiles[src].revealed ? src : -1;
         const c = at >= 0 ? tileCenter(at) : fx.center(el.hpFill);
         fx.flash('hurt'); fx.shake(el.board); fx.blood(c.x, c.y);
         fx.float(c.x, c.y - 10, '-' + e.amount, 'dmg');
@@ -273,6 +386,14 @@ function consume(events) {
       case 'disarm': { const c = tileCenter(e.i); fx.dust(c.x, c.y); break; }
       case 'scroll': { const c = tileCenter(e.i); fx.magic(c.x, c.y); fx.ring(c.x, c.y, '#3fe0ff', 110); audio.play('scroll'); break; }
       case 'buy': audio.play('coin'); break;
+      case 'relicOffer': audio.play('altar'); break;
+      case 'relicGain': {
+        const r = G.relicById(e.id);
+        const c = fx.center(el.relicBar.hidden ? el.lv : el.relicBar);
+        fx.ring(c.x, c.y, rarityColor(r), 130); fx.magic(c.x, c.y); fx.flash('gold');
+        audio.play('levelup'); toast('遗物 · ' + r.name, 'magic');
+        break;
+      }
       case 'deny': audio.play('deny'); break;
       case 'locked': audio.play('locked'); toast('阶梯被符文锁封住了', 'bad'); break;
       case 'blocked': audio.play('deny'); fx.shake(el.board); toast('这一击会要了你的命', 'bad'); break;
@@ -300,6 +421,7 @@ function apply(events, opts = {}) {
   if (events.some((e) => e.type === 'descend')) return descendSequence();
   if (S.status === 'dead') return endSequence(false);
   if (S.status === 'won') return endSequence(true);
+  if (S.relicChoices) return openRelicDraw();
   if (S.pendingCombat >= 0) return openCombat(S.pendingCombat);
   if (S.pendingAltar >= 0) return openAltar(S.pendingAltar);
   if (!opts.keepSheet && sheetKind && !sheetLock) closeSheet();
@@ -352,6 +474,10 @@ function openCombat(i) {
     : f.take === 0
       ? `<p class="fc-note">一击必杀，毫发无伤。</p>`
       : `<p class="fc-note">你先出手，${f.rounds} 回合内解决战斗，其间被反击 ${f.rounds - 1} 次。</p>`;
+  const aggroRow = m.awake && S.aggroClock != null
+    ? `<div class="fc-row hurt"><span>惊扰骚扰（每 ${G.BAL.aggroPeriod} 回合）</span><b>-${G.aggroDamage(p, m)}</b></div>
+       <p class="fc-note danger">它已被惊扰。留着不打，就会一直扑上来撕你——骚扰不致死，但会把你压到陷阱能补刀的血线。</p>`
+    : '';
   openSheet('combat', `
     <div class="sheet-head">
       <div><h2 class="sheet-title">战斗预演</h2><p class="sheet-sub">先算清楚，再挥剑。</p></div>
@@ -372,6 +498,7 @@ function openCombat(i) {
       <div class="fc-row"><span>你的每击伤害</span><b>${f.deal}</b></div>
       <div class="fc-row"><span>需要回合</span><b>${f.rounds}</b></div>
       <div class="fc-row ${f.take ? 'hurt' : 'free'}"><span>预计承受</span><b>${f.take}</b></div>
+      ${aggroRow}
       <div class="fc-bar"><i class="fc-safe" style="width:${safePct}%"></i><i class="fc-loss" style="width:${lossPct}%"></i></div>
       ${note}
     </div>
@@ -461,8 +588,22 @@ function openHelp() {
       击杀获得经验与金币：升级涨属性，金币可在<b>商店</b>换装备与补给。必死的战斗会被拦下——先变强，或者用炸弹。</p>
     </div>
     <div class="help-sec">
+      <h3 class="help-h">惊扰</h3>
+      <p class="help-p">翻开怪物<b>周围 8 格</b>中的任意一格，就会把它<b>惊扰</b>。被惊扰的怪物不再安静待着：
+      全场共用一个时钟，每 <b>${G.BAL.aggroPeriod} 次操作</b>，其中<b>最凶的那只</b>会扑上来撕你一口（至少 1 点，<b>不会致死</b>）。</p>
+      <p class="help-p">顶部红色芯片显示「几只被惊扰 · 几回合后 · 掉多少血」；棋盘上只有<b>已探明</b>的惊扰怪会亮红环，
+      带倒计时角标的那只就是下一次出手的。<b>杀掉它，下一击就换更弱的顶上；全部清光，骚扰停止。</b></p>
+      <p class="help-p">时钟只按<b>操作</b>推进，不按真实时间——<b>思考、插旗、切模式、喝药、购物都不消耗回合</b>。
+      它逼你规划路线与清怪顺序，而不是催你手快。</p>
+    </div>
+    <div class="help-sec">
       <h3 class="help-h">目标</h3>
       <p class="help-p">每层找到<b>下行阶梯</b>；第 2 层起阶梯上锁，必须击败<b>钥匙守卫</b>夺钥。第 8 层击败<b>深渊龙王</b>即通关。生命归零则本局结束。</p>
+    </div>
+    <div class="help-sec">
+      <h3 class="help-h">遗物</h3>
+      <p class="help-p">第 2～7 层击败<b>钥匙守卫</b>后，会浮起三件遗物让你<b>三选一</b>，永久生效且本局不重复。
+      它们只改变代价与收益——不会替你标雷，也不会让战斗数字失真。完整列表见<b>遗物图鉴</b>。</p>
     </div>
     <div class="help-sec">
       <h3 class="help-h">图鉴</h3>
@@ -470,9 +611,12 @@ function openHelp() {
     </div>
     <div class="help-sec">
       <h3 class="help-h">快捷键</h3>
-      <p class="help-p">方向键移动 · Enter/空格 探索 · F 标记 · 1/2/3/4 切换模式 · Q 药水 · B 商店 · H 说明 · Esc 关闭</p>
+      <p class="help-p">方向键移动 · Enter/空格 探索 · F 标记 · 1/2/3/4 切换模式 · Q 药水 · B 商店 · H 说明 · R 遗物图鉴 · Esc 关闭</p>
     </div>
-    <div class="sheet-actions"><button class="btn btn-primary btn-lg" data-sheet="close">明白了，下地牢</button></div>`);
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" data-sheet="codex">${svg('relic')}<span>遗物图鉴</span></button>
+      <button class="btn btn-primary btn-lg" data-sheet="close">明白了，下地牢</button>
+    </div>`);
 }
 
 function openMenu() {
@@ -483,6 +627,7 @@ function openMenu() {
     </div>
     <button class="opt" data-sheet="sound"><span class="opt-ic">${svg(audio.enabled ? 'sound-on' : 'sound-off')}</span><span class="opt-tx"><b>音效与氛围</b><span>当前：${audio.enabled ? '开启' : '静音'}</span></span></button>
     <button class="opt" data-sheet="help"><span class="opt-ic">${svg('help')}</span><span class="opt-tx"><b>玩法说明</b><span>数字、战斗与道具</span></span></button>
+    <button class="opt" data-sheet="codex"><span class="opt-ic">${svg('relic')}</span><span class="opt-tx"><b>遗物图鉴</b><span>${G.RELICS.length} 件遗物 · 已收集 ${S.relics.length} 件</span></span></button>
     <button class="opt" data-sheet="restart"><span class="opt-ic">${svg('skull')}</span><span class="opt-tx"><b>放弃本局</b><span>回到标题，重新开始</span></span></button>
     <div class="sheet-actions"><button class="btn btn-primary btn-lg" data-sheet="close">继续探索</button></div>`);
 }
@@ -581,7 +726,8 @@ function resumeRun() {
   buildBoard(); render();
   requestAnimationFrame(fitBoard);
   audio.init();
-  if (S.pendingCombat >= 0) openCombat(S.pendingCombat);
+  if (S.relicChoices) openRelicDraw();
+  else if (S.pendingCombat >= 0) openCombat(S.pendingCombat);
   else if (S.pendingAltar >= 0) openAltar(S.pendingAltar);
   return true;
 }
@@ -633,6 +779,7 @@ document.addEventListener('click', (e) => {
     case 'start': startRun(difficulty); break;
     case 'continue': if (!resumeRun()) { toast('没有可继续的探索', 'bad'); renderTitle(); } break;
     case 'help': openHelp(); break;
+    case 'codex': openCodex(); break;
     case 'menu': if (S) openMenu(); break;
     case 'potion': if (S && !guard()) apply(G.usePotion(S)); break;
     case 'shop': if (S && !guard()) openShop(); break;
@@ -656,6 +803,9 @@ el.sheetBody.addEventListener('click', (e) => {
     case 'potion': { const i = +b.dataset.i; consume(G.usePotion(S)); render(); saveRun(); openCombat(i); break; }
     case 'altar': { const i = +b.dataset.i; closeSheet(); apply(G.altarChoose(S, i, b.dataset.choice)); break; }
     case 'buy': { const evs = G.buy(S, b.dataset.id); consume(evs); render(); saveRun(); openShop(); break; }
+    case 'relic': { const id = b.dataset.id; forceClose(); apply(G.chooseRelic(S, id)); break; }
+    case 'codex': openCodex(); break;
+    case 'relicBack': if (S && S.relicChoices) openRelicDraw(); else forceClose(); break;
     case 'sound': audio.toggle(); syncSound(); openMenu(); break;
     case 'help': openHelp(); break;
     case 'restart': forceClose(); toTitle(); break;
@@ -690,6 +840,7 @@ document.addEventListener('keydown', (e) => {
   else if (k === 'q') apply(G.usePotion(S));
   else if (k === 'b') openShop();
   else if (k === 'h') openHelp();
+  else if (k === 'r') openCodex();
 });
 
 addEventListener('resize', fitBoard, { passive: true });
@@ -711,6 +862,6 @@ window.__game = {
   tap: doTap, flag: doFlag,
   start: startRun, resume: resumeRun, toTitle,
   sheet: () => sheetKind,
-  closeSheet, openShop, openHelp,
+  closeSheet, openShop, openHelp, openCodex, openRelicDraw,
   setDifficulty: (d) => { difficulty = d; renderTitle(); },
 };

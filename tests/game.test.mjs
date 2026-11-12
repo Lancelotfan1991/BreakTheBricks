@@ -4,6 +4,7 @@ import * as G from '../public/src/game.js';
 
 const find = (s, kind) => s.tiles.filter((t) => t.kind === kind);
 const firstHidden = (s) => s.tiles.find((t) => !t.revealed).i;
+const hero = (o) => Object.assign(G.createRun('normal', 1).player, o);
 
 function fresh(diff = 'normal', seed = 7) {
   const s = G.createRun(diff, seed);
@@ -132,7 +133,7 @@ test('数字等于周围未探明威胁数，且随清除递减', () => {
 });
 
 test('战斗数学：先手、回合数、反击伤害', () => {
-  const p = { hp: 40, atk: 10, def: 3 };
+  const p = hero({ hp: 40, atk: 10, def: 3 });
   const mob = { hp: 25, atk: 8, def: 2 };
   const f = G.forecast(p, mob);
   assert.equal(f.deal, 8);
@@ -140,9 +141,9 @@ test('战斗数学：先手、回合数、反击伤害', () => {
   assert.equal(f.perHit, 5);
   assert.equal(f.take, 15);        // (4-1)*5
   assert.equal(f.lethal, false);
-  assert.equal(G.forecast({ hp: 10, atk: 10, def: 3 }, mob).lethal, true);
+  assert.equal(G.forecast(hero({ hp: 10, atk: 10, def: 3 }), mob).lethal, true);
   // 一击必杀 → 无伤
-  assert.equal(G.forecast({ hp: 5, atk: 99, def: 0 }, { hp: 10, atk: 50, def: 0 }).take, 0);
+  assert.equal(G.forecast(hero({ hp: 5, atk: 99, def: 0 }), { hp: 10, atk: 50, def: 0 }).take, 0);
   // 伤害下限为 1
   assert.equal(G.hitDamage(1, 99), 1);
 });
@@ -362,7 +363,8 @@ test('存档序列化往返一致', () => {
   assert.equal(G.deserialize('{}'), null);
   assert.equal(G.deserialize('not json'), null);
   assert.equal(G.deserialize(JSON.stringify({ ...s, v: 1 })), null);
-  // 读档后可继续操作
+  // 读档后可继续操作（标记不消耗回合，先取消标记再探索）
+  G.toggleFlag(back, firstHidden(back));
   G.tapTile(back, firstHidden(back));
   assert.ok(back.stats.turns > s.stats.turns);
 });
@@ -400,4 +402,475 @@ test('分数与统计随进程增长', () => {
   }
   assert.ok(G.score(s) > s0);
   assert.equal(s.stats.kills, 3);
+});
+
+/* ─────────── 遗物 ─────────── */
+function grant(s, id) {
+  s.relicChoices = [id];
+  const evs = G.chooseRelic(s, id);
+  assert.ok(evs.some((e) => e.type === 'relicGain'), `遗物 ${id} 应可获得`);
+}
+const hiddenThreats = (s) => s.tiles.filter((t) => !t.revealed && ['monster', 'elite', 'trap', 'boss'].includes(t.kind));
+function atFloor(s, f) { s.floor = f; G.buildFloor(s); G.tapTile(s, 30); G.closePending(s); return s; }
+
+test('遗物表完整：20 件、id 唯一、分类与稀有度合法', () => {
+  assert.equal(G.RELICS.length, 20);
+  assert.equal(new Set(G.RELICS.map((r) => r.id)).size, 20);
+  for (const r of G.RELICS) {
+    assert.ok(G.RELIC_CATS[r.cat], `${r.id} 分类非法`);
+    assert.ok(G.RELIC_RARITY[r.rarity], `${r.id} 稀有度非法`);
+    assert.ok(r.name && r.icon && r.desc && r.flavor, `${r.id} 字段缺失`);
+    assert.equal(G.relicById(r.id), r);
+  }
+  for (const cat of Object.keys(G.RELIC_CATS)) assert.ok(G.RELICS.some((r) => r.cat === cat), `${cat} 类为空`);
+});
+
+test('击杀钥匙守卫触发三选一：不重复、只能选其中之一', () => {
+  const s = fresh('normal', 91);
+  atFloor(s, 3);
+  const elite = find(s, 'elite')[0];
+  s.player.atk = 9999; s.player.hp = s.player.maxHp;
+  G.tapTile(s, elite.i);
+  const evs = G.attack(s, s.pendingCombat);
+  assert.ok(evs.some((e) => e.type === 'relicOffer'), '击杀守卫应触发遗物抽取');
+  assert.equal(s.relicChoices.length, G.RELIC_DRAW_COUNT);
+  assert.equal(new Set(s.relicChoices).size, 3, '三个选项互不相同');
+  const invalid = G.RELICS.find((r) => !s.relicChoices.includes(r.id)).id;
+  assert.deepEqual(G.chooseRelic(s, invalid), [], '不在选项中的遗物不能被选');
+  assert.ok(s.relicChoices, '非法选择后抽取仍应挂起');
+  const pick = s.relicChoices[1];
+  G.chooseRelic(s, pick);
+  assert.deepEqual(s.relics, [pick]);
+  assert.equal(s.relicChoices, null);
+  assert.deepEqual(G.chooseRelic(s, pick), [], '不能重复领取同一次抽取');
+});
+
+test('炸毁钥匙守卫同样触发抽取，且整局不会抽到已拥有的遗物', () => {
+  const s = fresh('normal', 92);
+  s.player.bombs = 9;
+  for (let f = 2; f <= 7; f++) {
+    atFloor(s, f);
+    const elite = find(s, 'elite')[0];
+    s.tiles[elite.i].revealed = true;
+    G.setMode(s, 'bomb');
+    const evs = G.tapTile(s, elite.i);
+    assert.ok(evs.some((e) => e.type === 'relicOffer'), `第${f}层炸守卫应触发抽取`);
+    assert.equal(s.hasKey, true);
+    for (const id of s.relicChoices) assert.ok(!s.relics.includes(id), `抽到了已拥有的 ${id}`);
+    G.chooseRelic(s, s.relicChoices[0]);
+  }
+  assert.equal(s.relics.length, 6);
+  assert.equal(new Set(s.relics).size, 6);
+});
+
+test('遗物抽取可复现：同种子同选项', () => {
+  const run = (seed) => {
+    const s = fresh('normal', seed);
+    atFloor(s, 3);
+    const elite = find(s, 'elite')[0];
+    s.player.atk = 9999; s.player.hp = s.player.maxHp;
+    G.tapTile(s, elite.i); G.attack(s, s.pendingCombat);
+    return s.relicChoices.join(',');
+  };
+  assert.equal(run(4242), run(4242));
+});
+
+test('战斗承伤遗物：荆棘甲 / 龙鳞护符 / 玻璃炮 叠乘，预演等于实际结算', () => {
+  const s = fresh('normal', 93);
+  atFloor(s, 6);
+  s.player.maxHp = 400; s.player.hp = 400;
+  const mob = find(s, 'monster').find((t) => G.forecast(s.player, t.mob).take >= 8);
+  assert.ok(mob, '需要一个承伤足够高的样本');
+  const m = mob.mob;
+  const raw = () => (Math.ceil(m.hp / Math.max(1, s.player.atk - m.def)) - 1) * Math.max(1, m.atk - s.player.def);
+  const base = raw();
+  grant(s, 'thornMail');
+  assert.equal(s.player.takeFlat, 2);
+  assert.equal(G.forecast(s.player, m).take, base - 2);
+  grant(s, 'dragonWard');
+  assert.equal(G.forecast(s.player, m).take, Math.round(base * 0.75) - 2);
+  grant(s, 'glassCannon');
+  assert.equal(s.player.atk, 5 + 6, '玻璃炮应 +6 攻击');
+  const f = G.forecast(s.player, m);
+  assert.equal(f.take, Math.max(0, Math.round(raw() * 0.75 * 1.35) - 2));
+  G.tapTile(s, mob.i);
+  const evs = G.attack(s, s.pendingCombat);
+  const dmg = evs.filter((e) => e.type === 'damage').reduce((a, e) => a + e.amount, 0);
+  assert.equal(dmg, f.take, '实际扣血必须等于预演');
+});
+
+test('破守者只对精英与龙王生效', () => {
+  const s = fresh('normal', 94);
+  atFloor(s, 6);
+  const elite = find(s, 'elite')[0];
+  const small = find(s, 'monster').find((t) => G.forecast(s.player, t.mob).take >= 6);
+  const e0 = G.forecast(s.player, elite.mob).take;
+  const m0 = G.forecast(s.player, small.mob).take;
+  grant(s, 'guardianBane');
+  assert.equal(G.forecast(s.player, elite.mob).take, Math.round(e0 * 0.6));
+  assert.equal(G.forecast(s.player, small.mob).take, m0, '小怪承伤不应变化');
+});
+
+test('势如破竹：每层首杀免伤、之后恢复、下行重置', () => {
+  const s = fresh('normal', 95);
+  atFloor(s, 5);
+  grant(s, 'momentum');
+  assert.equal(s.player.freeKill, true);
+  const mob = find(s, 'monster').find((t) => G.forecast({ ...s.player, freeKill: false }, t.mob).take > 0);
+  assert.equal(G.forecast(s.player, mob.mob).take, 0, '首杀预演应为 0');
+  s.player.hp = s.player.maxHp;
+  G.tapTile(s, mob.i); G.attack(s, s.pendingCombat);
+  assert.equal(s.player.freeKill, false);
+  assert.equal(s.relicState.firstKill, true);
+  const next = find(s, 'monster').find((t) => t.mob.hp > 0 && G.forecast(s.player, t.mob).take > 0);
+  assert.ok(next, '第二次击杀应正常承伤');
+  s.stairsFound = true; s.hasKey = true;
+  G.tryDescend(s);
+  assert.equal(s.player.freeKill, true, '下行后首杀额度应重置');
+  assert.equal(s.relicState.firstKill, false);
+});
+
+test('势如破竹不会让守卫绕过反锁死上限（首杀被小怪用掉仍满血可胜）', () => {
+  for (const diff of ['easy', 'normal', 'hard']) {
+    for (let seed = 1; seed <= 20; seed++) {
+      const s = G.createRun(diff, seed * 31 + 7);
+      grant(s, 'momentum');
+      for (let f = 2; f <= G.MAX_FLOOR; f++) {
+        atFloor(s, f);
+        const key = find(s, 'elite')[0] || find(s, 'boss')[0];
+        s.player.freeKill = false; // 模拟首杀额度已被小怪消耗
+        const full = { ...s.player, hp: s.player.maxHp };
+        assert.equal(G.forecast(full, key.mob).lethal, false, `${diff} 第${f}层 关键怪物满血不可胜`);
+      }
+    }
+  }
+});
+
+test('陷阱遗物：钉底靴减伤 30%、猫步 3 次充能免伤、拾荒爪给金币', () => {
+  const base = fresh('normal', 96);
+  atFloor(base, 3);
+  base.player.hp = base.player.maxHp;
+  const raw = G.tapTile(base, find(base, 'trap')[0].i).find((e) => e.type === 'damage').amount;
+
+  const soles = fresh('normal', 96);
+  atFloor(soles, 3);
+  grant(soles, 'spikeSoles');
+  soles.player.hp = soles.player.maxHp;
+  assert.equal(G.tapTile(soles, find(soles, 'trap')[0].i).find((e) => e.type === 'damage').amount, Math.max(1, Math.round(raw * 0.7)));
+
+  const cat = fresh('normal', 96);
+  atFloor(cat, 6);
+  grant(cat, 'carefulStep');
+  assert.equal(cat.relicState.trapWard, G.RELIC_WARD_CHARGES);
+  cat.player.hp = cat.player.maxHp;
+  const traps = find(cat, 'trap');
+  assert.ok(traps.length >= 3, '第 6 层应有三处陷阱');
+  for (let k = 0; k < 3; k++) {
+    const evs = G.tapTile(cat, traps[k].i);
+    assert.ok(!evs.some((e) => e.type === 'damage'), `第 ${k + 1} 次踩陷阱应免伤`);
+    assert.ok(evs.some((e) => e.type === 'disarm'));
+    assert.equal(cat.relicState.trapWard, 2 - k);
+  }
+  assert.equal(cat.player.hp, cat.player.maxHp);
+  cat.stairsFound = true; cat.hasKey = true;
+  G.tryDescend(cat);
+  assert.equal(cat.relicState.trapWard, 0, '充能按整局计算，下行不重置');
+  G.tapTile(cat, 30); G.closePending(cat);
+  const next = find(cat, 'trap').find((t) => !t.revealed);
+  assert.ok(G.tapTile(cat, next.i).some((e) => e.type === 'damage'), '充能耗尽后应正常受伤');
+
+  const scav = fresh('normal', 96);
+  atFloor(scav, 3);
+  grant(scav, 'trapSalvage');
+  scav.player.hp = scav.player.maxHp;
+  const g0 = scav.player.gold;
+  G.tapTile(scav, find(scav, 'trap')[0].i);
+  assert.equal(scav.player.gold - g0, 10);
+});
+
+test('冲击波：炸弹连带摧毁周围陷阱并刷新数字', () => {
+  const s = fresh('normal', 97);
+  const mob = find(s, 'monster')[0];
+  s.tiles[mob.i].revealed = true;
+  const around = G.neighbors(mob.i).slice(0, 2).map((j) => s.tiles[j]);
+  for (const t of around) { t.kind = 'trap'; t.revealed = false; t.used = false; t.mob = null; t.chest = null; }
+  G.recalc(s);
+  grant(s, 'blastWave');
+  s.player.bombs = 1;
+  G.setMode(s, 'bomb');
+  const evs = G.tapTile(s, mob.i);
+  assert.ok(evs.some((e) => e.type === 'bomb'));
+  for (const t of around) assert.ok(t.used && t.revealed, '周围陷阱应被掀掉');
+  assert.equal(s.player.hp, s.player.maxHp, '被摧毁的陷阱不应造成伤害');
+  for (const t of s.tiles) {
+    const live = G.neighbors(t.i).filter((j) => { const x = s.tiles[j]; return !x.revealed && ['monster', 'elite', 'trap', 'boss'].includes(x.kind); }).length;
+    assert.equal(t.n, live, '数字应随之刷新');
+  }
+});
+
+test('补给遗物：铁胃 / 铸币印 / 深口袋 / 神恩', () => {
+  const a = fresh('normal', 98);
+  a.player.hp = 10; G.usePotion(a);
+  assert.equal(a.player.hp, 10 + Math.ceil(32 * 0.3));
+  const b = fresh('normal', 98);
+  grant(b, 'ironStomach');
+  b.player.hp = 10; G.usePotion(b);
+  assert.equal(b.player.hp, 10 + Math.ceil(32 * 0.38));
+
+  const c = fresh('normal', 98);
+  grant(c, 'mint');
+  const ch = find(c, 'chest')[0];
+  ch.chest = { type: 'gold', amount: 20 }; ch.revealed = true; ch.used = false;
+  const g0 = c.player.gold;
+  G.tapTile(c, ch.i);
+  assert.equal(c.player.gold - g0, 30);
+
+  const d = fresh('normal', 98);
+  const before = G.shopPrice(d, 'whet');
+  grant(d, 'deepPockets');
+  assert.equal(G.shopPrice(d, 'whet'), Math.round(before * 0.75));
+  d.player.gold = 999;
+  G.buy(d, 'whet');
+  assert.equal(G.shopPrice(d, 'whet'), Math.round((before + 14) * 0.75), '涨价后仍应打折');
+
+  const e = fresh('normal', 98);
+  atFloor(e, 3);
+  grant(e, 'altarGrace');
+  const altar = find(e, 'altar')[0];
+  e.player.hp = 5;
+  G.altarChoose(e, altar.i, 'pray');
+  assert.equal(e.player.hp, 5 + Math.ceil(e.player.maxHp * 0.75));
+});
+
+test('下行遗物：探矿罗盘翻倍、炼金壶隔层给药、旗帜领主按正确旗数回血', () => {
+  const s = fresh('normal', 99);
+  grant(s, 'prospector'); grant(s, 'alchemist');
+  const p0 = s.player.potions, g0 = s.player.gold;
+  s.stairsFound = true;
+  G.tryDescend(s);
+  assert.equal(s.player.potions, p0, '第 1 层（奇数）下行不应给药');
+  assert.equal(s.player.gold - g0, (10 + 1 * 3) * 2);
+  s.stairsFound = true; s.hasKey = true;
+  const p1 = s.player.potions;
+  G.tryDescend(s);
+  assert.equal(s.player.potions, p1 + 1, '第 2 层（偶数）下行应给药');
+
+  const b = fresh('normal', 99);
+  grant(b, 'bannerLord');
+  for (const t of hiddenThreats(b).slice(0, 3)) G.toggleFlag(b, t.i);
+  G.toggleFlag(b, b.tiles.find((t) => !t.revealed && t.kind === 'empty').i);
+  b.player.hp = 10; b.stairsFound = true;
+  G.tryDescend(b);
+  assert.equal(b.player.hp, 10 + Math.ceil(32 * 0.05) + 6, '只有插对的 3 面旗计入');
+
+  const c = fresh('normal', 99);
+  grant(c, 'bannerLord');
+  for (const t of hiddenThreats(c)) G.toggleFlag(c, t.i);
+  c.player.hp = 1; c.stairsFound = true;
+  G.tryDescend(c);
+  assert.ok(c.player.hp <= 1 + Math.ceil(32 * 0.05) + G.RELIC_BANNER_CAP, '回血应有上限');
+});
+
+test('贪婪之心：宝箱金币翻倍、药水箱变 25 金币', () => {
+  const s = fresh('normal', 100);
+  grant(s, 'greedyHeart');
+  const chests = find(s, 'chest');
+  assert.ok(chests.length >= 2);
+  chests[0].chest = { type: 'gold', amount: 20 }; chests[0].revealed = true; chests[0].used = false;
+  const g0 = s.player.gold;
+  G.tapTile(s, chests[0].i);
+  assert.equal(s.player.gold - g0, 40);
+  chests[1].chest = { type: 'potion', amount: 1 }; chests[1].revealed = true; chests[1].used = false;
+  const p0 = s.player.potions, g1 = s.player.gold;
+  G.tapTile(s, chests[1].i);
+  assert.equal(s.player.potions, p0, '不应再产出药水');
+  assert.equal(s.player.gold - g1, 25);
+});
+
+test('磨刀之魂：击杀叠攻击，封顶 6 次', () => {
+  const s = fresh('normal', 101);
+  atFloor(s, 5);
+  grant(s, 'whetSoul');
+  s.player.atk = 9999;
+  s.player.xpNext = 1e9; // 排除升级带来的攻击增长，只观察遗物叠加
+  const base = s.player.atk;
+  const mobs = find(s, 'monster').slice(0, 9);
+  assert.ok(mobs.length >= 8);
+  for (const t of mobs) {
+    s.player.hp = s.player.maxHp;
+    G.tapTile(s, t.i);
+    if (s.pendingCombat >= 0) G.attack(s, s.pendingCombat);
+  }
+  assert.equal(s.relicState.whet, G.RELIC_WHET_CAP);
+  assert.equal(s.player.atk, base + G.RELIC_WHET_CAP);
+});
+
+test('血之契：攻击 +4、上限 −8、当前生命被夹住', () => {
+  const s = fresh('normal', 102);
+  const hp0 = s.player.hp, max0 = s.player.maxHp, atk0 = s.player.atk;
+  grant(s, 'bloodPact');
+  assert.equal(s.player.atk, atk0 + 4);
+  assert.equal(s.player.maxHp, max0 - 8);
+  assert.equal(s.player.hp, Math.min(hp0, max0 - 8));
+  assert.ok(s.player.hp > 0);
+});
+
+test('无遗物时战斗数学与旧版一致，遗物状态可存档往返', () => {
+  const s = fresh('normal', 103);
+  const mob = find(s, 'monster')[0];
+  const p = s.player;
+  const legacy = (Math.ceil(mob.mob.hp / Math.max(1, p.atk - mob.mob.def)) - 1) * Math.max(1, mob.mob.atk - p.def);
+  assert.equal(G.forecast(p, mob.mob).take, legacy);
+  assert.equal(p.takeMul, 1); assert.equal(p.takeFlat, 0); assert.equal(p.eliteTakeMul, 1); assert.equal(p.freeKill, false);
+
+  atFloor(s, 3);
+  const elite = find(s, 'elite')[0];
+  p.atk = 9999; p.hp = p.maxHp;
+  G.tapTile(s, elite.i); G.attack(s, s.pendingCombat);
+  G.chooseRelic(s, s.relicChoices[0]);
+  const back = G.deserialize(G.serialize(s));
+  assert.ok(back);
+  assert.deepEqual(back.relics, s.relics);
+  assert.deepEqual(back.relicState, s.relicState);
+  assert.equal(back.player.takeMul, p.takeMul);
+  assert.equal(G.deserialize(JSON.stringify({ ...s, v: 3 })), null, '旧版本存档应被拒绝');
+});
+// ---------- 惊扰 ----------
+function arena(seed = 7) {
+  const s = G.createRun('normal', seed);
+  G.tapTile(s, 30);
+  for (const t of s.tiles) {
+    t.kind = 'empty'; t.mob = null; t.chest = null;
+    t.used = false; t.revealed = false; t.flagged = false;
+  }
+  s.threatTotal = 0;
+  s.aggroClock = null;
+  G.recalc(s);
+  return s;
+}
+function putMob(s, i, over = {}) {
+  const t = s.tiles[i];
+  t.kind = 'monster';
+  t.mob = { id: 'bat', name: '测试蝠', icon: 'bat', flavor: '', hp: 20, maxHp: 20, atk: 10, def: 0, xp: 1, gold: 1, elite: false, boss: false, awake: false, ...over };
+  G.recalc(s);
+  return t;
+}
+function withPeriod(n, fn) {
+  const old = G.BAL.aggroPeriod;
+  G.BAL.aggroPeriod = n;
+  try { fn(); } finally { G.BAL.aggroPeriod = old; }
+}
+
+test('惊扰：标记与无效点击不消耗回合，翻开才推进时钟', () => {
+  const s = arena();
+  const m = putMob(s, 0);
+  G.tapTile(s, 1);
+  assert.equal(m.mob.awake, true, '相邻翻开即惊扰');
+  assert.equal(s.aggroClock, G.BAL.aggroPeriod - 1, '惊扰的那次翻开本身算一回合');
+  const turns = s.stats.turns, clock = s.aggroClock;
+  G.setMode(s, 'flag');
+  for (let k = 0; k < 12; k++) G.tapTile(s, 5);
+  G.setMode(s, 'explore');
+  G.tapTile(s, 1);
+  assert.equal(s.stats.turns, turns, '标记 / 重复点击已探明格不消耗回合');
+  assert.equal(s.aggroClock, clock, '标记不推进惊扰时钟');
+  G.tapTile(s, 7);
+  assert.equal(s.aggroClock, clock - 1, '翻开新格推进一回合');
+  assert.equal(s.stats.turns, turns + 1);
+});
+
+test('惊扰：倒计时归零造成伤害，但不致死，命中后重置', () => {
+  withPeriod(2, () => {
+    const s = arena();
+    putMob(s, 0, { atk: 40 });
+    s.player.def = 0; s.player.maxHp = 40; s.player.hp = 5;
+    G.tapTile(s, 1);
+    assert.equal(s.player.hp, 5, '倒计时未到不掉血');
+    G.tapTile(s, 7);
+    assert.equal(s.player.hp, 1, '骚扰压到 1 血为止，不致死');
+    assert.equal(s.status, 'playing');
+    assert.equal(s.aggroClock, 2, '命中后重置倒计时');
+  });
+});
+
+test('惊扰：伤害走战斗减免，且至少 1 点', () => {
+  const s = arena();
+  const m = putMob(s, 0, { atk: 40 });
+  s.player.def = 0;
+  assert.equal(G.aggroDamage(s.player, m.mob), 10);
+  grant(s, 'dragonWard');
+  assert.equal(G.aggroDamage(s.player, m.mob), 8);
+  grant(s, 'thornMail');
+  assert.equal(G.aggroDamage(s.player, m.mob), 6);
+  m.mob.atk = 2;
+  assert.equal(G.aggroDamage(s.player, m.mob), 1, '减免后仍至少 1 点');
+});
+
+test('惊扰：全场共用一个时钟，每次只有最凶的那只出手', () => {
+  withPeriod(2, () => {
+    const s = arena();
+    putMob(s, 0, { atk: 10 });
+    const strong = putMob(s, 2, { atk: 40 });
+    s.player.def = 0; s.player.maxHp = 200; s.player.hp = 200;
+    G.tapTile(s, 1);
+    const hp = s.player.hp;
+    G.tapTile(s, 7);
+    assert.equal(hp - s.player.hp, 10, '两只惊扰也只出手一次，取最凶的');
+    s.player.atk = 999;
+    G.tapTile(s, 2);
+    G.attack(s, 2);
+    assert.equal(strong.mob.hp, 0);
+    assert.equal(G.aggroSummary(s).dmg, 3, '杀掉最凶的之后，下一击变轻');
+  });
+});
+
+test('惊扰：击杀后不再骚扰，下行重置', () => {
+  withPeriod(2, () => {
+    const s = arena();
+    const m = putMob(s, 0, { hp: 1, atk: 40 });
+    s.player.atk = 99; s.player.maxHp = 40; s.player.hp = 30;
+    G.tapTile(s, 1);
+    G.tapTile(s, 0);
+    G.attack(s, 0);
+    assert.equal(m.mob.hp, 0);
+    assert.equal(s.aggroClock, null, '最后一只被清除后时钟停摆');
+    const hp = s.player.hp;
+    G.tapTile(s, 7); G.tapTile(s, 8);
+    assert.equal(s.player.hp, hp, '已清除的怪物不再骚扰');
+    s.floor = 2;
+    G.buildFloor(s);
+    assert.equal(s.aggroClock, null);
+    assert.ok(s.tiles.every((t) => !t.mob || !t.mob.awake), '下行后惊扰全部重置');
+  });
+});
+
+test('惊扰：汇总只给数量/回合/伤害，不泄露未探明位置', () => {
+  const s = arena();
+  const a = putMob(s, 0, { atk: 40 });
+  putMob(s, 2, { atk: 20 });
+  putMob(s, 6, { atk: 40 });
+  s.player.def = 0; s.player.maxHp = 200; s.player.hp = 200;
+  assert.equal(G.aggroSummary(s), null, '未惊扰时不显示');
+  G.tapTile(s, 1);
+  const sum = G.aggroSummary(s);
+  assert.equal(sum.count, 2, '一次翻开可同时惊扰两只');
+  assert.equal(sum.next, G.BAL.aggroPeriod - 1);
+  assert.equal(sum.dmg, 10, '预演的是最凶那只的伤害');
+  assert.ok(!('i' in sum) && !('tiles' in sum), '汇总不含坐标');
+  assert.equal(G.tileLabel(s.tiles[6]), '未探索', '未探明怪物不暴露身份');
+  assert.equal(G.tileLabel(a), '未探索', '被惊扰但未探明的怪物同样不暴露身份');
+  G.tapTile(s, 0);
+  assert.ok(G.tileLabel(a, s.aggroClock).includes('回合后骚扰'), '已探明怪物显示倒计时');
+});
+
+test('惊扰：时钟可存档往返', () => {
+  const s = arena();
+  putMob(s, 0);
+  G.tapTile(s, 1);
+  G.tapTile(s, 7);
+  const back = G.deserialize(G.serialize(s));
+  assert.ok(back);
+  assert.equal(back.aggroClock, s.aggroClock);
+  assert.equal(back.tiles[0].mob.awake, true);
+  assert.deepEqual(G.aggroSummary(back), G.aggroSummary(s));
 });

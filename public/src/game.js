@@ -3,7 +3,7 @@ export const COLS = 7;
 export const ROWS = 9;
 export const SIZE = COLS * ROWS;
 export const MAX_FLOOR = 8;
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 5;
 
 export const DIFFICULTIES = {
   easy: { id: 'easy', name: '地窖', tag: '轻松', desc: '怪物孱弱 · 补给充裕', threat: 0.78, power: 0.82, loot: 1.35, hp: 38, gold: 25, potions: 2 },
@@ -30,6 +30,48 @@ const BESTIARY = [
 ];
 
 export const FLOOR_NAMES = ['', '苔痕门厅', '锈铁回廊', '蛛丝墓室', '兽骨仓窖', '熔渣锻层', '石像长廊', '哀嚎深井', '深渊王座'];
+
+// ---------- 遗物 ----------
+// 设计红线：遗物只改变「代价与收益」，不改变「信息量」——不自动标雷、不透视威胁，
+// 战斗全程保持确定性（无命中 / 暴击 / 浮动），预演数字永远等于实际结算。
+export const RELIC_RARITY = {
+  common: { name: '普通', weight: 60, color: '#8fd8ff' },
+  rare: { name: '稀有', weight: 30, color: '#c9a3ff' },
+  epic: { name: '史诗', weight: 10, color: '#ffd54a' },
+};
+export const RELIC_CATS = { explore: '探索', combat: '战斗', supply: '补给', pact: '契约' };
+export const RELIC_DRAW_COUNT = 3;
+export const RELIC_WHET_CAP = 6;
+export const RELIC_BANNER_CAP = 12;
+export const RELIC_WARD_CHARGES = 3;
+
+export const RELICS = [
+  { id: 'spikeSoles', name: '钉底靴', icon: 'boot', cat: 'explore', rarity: 'common', desc: '陷阱伤害降低 30%。', flavor: '靴底钉着前人的碎骨，踩下去反而稳。' },
+  { id: 'carefulStep', name: '猫步', icon: 'hand', cat: 'explore', rarity: 'rare', desc: '获得后的 3 次踩中陷阱完全免伤。', flavor: '你听见了石板下那声极轻的咔哒。' },
+  { id: 'trapSalvage', name: '拾荒爪', icon: 'coin', cat: 'explore', rarity: 'common', desc: '每次踩中陷阱额外捡到 10 金币。', flavor: '尖刺上总挂着几个没能走完的人的钱袋。' },
+  { id: 'blastWave', name: '冲击波', icon: 'bomb', cat: 'explore', rarity: 'rare', desc: '炸弹同时摧毁目标周围 8 格的所有陷阱。', flavor: '砖石记得每一次爆炸的形状。' },
+  { id: 'bannerLord', name: '旗帜领主', icon: 'flag', cat: 'explore', rarity: 'rare', desc: '下行时，每面插对的旗回复 2 生命（最多 12）。', flavor: '它只奖赏那些真正读懂了数字的人。' },
+
+  { id: 'thornMail', name: '荆棘甲', icon: 'shield', cat: 'combat', rarity: 'common', desc: '战斗承伤固定减少 2 点。', flavor: '甲片缝隙里长出了倒刺，先扎到的是敌人。' },
+  { id: 'dragonWard', name: '龙鳞护符', icon: 'dragon', cat: 'combat', rarity: 'rare', desc: '战斗承伤减少 25%。', flavor: '一片幼龙的鳞，还留着体温。' },
+  { id: 'guardianBane', name: '破守者', icon: 'key', cat: 'combat', rarity: 'rare', desc: '对钥匙守卫与龙王的承伤减少 40%。', flavor: '守门者的武艺，早被人拆解成了册子。' },
+  { id: 'vampiricEdge', name: '吸血刃', icon: 'fang', cat: 'combat', rarity: 'common', desc: '每次击杀回复 4 生命。', flavor: '刃口有一道永不干涸的暗红细线。' },
+  { id: 'momentum', name: '势如破竹', icon: 'sparkle', cat: 'combat', rarity: 'epic', desc: '每层第一次击杀不承受任何伤害。', flavor: '第一击总是最干净的，之后才轮到代价。' },
+  { id: 'whetSoul', name: '磨刀之魂', icon: 'sword', cat: 'combat', rarity: 'rare', desc: `每次击杀永久 +1 攻击，最多叠加 ${RELIC_WHET_CAP} 次。`, flavor: '每一次挥砍都在替下一次开刃。' },
+
+  { id: 'ironStomach', name: '铁胃', icon: 'flask', cat: 'supply', rarity: 'common', desc: '药水恢复量从 30% 提升到 38% 最大生命。', flavor: '连瓶塞一起嚼碎，药效才算完整。' },
+  { id: 'alchemist', name: '炼金壶', icon: 'potion', cat: 'supply', rarity: 'rare', desc: '每下行两层额外获得 1 瓶药水。', flavor: '壶底永远剩着一口，摇一摇又满了。' },
+  { id: 'mint', name: '铸币印', icon: 'coin', cat: 'supply', rarity: 'common', desc: '所有金币收入 +50%。', flavor: '凡经你手的金子，都会多出一枚影子。' },
+  { id: 'deepPockets', name: '深口袋', icon: 'chest', cat: 'supply', rarity: 'common', desc: '商店价格降低 25%。', flavor: '商人数不清你掏出了多少，只好少收点。' },
+  { id: 'altarGrace', name: '神恩', icon: 'altar', cat: 'supply', rarity: 'rare', desc: '祭坛「静默祈祷」恢复量从 45% 提升到 75%。', flavor: '石台上的紫火为你矮了一寸。' },
+  { id: 'prospector', name: '探矿罗盘', icon: 'eye', cat: 'supply', rarity: 'common', desc: '下行的金币奖励翻倍。', flavor: '指针不指北，只指向还没被捡走的东西。' },
+
+  { id: 'bloodPact', name: '血之契', icon: 'heart', cat: 'pact', rarity: 'epic', desc: '攻击 +4，但生命上限 −8。', flavor: '契约用你的血写成，也用你的血偿还。' },
+  { id: 'glassCannon', name: '玻璃炮', icon: 'crown', cat: 'pact', rarity: 'epic', desc: '攻击 +6，但战斗承伤 +35%。', flavor: '通透、锋利、一碰就碎。' },
+  { id: 'greedyHeart', name: '贪婪之心', icon: 'skull', cat: 'pact', rarity: 'rare', desc: '宝箱金币翻倍，但宝箱开出的药水变成 25 金币。', flavor: '它把一切能救命的东西都换算成了价钱。' },
+];
+
+export const relicById = (id) => RELICS.find((r) => r.id === id);
 
 // ---------- RNG ----------
 function rand(s) {
@@ -78,8 +120,62 @@ export const hitDamage = (atk, def) => Math.max(1, atk - def);
 export function forecast(p, mob) {
   const deal = hitDamage(p.atk, mob.def);
   const rounds = Math.ceil(mob.hp / deal);
-  const take = (rounds - 1) * hitDamage(mob.atk, p.def);
-  return { deal, rounds, take, lethal: take >= p.hp, perHit: hitDamage(mob.atk, p.def) };
+  const perHit = hitDamage(mob.atk, p.def);
+  let take = (rounds - 1) * perHit;
+  if (mob.elite || mob.boss) take *= p.eliteTakeMul;
+  take = Math.max(0, Math.round(take * p.takeMul) - p.takeFlat);
+  if (p.freeKill) take = 0;
+  return { deal, rounds, take, lethal: take >= p.hp, perHit };
+}
+
+// ---------- 惊扰 ----------
+// 怪物是「可选 + 信息完全 + 结算确定」的，理性玩家永远只打打得过的仗，
+// 于是怪物沦为路障而非威胁。惊扰给「不打它」加上代价。
+// 全场共用一个时钟，每次只有最凶的那只出手——频率因此与怪物数量无关，
+// 而「先杀谁」决定了每一下有多痛。时钟按操作推进而非真实时间：思考免费，标记也免费。
+export function aggroDamage(p, mob) {
+  let dmg = hitDamage(mob.atk, p.def) * BAL.aggroMul;
+  if (mob.elite || mob.boss) dmg *= p.eliteTakeMul;
+  return Math.max(1, Math.round(dmg * p.takeMul) - p.takeFlat);
+}
+
+const awakeMobs = (s) => s.tiles.filter((t) => t.mob && t.mob.hp > 0 && t.mob.awake);
+
+// 汇总只给「几只 / 几回合后 / 多少伤害」，不给位置——未探明怪物的坐标仍要靠演绎。
+export function aggroSummary(s) {
+  const awake = awakeMobs(s);
+  if (!awake.length || s.aggroClock == null) return null;
+  let top = awake[0];
+  for (const t of awake) if (aggroDamage(s.player, t.mob) > aggroDamage(s.player, top.mob)) top = t;
+  return { count: awake.length, next: s.aggroClock, dmg: Math.min(aggroDamage(s.player, top.mob), Math.max(0, s.player.hp - 1)) };
+}
+
+function awaken(s, i) {
+  for (const j of [i, ...neighbors(i)]) {
+    const t = s.tiles[j];
+    if (t.mob && t.mob.hp > 0 && !t.mob.awake) {
+      t.mob.awake = true;
+      if (s.aggroClock == null) s.aggroClock = BAL.aggroPeriod;
+    }
+  }
+}
+
+function tickAggro(s, out) {
+  if (s.status !== 'playing') return;
+  const awake = awakeMobs(s);
+  if (!awake.length) { s.aggroClock = null; return; }
+  if (s.aggroClock == null) s.aggroClock = BAL.aggroPeriod;
+  if (--s.aggroClock > 0) return;
+  s.aggroClock = BAL.aggroPeriod;
+  const p = s.player;
+  let top = awake[0];
+  for (const t of awake) if (aggroDamage(p, t.mob) > aggroDamage(p, top.mob)) top = t;
+  // 骚扰不致死：致死权仍留给陷阱与玩家自己的冒进，也避免残血被守卫锁死。
+  const real = Math.min(aggroDamage(p, top.mob), p.hp - 1);
+  if (real <= 0) return;
+  say(s, `${top.mob.name}趁隙扑来，撕掉你 ${real} 点生命。`, 'bad');
+  ev(out, 'aggro', { i: top.i, amount: real });
+  hurt(s, real, out, top.mob.name, top.i);
 }
 
 // ---------- creation ----------
@@ -94,11 +190,15 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
     floor: 1,
     tiles: [],
     generated: false,
-    player: { hp: d.hp, maxHp: d.hp, atk: 5, def: 1, lv: 1, xp: 0, xpNext: 12, gold: d.gold, potions: 2, bombs: 1, scrolls: 1 },
+    player: { hp: d.hp, maxHp: d.hp, atk: 5, def: 1, lv: 1, xp: 0, xpNext: 12, gold: d.gold, potions: 2, bombs: 1, scrolls: 1, takeMul: 1, takeFlat: 0, eliteTakeMul: 1, freeKill: false },
     bought: {},
+    relics: [],
+    relicChoices: null,
+    relicState: { whet: 0, firstKill: false, trapWard: 0 },
     hasKey: false,
     stairsFound: false,
     stairsIndex: -1,
+    aggroClock: null,
     mode: 'explore',
     threatTotal: 0,
     flags: 0,
@@ -131,6 +231,9 @@ export function buildFloor(s) {
   s.mode = 'explore';
   s.pendingCombat = -1;
   s.pendingAltar = -1;
+  s.aggroClock = null;
+  s.relicState.firstKill = false;
+  syncRelicMods(s);
   s.plan = planFloor(s, f, d);
   s.threatTotal = s.plan.monsters + s.plan.traps + (s.plan.elite ? 1 : 0) + (s.plan.boss ? 1 : 0);
 }
@@ -152,6 +255,8 @@ export const BAL = {
   refBurn: 0.055, refBurnF: 0.012,
   lvXp: 12, lvXpF: 10, lvHp: 4, lvAtk: 1, lvDefEvery: 3,
   potionPct: 0.3, prayPct: 0.45, descendPct: 0.05,
+  trapBase: 4, trapF: 2.6,
+  aggroPeriod: 16, aggroMul: 0.25,
   bloodCost: 10, bloodAtk: 2,
   eliteCap: 0.9, bossCap: 0.95, shopWhet: 1, mobGold: 2, mobGoldF: 1, chestGold: 8, chestGoldF: 3,
 };
@@ -174,12 +279,14 @@ function makeMob(s, f, d, type) {
   let gold = Math.round((BAL.mobGold + BAL.mobGoldF * f) * d.loot);
   if (type === 'elite') { hp = Math.round(hp * 1.9); atk = Math.round(atk * 1.3); xp *= 3; gold = Math.round(gold * 3.2); }
   if (type === 'boss') { hp = Math.round(hp * 3.4); atk = Math.round(atk * 1.45); xp = 120; gold = 260; }
-  const mob = { id: b.id, name: b.name, icon: b.icon, flavor: b.flavor, hp, maxHp: hp, atk, def, xp, gold, elite: type === 'elite', boss: type === 'boss' };
-  // 反锁死：钥匙守卫 / 龙王在生成时必须是「满血可胜」的
+  const mob = { id: b.id, name: b.name, icon: b.icon, flavor: b.flavor, hp, maxHp: hp, atk, def, xp, gold, elite: type === 'elite', boss: type === 'boss', awake: false };
+  // 反锁死：钥匙守卫 / 龙王在生成时必须是「满血可胜」的。
+  // 这里刻意忽略 freeKill——否则「势如破竹」会让守卫绕过上限生成，一旦首杀被小怪用掉就无解。
   if (type === 'elite' || type === 'boss') {
     const cap = Math.floor(p.maxHp * (type === 'boss' ? B.bossCap : B.eliteCap));
+    const ref = { ...p, freeKill: false };
     let guard = 0;
-    while (forecast(p, mob).take > cap && guard++ < 80) {
+    while (forecast(ref, mob).take > cap && guard++ < 80) {
       if (mob.atk > p.def + 1) mob.atk -= 1;
       else if (mob.hp > 4) mob.hp = Math.round(mob.hp * 0.9);
       else break;
@@ -240,7 +347,8 @@ export function remainingThreats(s) {
 }
 export function shopPrice(s, id) {
   const item = SHOP.find((x) => x.id === id);
-  return item.base + item.step * (s.bought[id] || 0);
+  const base = item.base + item.step * (s.bought[id] || 0);
+  return Math.max(1, Math.round(base * (hasRelic(s, 'deepPockets') ? 0.75 : 1)));
 }
 export function score(s) {
   return s.stats.floors * 120 + s.stats.kills * 12 + s.stats.elites * 40 + s.player.lv * 25 + s.stats.goldEarned + (s.status === 'won' ? 600 : 0);
@@ -285,20 +393,27 @@ function heal(s, amount, out) {
 }
 
 function addGold(s, amount, out) {
-  s.player.gold += amount;
-  s.stats.goldEarned += amount;
-  ev(out, 'gold', { amount });
+  const real = Math.round(amount * (hasRelic(s, 'mint') ? 1.5 : 1));
+  s.player.gold += real;
+  s.stats.goldEarned += real;
+  ev(out, 'gold', { amount: real });
+  return real;
 }
 
 // ---------- reveal ----------
 function lootChest(s, i, out) {
-  const t = s.tiles[i], p = s.player, c = t.chest;
+  const t = s.tiles[i], p = s.player;
+  let type = t.chest.type, amount = t.chest.amount;
   t.used = true;
-  if (c.type === 'gold') { addGold(s, c.amount, out); say(s, `宝箱开启：${c.amount} 金币。`, 'good'); }
-  else if (c.type === 'potion') { p.potions++; say(s, '宝箱开启：治疗药水 ×1。', 'good'); ev(out, 'item', { item: 'potion' }); }
-  else if (c.type === 'weapon') { p.atk += c.amount; say(s, `宝箱开启：附魔刃片，攻击 +${c.amount}！`, 'good'); ev(out, 'item', { item: 'weapon' }); }
-  else if (c.type === 'armor') { p.def += c.amount; say(s, `宝箱开启：龙鳞甲片，防御 +${c.amount}！`, 'good'); ev(out, 'item', { item: 'armor' }); }
-  else if (c.type === 'scroll') { p.scrolls++; say(s, '宝箱开启：侦查卷轴 ×1。', 'good'); ev(out, 'item', { item: 'scroll' }); }
+  if (hasRelic(s, 'greedyHeart')) {
+    if (type === 'potion') { type = 'gold'; amount = 25; }
+    else if (type === 'gold') amount *= 2;
+  }
+  if (type === 'gold') { const got = addGold(s, amount, out); say(s, `宝箱开启：${got} 金币。`, 'good'); }
+  else if (type === 'potion') { p.potions++; say(s, '宝箱开启：治疗药水 ×1。', 'good'); ev(out, 'item', { item: 'potion' }); }
+  else if (type === 'weapon') { p.atk += amount; say(s, `宝箱开启：附魔刃片，攻击 +${amount}！`, 'good'); ev(out, 'item', { item: 'weapon' }); }
+  else if (type === 'armor') { p.def += amount; say(s, `宝箱开启：龙鳞甲片，防御 +${amount}！`, 'good'); ev(out, 'item', { item: 'armor' }); }
+  else if (type === 'scroll') { p.scrolls++; say(s, '宝箱开启：侦查卷轴 ×1。', 'good'); ev(out, 'item', { item: 'scroll' }); }
   else { p.bombs++; say(s, '宝箱开启：裂石炸弹 ×1。', 'good'); ev(out, 'item', { item: 'bomb' }); }
   ev(out, 'loot', { i });
 }
@@ -318,6 +433,7 @@ function openTile(s, i, out, opts = {}) {
   t.flagged = false;
   s.stats.revealed++;
   ev(out, 'reveal', { i, kind: t.kind });
+  awaken(s, i);
   const p = s.player;
 
   if (t.kind === 'monster' || t.kind === 'elite' || t.kind === 'boss') {
@@ -333,9 +449,17 @@ function openTile(s, i, out, opts = {}) {
       ev(out, 'disarm', { i });
     } else {
       t.used = true;
-      const dmg = Math.max(2, 4 + 2 * s.floor - Math.floor(p.def / 2));
-      say(s, `地板塌陷！尖刺造成 ${dmg} 点伤害。`, 'bad');
-      hurt(s, dmg, out, '尖刺陷阱', i);
+      let dmg = Math.max(2, Math.round(BAL.trapBase + BAL.trapF * s.floor - Math.floor(p.def / 2)));
+      if (hasRelic(s, 'spikeSoles')) dmg = Math.max(1, Math.round(dmg * 0.7));
+      if (s.relicState.trapWard > 0) {
+        s.relicState.trapWard--;
+        say(s, `猫步让你在尖刺合拢前抽回了脚——毫发无伤。（剩 ${s.relicState.trapWard} 次）`, 'good');
+        ev(out, 'disarm', { i });
+      } else {
+        say(s, `地板塌陷！尖刺造成 ${dmg} 点伤害。`, 'bad');
+        hurt(s, dmg, out, '尖刺陷阱', i);
+      }
+      if (hasRelic(s, 'trapSalvage')) addGold(s, 10, out);
     }
     return;
   }
@@ -410,20 +534,24 @@ export function toggleFlag(s, i) {
 }
 
 export function tapTile(s, i) {
-  return finish(s, tapInner(s, i));
+  const r = tapInner(s, i);
+  if (r.spent) { s.stats.turns++; tickAggro(s, r.out); }
+  return finish(s, r.out);
 }
 
+// spent 表示这次操作是否推进惊扰时钟。标记、切换模式、查看预演、无效点击一律免费，
+// 只有真正改变棋盘的操作才算一回合。
 function tapInner(s, i) {
-  let out = [];
-  if (s.status !== 'playing') return out;
-  if (i < 0 || i >= SIZE) return out;
+  const out = [];
+  const free = { out, spent: false };
+  if (s.status !== 'playing') return free;
+  if (i < 0 || i >= SIZE) return free;
   const t = s.tiles[i];
-  s.stats.turns++;
 
-  if (s.mode === 'flag') return toggleFlag(s, i);
+  if (s.mode === 'flag') return { out: toggleFlag(s, i), spent: false };
 
   if (s.mode === 'bomb') {
-    if (!t.revealed || !isThreat(t) || t.used) { say(s, '炸弹只能摧毁已探明的威胁。', 'warn'); return out; }
+    if (!t.revealed || !isThreat(t) || t.used) { say(s, '炸弹只能摧毁已探明的威胁。', 'warn'); return free; }
     s.player.bombs--;
     s.mode = 'explore';
     t.used = true;
@@ -431,9 +559,19 @@ function tapInner(s, i) {
     if (t.mob) t.mob.hp = 0;
     ev(out, 'bomb', { i });
     say(s, `轰！${wasMob ? t.mob.name : '陷阱'}被炸成了碎砖。`, 'magic');
-    if (t.kind === 'elite') { s.hasKey = true; say(s, '钥匙从碎石中滚了出来。', 'good'); ev(out, 'key', { i }); }
-    if (t.kind === 'boss') return out.concat(winRun(s));
-    return out;
+    if (hasRelic(s, 'blastWave')) {
+      let swept = 0;
+      for (const j of neighbors(i)) {
+        const nt = s.tiles[j];
+        if (nt.kind !== 'trap' || nt.used) continue;
+        nt.used = true; nt.revealed = true; swept++;
+        ev(out, 'disarm', { i: j });
+      }
+      if (swept) say(s, `冲击波顺着砖缝荡开，连带掀掉了 ${swept} 处陷坑。`, 'magic');
+    }
+    if (t.kind === 'elite') { s.hasKey = true; say(s, '钥匙从碎石中滚了出来。', 'good'); ev(out, 'key', { i }); offerRelics(s, out); }
+    if (t.kind === 'boss') return { out: out.concat(winRun(s)), spent: false };
+    return { out, spent: true };
   }
 
   if (s.mode === 'scroll') {
@@ -444,29 +582,33 @@ function tapInner(s, i) {
     const area = [i, ...neighbors(i)];
     for (const j of area) openTile(s, j, out, { safe: true, silent: true, noFlood: true });
     say(s, '卷轴展开，周围的砖石变得透明。', 'magic');
-    return out;
+    return { out, spent: true };
   }
 
-  if (t.flagged) { say(s, '这格被标记了，先取消标记再探索。', 'warn'); return out; }
+  if (t.flagged) { say(s, '这格被标记了，先取消标记再探索。', 'warn'); return free; }
 
   if (!t.revealed) {
     ensureBoard(s, i);
     openTile(s, i, out);
-    return out;
+    return { out, spent: true };
   }
 
   // 已探明格
   if ((t.kind === 'monster' || t.kind === 'elite' || t.kind === 'boss') && t.mob.hp > 0) {
     s.pendingCombat = i;
     ev(out, 'encounter', { i });
-    return out;
+    return free;
   }
-  if (t.kind === 'altar' && !t.used) { s.pendingAltar = i; ev(out, 'altar', { i }); return out; }
-  if (t.kind === 'chest' && !t.used) { lootChest(s, i, out); return finish(s, out); }
-  if (t.kind === 'potion' && !t.used) { pickPotion(s, i, out); return finish(s, out); }
-  if (t.kind === 'stairs') return out.concat(tryDescend(s));
-  if (t.kind === 'empty' && t.n > 0) return finish(s, out.concat(chord(s, i)));
-  return finish(s, out);
+  if (t.kind === 'altar' && !t.used) { s.pendingAltar = i; ev(out, 'altar', { i }); return free; }
+  if (t.kind === 'chest' && !t.used) { lootChest(s, i, out); return { out, spent: true }; }
+  if (t.kind === 'potion' && !t.used) { pickPotion(s, i, out); return { out, spent: true }; }
+  if (t.kind === 'stairs') return { out: out.concat(tryDescend(s)), spent: false };
+  if (t.kind === 'empty' && t.n > 0) {
+    const before = s.stats.revealed;
+    const co = chord(s, i);
+    return { out: out.concat(co), spent: s.stats.revealed > before };
+  }
+  return free;
 }
 
 function finish(s, out) {
@@ -511,16 +653,25 @@ export function attack(s, i) {
   t.used = true;
   s.stats.kills++;
   if (t.kind === 'elite') s.stats.elites++;
-  say(s, `${t.mob.name}倒下了！${f.rounds} 回合，承受 ${f.take} 伤害，+${t.mob.xp} 经验 +${t.mob.gold} 金币。`, 'good');
+  say(s, `${t.mob.name}倒下了！${f.rounds} 回合，承受 ${f.take} 伤害，+${t.mob.xp} 经验。`, 'good');
   ev(out, 'kill', { i, mob: t.mob });
   addGold(s, t.mob.gold, out);
   gainXp(s, t.mob.xp, out);
+  if (hasRelic(s, 'momentum') && !s.relicState.firstKill) { s.relicState.firstKill = true; syncRelicMods(s); }
+  if (hasRelic(s, 'vampiricEdge')) heal(s, 4, out);
+  if (hasRelic(s, 'whetSoul') && s.relicState.whet < RELIC_WHET_CAP) {
+    s.relicState.whet++;
+    p.atk += 1;
+    say(s, `磨刀之魂饮下了这一战：攻击 +1（${s.relicState.whet}/${RELIC_WHET_CAP}）。`, 'magic');
+  }
   if (t.kind === 'elite') {
     s.hasKey = true;
     say(s, '获得锈蚀钥匙！下行阶梯的封印解开了。', 'magic');
     ev(out, 'key', { i });
+    offerRelics(s, out);
   }
   if (t.kind === 'boss') return out.concat(winRun(s));
+  tickAggro(s, out);
   return finish(s, out);
 }
 
@@ -537,7 +688,7 @@ export function usePotion(s) {
   if (p.potions <= 0) { say(s, '背包里没有药水了。', 'warn'); return out; }
   if (p.hp >= p.maxHp) { say(s, '生命已满，别浪费药水。', 'warn'); return out; }
   p.potions--;
-  const amount = heal(s, Math.ceil(p.maxHp * BAL.potionPct), out);
+  const amount = heal(s, Math.ceil(p.maxHp * (hasRelic(s, 'ironStomach') ? 0.38 : BAL.potionPct)), out);
   say(s, `饮下药水，恢复 ${amount} 点生命。`, 'good');
   return out;
 }
@@ -583,7 +734,7 @@ export function altarChoose(s, i, choice) {
     p.atk += BAL.bloodAtk;
     say(s, `祭坛饮下你的血，刀刃变得饥渴。攻击 +${BAL.bloodAtk}。`, 'magic');
   } else if (choice === 'pray') {
-    const h = heal(s, Math.ceil(p.maxHp * BAL.prayPct), out);
+    const h = heal(s, Math.ceil(p.maxHp * (hasRelic(s, 'altarGrace') ? 0.75 : BAL.prayPct)), out);
     say(s, `温暖的光包裹了你，恢复 ${h} 点生命。`, 'good');
   } else {
     addGold(s, 45, out);
@@ -604,9 +755,16 @@ export function tryDescend(s) {
   if (!s.stairsFound) { say(s, '还没找到下行阶梯。', 'warn'); return out; }
   if (s.floor > 1 && !s.hasKey) { say(s, '阶梯被符文锁封住，需要钥匙守卫身上的钥匙。', 'warn'); ev(out, 'locked'); return out; }
   s.stats.floors++;
-  const bonus = 10 + s.floor * 3;
-  addGold(s, bonus, out);
+  const bonus = addGold(s, (10 + s.floor * 3) * (hasRelic(s, 'prospector') ? 2 : 1), out);
   heal(s, Math.ceil(s.player.maxHp * BAL.descendPct), out);
+  if (hasRelic(s, 'bannerLord')) {
+    const correct = s.tiles.filter((t) => t.flagged && !t.revealed && isThreat(t)).length;
+    if (correct) {
+      const h = heal(s, Math.min(RELIC_BANNER_CAP, correct * 2), out);
+      say(s, `旗帜领主认出了 ${correct} 面插对的旗，回复 ${h} 生命。`, 'good');
+    }
+  }
+  if (hasRelic(s, 'alchemist') && s.floor % 2 === 0) { s.player.potions++; say(s, '炼金壶在行囊里凝出了一瓶药水。', 'good'); ev(out, 'item', { item: 'potion' }); }
   s.floor++;
   buildFloor(s);
   say(s, `沿阶梯而下——第 ${s.floor} 层 · ${FLOOR_NAMES[s.floor]}。通关奖励 ${bonus} 金币。`, 'magic');
@@ -621,6 +779,54 @@ function winRun(s) {
   return ev([], 'win', { floor: s.floor });
 }
 
+// ---------- 遗物抽取 ----------
+export const hasRelic = (s, id) => s.relics.includes(id);
+
+// 战斗修正全部落在 player 上，forecast 因此无需知道遗物系统的存在，
+// 预演 / 结算 / 生成时的反锁死校验读到的永远是同一份数字。
+function syncRelicMods(s) {
+  const p = s.player;
+  p.takeMul = (hasRelic(s, 'dragonWard') ? 0.75 : 1) * (hasRelic(s, 'glassCannon') ? 1.35 : 1);
+  p.takeFlat = hasRelic(s, 'thornMail') ? 2 : 0;
+  p.eliteTakeMul = hasRelic(s, 'guardianBane') ? 0.6 : 1;
+  p.freeKill = hasRelic(s, 'momentum') && !s.relicState.firstKill;
+}
+
+function rollRelicChoices(s) {
+  const pool = RELICS.filter((r) => !hasRelic(s, r.id));
+  const out = [];
+  while (out.length < RELIC_DRAW_COUNT && pool.length) {
+    const total = pool.reduce((a, r) => a + RELIC_RARITY[r.rarity].weight, 0);
+    let x = rand(s) * total, k = 0;
+    while (k < pool.length - 1 && x >= RELIC_RARITY[pool[k].rarity].weight) { x -= RELIC_RARITY[pool[k].rarity].weight; k++; }
+    out.push(pool.splice(k, 1)[0].id);
+  }
+  return out;
+}
+
+export function offerRelics(s, out) {
+  const ids = rollRelicChoices(s);
+  if (!ids.length) return out;
+  s.relicChoices = ids;
+  say(s, '守卫的残骸中浮起三件遗物——只能带走一件。', 'magic');
+  return ev(out, 'relicOffer', { ids });
+}
+
+export function chooseRelic(s, id) {
+  const out = [];
+  if (s.status !== 'playing' || !s.relicChoices || !s.relicChoices.includes(id)) return out;
+  s.relicChoices = null;
+  const p = s.player;
+  s.relics.push(id);
+  if (id === 'bloodPact') { p.atk += 4; p.maxHp = Math.max(8, p.maxHp - 8); p.hp = Math.min(p.hp, p.maxHp); }
+  if (id === 'glassCannon') p.atk += 6;
+  if (id === 'carefulStep') s.relicState.trapWard = RELIC_WARD_CHARGES;
+  syncRelicMods(s);
+  const r = relicById(id);
+  say(s, `获得遗物「${r.name}」：${r.desc}`, 'magic');
+  return ev(out, 'relicGain', { id });
+}
+
 // ---------- persistence ----------
 export function serialize(s) { return JSON.stringify(s); }
 export function deserialize(text) {
@@ -632,9 +838,9 @@ export function deserialize(text) {
   } catch { return null; }
 }
 
-export function tileLabel(t) {
+export function tileLabel(t, clock = null) {
   if (!t.revealed) return t.flagged ? '已标记' : '未探索';
-  if (t.mob && t.mob.hp > 0) return t.mob.name;
+  if (t.mob && t.mob.hp > 0) return t.mob.name + (t.mob.awake && clock != null ? `，${clock} 回合后骚扰` : '');
   if (t.mob) return t.mob.name + '（已清除）';
   if (t.kind === 'trap') return t.used ? '已触发陷阱' : '陷阱';
   if (t.kind === 'stairs') return '下行阶梯';
