@@ -224,6 +224,14 @@ b,strong{font-weight:700}
 .tile-trap.tile-used .ic{color:#5a4a3a}
 .tile-chest .ic{color:var(--gold)}
 .tile-potion .ic{color:var(--acid)}
+.tile-pick{--pick:255,213,74;background:linear-gradient(165deg,#3a2c0e,#1d1508);border-color:rgba(var(--pick),.5);
+  box-shadow:inset 0 0 16px rgba(var(--pick),.2),0 0 16px -5px rgba(var(--pick),.8);cursor:pointer;animation:lootBeckon 1.8s ease-in-out infinite}
+.tile-potion.tile-pick{--pick:125,255,90;background:linear-gradient(165deg,#1d3a12,#0d1c08)}
+.tile-pick .ic{animation:lootBob 1.8s ease-in-out infinite}
+.tile-pick:hover{filter:brightness(1.22)}
+.tile-pick:active{transform:scale(.93)}
+@keyframes lootBeckon{0%,100%{box-shadow:inset 0 0 14px rgba(var(--pick),.16),0 0 12px -6px rgba(var(--pick),.7)}50%{box-shadow:inset 0 0 22px rgba(var(--pick),.34),0 0 24px -3px rgba(var(--pick),1)}}
+@keyframes lootBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
 .tile-altar{background:linear-gradient(165deg,#3d1440,#1e0a24);border-color:rgba(255,79,216,.34)}
 .tile-altar .ic{color:var(--magenta)}
 .tile-altar.tile-used{filter:grayscale(.7) brightness(.6)}

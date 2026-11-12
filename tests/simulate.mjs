@@ -99,6 +99,8 @@ export function playRun(difficulty, seed, verbose = false) {
       continue;
     }
     const p = s.player;
+    const loot = s.tiles.find((t) => t.revealed && !t.used && (t.kind === 'chest' || t.kind === 'potion'));
+    if (loot) { run(tapTile, loot.i); continue; }
     if (p.hp < p.maxHp * 0.45 && p.potions > 0) { run(usePotion); potionsUsed++; continue; }
     shopPass(s);
 

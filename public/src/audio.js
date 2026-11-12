@@ -149,6 +149,10 @@ export class Audio {
         this._tone({ freq: 990, type: 'triangle', dur: 0.14, vol: 0.09, delay: 0.07 });
         this._tone({ freq: 1320, type: 'sine', dur: 0.2, vol: 0.07, delay: 0.14 });
         break;
+      case 'sparkle':
+        this._tone({ freq: 1560, type: 'sine', dur: 0.12, vol: 0.055 });
+        this._tone({ freq: 2080, type: 'sine', dur: 0.16, vol: 0.04, delay: 0.08 });
+        break;
       case 'heal':
         [523, 659, 784, 1046].forEach((f, i) => this._tone({ freq: f, type: 'sine', dur: 0.3, vol: 0.1, delay: i * 0.065 }));
         break;

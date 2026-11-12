@@ -50,6 +50,68 @@ test('每层实体数量符合规划，且阶梯/守卫/龙王存在', () => {
   }
 });
 
+test('泛洪露出的宝箱与药水保持未拾取，点击后才收入行囊', () => {
+  for (const seed of [1, 5, 7, 42, 99, 123, 2024]) {
+    const s = G.createRun('normal', seed);
+    G.tapTile(s, 31);
+    for (const t of s.tiles) {
+      if ((t.kind === 'chest' || t.kind === 'potion') && t.revealed) {
+        assert.equal(t.used, false, `种子 ${seed} 的 ${t.kind} 被自动拾取了`);
+      }
+    }
+    const chest = s.tiles.find((t) => t.kind === 'chest' && t.revealed && !t.used);
+    if (!chest) continue;
+    const b = { ...s.player };
+    G.tapTile(s, chest.i);
+    assert.equal(chest.used, true, '点击后宝箱应开启');
+    const p = s.player;
+    assert.ok(p.gold > b.gold || p.potions > b.potions || p.atk > b.atk || p.def > b.def || p.scrolls > b.scrolls || p.bombs > b.bombs, '点击宝箱应获得战利品');
+    const after = { ...s.player };
+    G.tapTile(s, chest.i);
+    assert.deepEqual({ ...s.player }, after, '空宝箱不应重复掉落');
+  }
+});
+
+test('直接点击的宝箱立即开启，卷轴揭示的宝箱仍需点击', () => {
+  const s = G.createRun('normal', 33);
+  G.ensureBoard(s, 0);
+  const chest = find(s, 'chest')[0];
+  G.tapTile(s, chest.i);
+  assert.equal(chest.revealed, true);
+  assert.equal(chest.used, true, '直接点击应立即开启');
+
+  const s2 = G.createRun('normal', 33);
+  G.ensureBoard(s2, 0);
+  const target = find(s2, 'chest')[1] || find(s2, 'chest')[0];
+  G.setMode(s2, 'scroll');
+  G.tapTile(s2, target.i);
+  assert.equal(s2.tiles[target.i].revealed, true);
+  assert.equal(s2.tiles[target.i].used, false, '卷轴不应自动开箱');
+  const b = { ...s2.player };
+  G.tapTile(s2, target.i);
+  assert.equal(s2.tiles[target.i].used, true);
+  const p = s2.player;
+  assert.ok(p.gold > b.gold || p.potions > b.potions || p.atk > b.atk || p.def > b.def || p.scrolls > b.scrolls || p.bombs > b.bombs);
+});
+
+test('地面药水需点击拾取，标签区分未拾取与已拾取', () => {
+  const s = G.createRun('normal', 12);
+  G.ensureBoard(s, 0);
+  const pot = find(s, 'potion')[0];
+  G.setMode(s, 'scroll');
+  G.tapTile(s, pot.i);
+  assert.equal(pot.revealed, true);
+  assert.equal(pot.used, false);
+  assert.equal(G.tileLabel(pot), '治疗药水');
+  const n = s.player.potions;
+  G.tapTile(s, pot.i);
+  assert.equal(pot.used, true);
+  assert.equal(s.player.potions, n + 1);
+  assert.equal(G.tileLabel(pot), '空地');
+  G.tapTile(s, pot.i);
+  assert.equal(s.player.potions, n + 1, '已拾取不应重复获得');
+});
+
 test('数字等于周围未探明威胁数，且随清除递减', () => {
   const s = fresh('normal', 21);
   const check = () => {

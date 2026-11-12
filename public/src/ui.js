@@ -116,8 +116,8 @@ function tileView(t) {
     return { cls, inner, n, label };
   }
   if (t.kind === 'trap') { cls += ' tile-trap' + (t.used ? ' tile-used tile-empty' : ''); inner = svg('trap'); return { cls, inner, n, label }; }
-  if (t.kind === 'chest') { cls += ' tile-chest' + (t.used ? ' tile-used tile-dead' : ''); inner = svg('chest'); return { cls, inner, n, label }; }
-  if (t.kind === 'potion') { cls += t.used ? ' tile-empty' : ' tile-potion'; if (!t.used) inner = svg('potion'); return { cls, inner, n, label }; }
+  if (t.kind === 'chest') { cls += t.used ? ' tile-chest tile-used tile-dead' : ' tile-chest tile-pick'; inner = svg('chest'); return { cls, inner, n, label }; }
+  if (t.kind === 'potion') { cls += t.used ? ' tile-empty' : ' tile-potion tile-pick'; if (!t.used) inner = svg('potion'); return { cls, inner, n, label }; }
   if (t.kind === 'altar') { cls += ' tile-altar' + (t.used ? ' tile-used' : ''); inner = svg('altar'); return { cls, inner, n, label }; }
   if (t.kind === 'stairs') {
     cls += ' tile-stairs';
@@ -253,6 +253,12 @@ function consume(events) {
         break;
       }
       case 'item': audio.play('item'); break;
+      case 'discover': {
+        const c = tileCenter(e.i);
+        fx.ring(c.x, c.y, e.kind === 'chest' ? '#ffd54a' : '#7dff5a', 46);
+        audio.play('sparkle');
+        break;
+      }
       case 'loot': { const c = tileCenter(e.i); fx.coins(c.x, c.y); break; }
       case 'key': {
         const c = tileCenter(e.i);
@@ -424,8 +430,8 @@ function openHelp() {
     ['bat', '怪物', '数字算的就是它；点击可预演战斗', '#ff8098'],
     ['trap', '尖刺陷阱', '踩中直接扣血，同样计入数字', '#ff9f3a'],
     ['guardian', '钥匙守卫', '第 2 层起持有下行钥匙，必须击破', '#ffd54a'],
-    ['chest', '宝箱', '金币、药水、装备或道具', '#ffd54a'],
-    ['potion', '药水', '恢复 30% 最大生命', '#7dff5a'],
+    ['chest', '宝箱', '发光的宝箱需要再点一下才开启', '#ffd54a'],
+    ['potion', '药水', '同样要点击拾取，恢复 30% 最大生命', '#7dff5a'],
     ['altar', '祭坛', '三选一的献祭，每层只出现一次', '#ff4fd8'],
     ['stairs', '下行阶梯', '找到它并持有钥匙即可下一层', '#3fe0ff'],
     ['dragon', '深渊龙王', '第 8 层的终点，击败即通关', '#ff8ae8'],
@@ -440,7 +446,8 @@ function openHelp() {
       <h3 class="help-h">数字的含义</h3>
       <p class="help-p">空地上的数字 = 周围 8 格中<b>尚未探明</b>的威胁数量（怪物 + 陷阱 + 守卫 + 龙王）。威胁被探明或清除后，数字会随之减小。</p>
       <div class="numline">${nums}</div>
-      <p class="help-p">首次点击永远安全，并会自动展开一片安全区。</p>
+      <p class="help-p">首次点击永远安全，并会自动展开一片安全区。<br>
+      展开时顺带露出的<b>宝箱与药水不会自动拾取</b>——它们会持续发光，再点一下才收入行囊。</p>
     </div>
     <div class="help-sec">
       <h3 class="help-h">三种操作</h3>

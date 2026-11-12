@@ -291,6 +291,26 @@ function addGold(s, amount, out) {
 }
 
 // ---------- reveal ----------
+function lootChest(s, i, out) {
+  const t = s.tiles[i], p = s.player, c = t.chest;
+  t.used = true;
+  if (c.type === 'gold') { addGold(s, c.amount, out); say(s, `宝箱开启：${c.amount} 金币。`, 'good'); }
+  else if (c.type === 'potion') { p.potions++; say(s, '宝箱开启：治疗药水 ×1。', 'good'); ev(out, 'item', { item: 'potion' }); }
+  else if (c.type === 'weapon') { p.atk += c.amount; say(s, `宝箱开启：附魔刃片，攻击 +${c.amount}！`, 'good'); ev(out, 'item', { item: 'weapon' }); }
+  else if (c.type === 'armor') { p.def += c.amount; say(s, `宝箱开启：龙鳞甲片，防御 +${c.amount}！`, 'good'); ev(out, 'item', { item: 'armor' }); }
+  else if (c.type === 'scroll') { p.scrolls++; say(s, '宝箱开启：侦查卷轴 ×1。', 'good'); ev(out, 'item', { item: 'scroll' }); }
+  else { p.bombs++; say(s, '宝箱开启：裂石炸弹 ×1。', 'good'); ev(out, 'item', { item: 'bomb' }); }
+  ev(out, 'loot', { i });
+}
+
+function pickPotion(s, i, out) {
+  s.tiles[i].used = true;
+  s.player.potions++;
+  say(s, '拾取治疗药水 ×1。', 'good');
+  ev(out, 'item', { item: 'potion' });
+  ev(out, 'loot', { i });
+}
+
 function openTile(s, i, out, opts = {}) {
   const t = s.tiles[i];
   if (t.revealed) return;
@@ -320,22 +340,21 @@ function openTile(s, i, out, opts = {}) {
     return;
   }
   if (t.kind === 'chest') {
-    t.used = true;
-    const c = t.chest;
-    if (c.type === 'gold') { addGold(s, c.amount, out); say(s, `宝箱开启：${c.amount} 金币。`, 'good'); }
-    else if (c.type === 'potion') { p.potions++; say(s, '宝箱开启：治疗药水 ×1。', 'good'); ev(out, 'item', { item: 'potion' }); }
-    else if (c.type === 'weapon') { p.atk += c.amount; say(s, `宝箱开启：附魔刃片，攻击 +${c.amount}！`, 'good'); ev(out, 'item', { item: 'weapon' }); }
-    else if (c.type === 'armor') { p.def += c.amount; say(s, `宝箱开启：龙鳞甲片，防御 +${c.amount}！`, 'good'); ev(out, 'item', { item: 'armor' }); }
-    else if (c.type === 'scroll') { p.scrolls++; say(s, '宝箱开启：侦查卷轴 ×1。', 'good'); ev(out, 'item', { item: 'scroll' }); }
-    else { p.bombs++; say(s, '宝箱开启：裂石炸弹 ×1。', 'good'); ev(out, 'item', { item: 'bomb' }); }
-    ev(out, 'loot', { i });
+    if (opts.silent) {
+      say(s, '碎石间露出一只宝箱——点击它才能开启。', 'good');
+      ev(out, 'discover', { i, kind: 'chest' });
+      return;
+    }
+    lootChest(s, i, out);
     return;
   }
   if (t.kind === 'potion') {
-    t.used = true;
-    p.potions++;
-    say(s, '拾取治疗药水 ×1。', 'good');
-    ev(out, 'item', { item: 'potion' });
+    if (opts.silent) {
+      say(s, '地上有一瓶治疗药水——点击拾取。', 'good');
+      ev(out, 'discover', { i, kind: 'potion' });
+      return;
+    }
+    pickPotion(s, i, out);
     return;
   }
   if (t.kind === 'altar') {
@@ -443,6 +462,8 @@ function tapInner(s, i) {
     return out;
   }
   if (t.kind === 'altar' && !t.used) { s.pendingAltar = i; ev(out, 'altar', { i }); return out; }
+  if (t.kind === 'chest' && !t.used) { lootChest(s, i, out); return finish(s, out); }
+  if (t.kind === 'potion' && !t.used) { pickPotion(s, i, out); return finish(s, out); }
   if (t.kind === 'stairs') return out.concat(tryDescend(s));
   if (t.kind === 'empty' && t.n > 0) return finish(s, out.concat(chord(s, i)));
   return finish(s, out);
@@ -618,7 +639,7 @@ export function tileLabel(t) {
   if (t.kind === 'trap') return t.used ? '已触发陷阱' : '陷阱';
   if (t.kind === 'stairs') return '下行阶梯';
   if (t.kind === 'altar') return t.used ? '黯淡的祭坛' : '古老祭坛';
-  if (t.kind === 'chest') return '空宝箱';
-  if (t.kind === 'potion') return '空地';
+  if (t.kind === 'chest') return t.used ? '空宝箱' : '未开启的宝箱';
+  if (t.kind === 'potion') return t.used ? '空地' : '治疗药水';
   return t.n ? `危险 ${t.n}` : '安全空地';
 }
