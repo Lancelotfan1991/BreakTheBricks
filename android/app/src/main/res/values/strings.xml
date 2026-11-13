@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">破砖深渊</string>
+    <string name="title_activity_main">破砖深渊</string>
+    <string name="package_name">com.lancelotfan.breakthebrick</string>
+    <string name="custom_url_scheme">com.lancelotfan.breakthebrick</string>
+</resources>

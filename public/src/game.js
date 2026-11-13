@@ -139,7 +139,8 @@ export function aggroDamage(p, mob) {
   return Math.max(1, Math.round(dmg * p.takeMul) - p.takeFlat);
 }
 
-const awakeMobs = (s) => s.tiles.filter((t) => t.mob && t.mob.hp > 0 && t.mob.awake);
+// 插旗＝我已确认并规避它，被标记的怪物不再骚扰——旗子因此有实际收益，而不只是推理记号
+const awakeMobs = (s) => s.tiles.filter((t) => t.mob && t.mob.hp > 0 && t.mob.awake && !t.flagged);
 
 // 汇总只给「几只 / 几回合后 / 多少伤害」，不给位置——未探明怪物的坐标仍要靠演绎。
 export function aggroSummary(s) {
@@ -430,7 +431,7 @@ function openTile(s, i, out, opts = {}) {
   const t = s.tiles[i];
   if (t.revealed) return;
   t.revealed = true;
-  t.flagged = false;
+  if (t.flagged) { t.flagged = false; s.flags--; }
   s.stats.revealed++;
   ev(out, 'reveal', { i, kind: t.kind });
   awaken(s, i);
@@ -527,6 +528,12 @@ export function toggleFlag(s, i) {
   if (s.status !== 'playing') return out;
   const t = s.tiles[i];
   if (t.revealed) return out;
+  // 旗数预算＝本层威胁总数：免疫骚扰是有代价的决策，乱插旗不再免费
+  if (!t.flagged && s.flags >= s.threatTotal) {
+    say(s, `旗子用完了：本层共 ${s.threatTotal} 处威胁，先拔掉一面再插。`, 'warn');
+    ev(out, 'flagLimit', { total: s.threatTotal });
+    return out;
+  }
   t.flagged = !t.flagged;
   s.flags += t.flagged ? 1 : -1;
   ev(out, 'flag', { i, on: t.flagged });
@@ -564,6 +571,7 @@ function tapInner(s, i) {
       for (const j of neighbors(i)) {
         const nt = s.tiles[j];
         if (nt.kind !== 'trap' || nt.used) continue;
+        if (nt.flagged) { nt.flagged = false; s.flags--; }
         nt.used = true; nt.revealed = true; swept++;
         ev(out, 'disarm', { i: j });
       }
@@ -585,8 +593,8 @@ function tapInner(s, i) {
     return { out, spent: true };
   }
 
-  if (t.flagged) { say(s, '这格被标记了，先取消标记再探索。', 'warn'); return free; }
-
+  // 插旗格可以直接点开：旗子只挡批量展开，不挡主动开战，避免「免疫却打不了」的互锁。
+  // 对所有插旗格一视同仁，不根据格内类型给不同反馈，否则点一下就能白嫖「是不是怪物」的信息。
   if (!t.revealed) {
     ensureBoard(s, i);
     openTile(s, i, out);
@@ -603,7 +611,8 @@ function tapInner(s, i) {
   if (t.kind === 'chest' && !t.used) { lootChest(s, i, out); return { out, spent: true }; }
   if (t.kind === 'potion' && !t.used) { pickPotion(s, i, out); return { out, spent: true }; }
   if (t.kind === 'stairs') return { out: out.concat(tryDescend(s)), spent: false };
-  if (t.kind === 'empty' && t.n > 0) {
+  // 能走到这里的都是空地或占用已失效的格子，数字同样支持双击展开
+  if (t.n > 0) {
     const before = s.stats.revealed;
     const co = chord(s, i);
     return { out: out.concat(co), spent: s.stats.revealed > before };
@@ -753,7 +762,7 @@ export function tryDescend(s) {
   const out = [];
   if (s.status !== 'playing') return out;
   if (!s.stairsFound) { say(s, '还没找到下行阶梯。', 'warn'); return out; }
-  if (s.floor > 1 && !s.hasKey) { say(s, '阶梯被符文锁封住，需要钥匙守卫身上的钥匙。', 'warn'); ev(out, 'locked'); return out; }
+  if (s.floor > 1 && !s.hasKey) { say(s, '阶梯被符文锁封住。钥匙守卫也算一格「雷」，就藏在未探明的砖格里——击败它或炸掉它才能夺钥。', 'warn'); ev(out, 'locked'); return out; }
   s.stats.floors++;
   const bonus = addGold(s, (10 + s.floor * 3) * (hasRelic(s, 'prospector') ? 2 : 1), out);
   heal(s, Math.ceil(s.player.maxHp * BAL.descendPct), out);
@@ -841,11 +850,14 @@ export function deserialize(text) {
 export function tileLabel(t, clock = null) {
   if (!t.revealed) return t.flagged ? '已标记' : '未探索';
   if (t.mob && t.mob.hp > 0) return t.mob.name + (t.mob.awake && clock != null ? `，${clock} 回合后骚扰` : '');
-  if (t.mob) return t.mob.name + '（已清除）';
-  if (t.kind === 'trap') return t.used ? '已触发陷阱' : '陷阱';
   if (t.kind === 'stairs') return '下行阶梯';
-  if (t.kind === 'altar') return t.used ? '黯淡的祭坛' : '古老祭坛';
-  if (t.kind === 'chest') return t.used ? '空宝箱' : '未开启的宝箱';
-  if (t.kind === 'potion') return t.used ? '空地' : '治疗药水';
-  return t.n ? `危险 ${t.n}` : '安全空地';
+  const name = t.mob ? t.mob.name + '（已清除）'
+    : t.kind === 'trap' ? (t.used ? '已触发陷阱' : '陷阱')
+    : t.kind === 'altar' ? (t.used ? '黯淡的祭坛' : '古老祭坛')
+    : t.kind === 'chest' ? (t.used ? '空宝箱' : '未开启的宝箱')
+    : t.kind === 'potion' ? (t.used ? '空地' : '治疗药水')
+    : null;
+  if (name == null) return t.n ? `危险 ${t.n}` : '安全空地';
+  const spent = t.mob ? t.mob.hp <= 0 : t.used;
+  return spent && t.n ? `${name}，危险 ${t.n}` : name;
 }

@@ -7,8 +7,16 @@ const motes = [];
 let running = false;
 let reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+const IMPACT = { tick: 'LIGHT', light: 'LIGHT', medium: 'MEDIUM', heavy: 'HEAVY' };
+const WEB_MS = { tick: 8, light: 12, medium: 24, heavy: 45 };
+function nativeHaptics() {
+  const c = window.Capacitor;
+  return c && c.isNativePlatform && c.isNativePlatform() && c.Plugins ? c.Plugins.Haptics : null;
+}
+
 function resize() {
-  dpr = Math.min(devicePixelRatio || 1, 2);
+  // 全屏画布每帧重绘，dpr 封顶 1.5 就够了：粒子都是软边光点，再高只是白烧填充率
+  dpr = Math.min(devicePixelRatio || 1, 1.5);
   W = innerWidth; H = innerHeight;
   canvas.width = Math.floor(W * dpr);
   canvas.height = Math.floor(H * dpr);
@@ -128,6 +136,27 @@ export const fx = {
     document.body.appendChild(el);
     setTimeout(() => el.remove(), 1050);
   },
+  // 物品从格子抛物线飞进背包位；只动 transform/opacity，交给合成器，不触发重排
+  fly(from, to, icon, o = {}) {
+    const el = document.createElement('div');
+    el.className = 'fly ' + (o.cls || '');
+    el.innerHTML = `<svg class="ic" aria-hidden="true"><use href="#i-${icon}"/></svg>`;
+    el.style.left = from.x + 'px';
+    el.style.top = from.y + 'px';
+    document.body.appendChild(el);
+    const arrive = () => { el.remove(); if (o.onArrive) o.onArrive(); };
+    if (reduced || !el.animate) { arrive(); return; }
+    const dx = to.x - from.x, dy = to.y - from.y;
+    const lift = Math.max(26, Math.min(92, Math.hypot(dx, dy) * 0.28));
+    const a = el.animate([
+      { transform: 'translate(0,0) scale(.55)', opacity: 0, offset: 0 },
+      { transform: `translate(${dx * 0.2}px,${dy * 0.2 - lift * 0.7}px) scale(1.18)`, opacity: 1, offset: 0.24 },
+      { transform: `translate(${dx * 0.66}px,${dy * 0.66 - lift}px) scale(1)`, opacity: 1, offset: 0.62 },
+      { transform: `translate(${dx}px,${dy}px) scale(.4)`, opacity: 0, offset: 1 },
+    ], { duration: o.duration || 560, easing: 'cubic-bezier(.32,.62,.36,1)', fill: 'forwards' });
+    a.onfinish = arrive;
+    a.oncancel = arrive;
+  },
   shake(el) {
     if (reduced || !el) return;
     el.classList.remove('shake');
@@ -146,5 +175,18 @@ export const fx = {
     if (!navigator.vibrate || reduced) return;
     if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
     try { navigator.vibrate(ms); } catch {}
+  },
+  // App 壳的 WebView 不提供 navigator.vibrate，改走 Capacitor 原生马达；网页回退振动 API。
+  haptic(level = 'light') {
+    if (reduced) return;
+    const h = nativeHaptics();
+    if (h) { h.impact({ style: IMPACT[level] || 'LIGHT' }).catch(() => {}); return; }
+    fx.buzz(WEB_MS[level] ?? 12);
+  },
+  rumble(ms) {
+    if (reduced) return;
+    const h = nativeHaptics();
+    if (h) { h.vibrate({ duration: ms }).catch(() => {}); return; }
+    fx.buzz(ms);
   },
 };

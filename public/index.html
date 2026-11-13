@@ -9,7 +9,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <title>破砖深渊 · Break the Brick</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icon.svg">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -107,7 +107,7 @@
           <span class="chip chip-def"><svg class="ic"><use href="#i-shield"/></svg><b id="defVal">1</b></span>
           <span class="chip chip-gold"><svg class="ic"><use href="#i-coin"/></svg><b id="goldVal">0</b></span>
           <span class="chip chip-key" id="keyChip" hidden><svg class="ic"><use href="#i-key"/></svg><b>钥匙</b></span>
-          <span class="chip chip-threat"><svg class="ic"><use href="#i-skull"/></svg><b id="threatVal">0</b><i id="flagVal">/0</i></span>
+          <span class="chip chip-threat" id="threatChip"><svg class="ic"><use href="#i-skull"/></svg><b id="threatVal">0</b><i><svg class="ic"><use href="#i-flag"/></svg><span id="flagText">0/0</span></i></span>
           <span class="chip chip-aggro" id="aggroChip" hidden><svg class="ic"><use href="#i-fang"/></svg><b id="aggroCount">0</b><i id="aggroNext"></i></span>
         </div>
       </div>
@@ -146,5 +146,11 @@
 <div id="flash" class="flash" aria-hidden="true"></div>
 
 <script type="module" src="src/main.js"></script>
+<script>
+// APK 壳内资产由 Capacitor 本地伺服，注册 SW 会缓存住旧版本，故只在浏览器/PWA 启用
+if ('serviceWorker' in navigator && !(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())) {
+  addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+}
+</script>
 </body>
 </html>

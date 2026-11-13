@@ -13,7 +13,7 @@ const el = {
   floorNum: $('#floorNum'), floorName: $('#floorName'), floorSub: $('#floorSub'),
   hpFill: $('#hpFill'), hpText: $('#hpText'), hpBar: document.querySelector('.hp-bar'),
   atk: $('#atkVal'), def: $('#defVal'), gold: $('#goldVal'), lv: $('#lvNum'), ring: $('#xpRing'),
-  threat: $('#threatVal'), flagv: $('#flagVal'), keyChip: $('#keyChip'),
+  threat: $('#threatVal'), flagText: $('#flagText'), threatChip: $('#threatChip'), keyChip: $('#keyChip'),
   aggroChip: $('#aggroChip'), aggroCount: $('#aggroCount'), aggroNext: $('#aggroNext'),
   potion: $('#potionCount'), bomb: $('#bombCount'), scroll: $('#scrollCount'),
   descend: $('#btnDescend'), log: $('#logLine'), ticker: document.querySelector('.ticker'),
@@ -106,25 +106,23 @@ function tileView(t) {
     return { cls, inner, n, label };
   }
   cls += ' tile-rev';
-  if (t.mob) {
-    const alive = t.mob.hp > 0;
-    cls += alive ? (t.kind === 'boss' ? ' tile-boss' : t.kind === 'elite' ? ' tile-elite' : ' tile-mob') : ' tile-dead';
-    inner = svg(t.mob.icon);
-    if (alive) {
-      inner += `<span class="tile-badge">${t.mob.hp}</span>`;
-      if (t.kind !== 'monster') inner += `<span class="tile-crown">${svg(t.kind === 'boss' ? 'crown' : 'key')}</span>`;
-      if (t.mob.awake && S.aggroClock != null) {
-        cls += ' tile-awake';
-        if (t.i === aggroTopIdx) inner += `<span class="tile-aggro">${S.aggroClock}</span>`;
-      }
-      label += ` 生命${t.mob.hp} 攻击${t.mob.atk}`;
+  if (t.mob && t.mob.hp > 0) {
+    const m = t.mob;
+    cls += t.kind === 'boss' ? ' tile-boss' : t.kind === 'elite' ? ' tile-elite' : ' tile-mob';
+    // 裸数字会被误读成邻雷数，三项属性各带图标；防御为 0 的怪省略，省出横向空间
+    inner = svg(m.icon) + '<span class="tile-stats">'
+      + `<i class="ts-hp">${svg('heart')}<b>${m.hp}</b></i>`
+      + `<span class="ts-row"><i class="ts-atk">${svg('sword')}<b>${m.atk}</b></i>`
+      + (m.def ? `<i class="ts-def">${svg('shield')}<b>${m.def}</b></i>` : '')
+      + '</span></span>';
+    if (t.kind !== 'monster') inner += `<span class="tile-crown">${svg(t.kind === 'boss' ? 'crown' : 'key')}</span>`;
+    if (m.awake && S.aggroClock != null) {
+      cls += ' tile-awake';
+      if (t.i === aggroTopIdx) inner += `<span class="tile-aggro">${S.aggroClock}</span>`;
     }
+    label += ` 生命${m.hp} 攻击${m.atk} 防御${m.def}`;
     return { cls, inner, n, label };
   }
-  if (t.kind === 'trap') { cls += ' tile-trap' + (t.used ? ' tile-used tile-empty' : ''); inner = svg('trap'); return { cls, inner, n, label }; }
-  if (t.kind === 'chest') { cls += t.used ? ' tile-chest tile-used tile-dead' : ' tile-chest tile-pick'; inner = svg('chest'); return { cls, inner, n, label }; }
-  if (t.kind === 'potion') { cls += t.used ? ' tile-empty' : ' tile-potion tile-pick'; if (!t.used) inner = svg('potion'); return { cls, inner, n, label }; }
-  if (t.kind === 'altar') { cls += ' tile-altar' + (t.used ? ' tile-used' : ''); inner = svg('altar'); return { cls, inner, n, label }; }
   if (t.kind === 'stairs') {
     cls += ' tile-stairs';
     inner = svg('stairs');
@@ -132,8 +130,15 @@ function tileView(t) {
     if (locked) { inner += `<span class="tile-lock">${svg('lock')}</span>`; label += '（上锁）'; }
     return { cls, inner, n, label };
   }
+  if (!t.used) {
+    if (t.kind === 'trap') { cls += ' tile-trap'; inner = svg('trap'); return { cls, inner, n, label }; }
+    if (t.kind === 'chest') { cls += ' tile-chest tile-pick'; inner = svg('chest'); return { cls, inner, n, label }; }
+    if (t.kind === 'potion') { cls += ' tile-potion tile-pick'; inner = svg('potion'); return { cls, inner, n, label }; }
+    if (t.kind === 'altar') { cls += ' tile-altar'; inner = svg('altar'); return { cls, inner, n, label }; }
+  }
+  // 占用失效后必须和空地一样给出邻雷数，否则这些格子会成为推断雷位的信息黑洞
   n = t.n;
-  cls += n ? '' : ' tile-empty';
+  cls += t.kind === 'empty' ? (n ? '' : ' tile-empty') : ' tile-dead';
   if (n) inner = `<span class="tile-num">${n}</span>`;
   return { cls, inner, n, label };
 }
@@ -175,8 +180,11 @@ function renderHud() {
   el.atk.textContent = p.atk; el.def.textContent = p.def; el.gold.textContent = p.gold;
   el.lv.textContent = p.lv;
   el.ring.style.strokeDashoffset = String(119.4 * (1 - p.xp / p.xpNext));
-  el.threat.textContent = S.generated ? G.remainingThreats(S) : S.threatTotal;
-  el.flagv.textContent = '/' + S.flags;
+  const remain = S.generated ? G.remainingThreats(S) : S.threatTotal;
+  el.threat.textContent = remain;
+  el.flagText.textContent = `${S.flags}/${S.threatTotal}`;
+  el.threatChip.classList.toggle('full', S.flags >= S.threatTotal);
+  el.threatChip.setAttribute('aria-label', `剩余威胁 ${remain}，旗子已用 ${S.flags}，上限 ${S.threatTotal}`);
   el.keyChip.hidden = !S.hasKey;
   const ag = G.aggroSummary(S);
   el.aggroChip.hidden = !ag;
@@ -218,7 +226,7 @@ function syncAggroTop() {
   aggroTopIdx = -1;
   let best = -1;
   for (const t of S.tiles) {
-    if (!t.mob || t.mob.hp <= 0 || !t.mob.awake) continue;
+    if (!t.mob || t.mob.hp <= 0 || !t.mob.awake || t.flagged) continue;
     const d = G.aggroDamage(S.player, t.mob);
     if (d > best) { best = d; aggroTopIdx = t.i; }
   }
@@ -308,19 +316,50 @@ function openCodex() {
 /* ─────────── 事件 → 反馈 ─────────── */
 function tileCenter(i) { return fx.center(tiles[i]); }
 
+// 拾取物 → 背包落点：图标飞过去，落位时计数弹一下，玩家才看得清东西进了哪一格
+const FLY = {
+  potion: { icon: 'potion', sel: '.act-potion', cls: 'heal', color: '#7dff5a' },
+  bomb: { icon: 'bomb', sel: '[data-mode="bomb"]', cls: 'crit', color: '#ffab2e' },
+  scroll: { icon: 'scroll', sel: '[data-mode="scroll"]', cls: 'cyan', color: '#3fe0ff' },
+  weapon: { icon: 'sword', sel: '.chip-atk', cls: 'crit', color: '#ffab2e' },
+  armor: { icon: 'shield', sel: '.chip-def', cls: 'cyan', color: '#3fe0ff' },
+  gold: { icon: 'coin', sel: '.chip-gold', cls: 'gold', color: '#ffd54a' },
+};
+
+function flyToBag(from, f) {
+  const node = document.querySelector(f.sel);
+  if (!node) return;
+  const to = fx.center(node);
+  fx.fly(from, to, f.icon, {
+    cls: f.cls,
+    onArrive() { bump(node); fx.ring(to.x, to.y, f.color, 46); fx.haptic('light'); },
+  });
+}
+
 function consume(events) {
   const pops = new Set();
   let delay = 0;
   const later = (fn, ms) => setTimeout(fn, ms);
+  // item/gold 事件不带格子坐标，紧随其后的 loot 才带；先配对，别把上一层的收获算到这一格
+  const flyFrom = new Map();
+  let bag = [];
+  for (const e of events) {
+    if (e.type === 'item' && FLY[e.item]) bag.push(FLY[e.item]);
+    else if (e.type === 'gold') bag.push(FLY.gold);
+    else if (e.type === 'loot') { if (bag.length) flyFrom.set(e, bag); bag = []; }
+    else bag = [];
+  }
   for (const e of events) {
     switch (e.type) {
       case 'reveal': {
         pops.add(e.i);
+        if (pops.size === 1) fx.haptic('tick');
         if (pops.size <= 3) { const c = tileCenter(e.i); later(() => fx.dust(c.x, c.y), delay); delay += 26; }
         break;
       }
-      case 'encounter': audio.play('open'); fx.buzz(12); break;
-      case 'flag': audio.play(e.on ? 'flag' : 'unflag'); break;
+      case 'encounter': audio.play('open'); fx.haptic('light'); break;
+      case 'flag': audio.play(e.on ? 'flag' : 'unflag'); fx.haptic('tick'); break;
+      case 'flagLimit': audio.play('deny'); toast(`旗子用完了：本层共 ${e.total} 处威胁`, 'bad'); break;
       case 'aggro': {
         if (S.tiles[e.i] && S.tiles[e.i].revealed) { const c = tileCenter(e.i); fx.ring(c.x, c.y, '#ff3b5c', 90); }
         break;
@@ -332,7 +371,7 @@ function consume(events) {
         const c = at >= 0 ? tileCenter(at) : fx.center(el.hpFill);
         fx.flash('hurt'); fx.shake(el.board); fx.blood(c.x, c.y);
         fx.float(c.x, c.y - 10, '-' + e.amount, 'dmg');
-        audio.play(e.source === '尖刺陷阱' ? 'trap' : 'hit'); fx.buzz([18, 30, 18]);
+        audio.play(e.source === '尖刺陷阱' ? 'trap' : 'hit'); fx.haptic('heavy');
         break;
       }
       case 'heal': {
@@ -353,16 +392,17 @@ function consume(events) {
         const c = tileCenter(e.i);
         fx.shards(c.x, c.y); fx.ring(c.x, c.y, '#ff7a3d', 54);
         fx.float(c.x, c.y - 18, '+' + e.mob.xp + ' XP', 'xp');
-        audio.play('kill'); fx.buzz(24);
+        audio.play('kill'); fx.haptic('medium');
+        if (e.mob.elite || e.mob.boss) fx.shake(el.board);
         break;
       }
-      case 'combat': audio.play('swing'); break;
+      case 'combat': audio.play('swing'); fx.haptic('light'); break;
       case 'levelup': {
         const r = document.getElementById('lvBadge').getBoundingClientRect();
         const x = r.left + r.width / 2, y = r.top + r.height / 2;
         fx.ring(x, y, '#ffd54a', 120); fx.magic(x, y); fx.flash('gold');
         fx.float(x, y - 26, 'LEVEL ' + e.lv, 'crit');
-        audio.play('levelup'); toast('等级提升！Lv.' + e.lv, 'magic');
+        audio.play('levelup'); fx.haptic('heavy'); toast('等级提升！Lv.' + e.lv, 'magic');
         break;
       }
       case 'item': audio.play('item'); break;
@@ -372,17 +412,22 @@ function consume(events) {
         audio.play('sparkle');
         break;
       }
-      case 'loot': { const c = tileCenter(e.i); fx.coins(c.x, c.y); break; }
+      case 'loot': {
+        const c = tileCenter(e.i);
+        fx.coins(c.x, c.y); fx.haptic('tick');
+        for (const f of flyFrom.get(e) || []) flyToBag(c, f);
+        break;
+      }
       case 'key': {
         const c = tileCenter(e.i);
         fx.ring(c.x, c.y, '#ffd54a', 100); fx.coins(c.x, c.y); fx.flash('gold');
-        audio.play('key'); toast('获得钥匙 · 阶梯已解封', 'magic');
+        audio.play('key'); fx.haptic('heavy'); toast('获得钥匙 · 阶梯已解封', 'magic');
         break;
       }
-      case 'stairs': { const c = tileCenter(e.i); fx.portal(c.x, c.y); audio.play('stairs'); toast('发现下行阶梯', 'magic'); break; }
+      case 'stairs': { const c = tileCenter(e.i); fx.portal(c.x, c.y); audio.play('stairs'); fx.haptic('medium'); toast('发现下行阶梯', 'magic'); break; }
       case 'altar': audio.play('altar'); break;
       case 'altarUsed': { const c = tileCenter(e.i); fx.magic(c.x, c.y); break; }
-      case 'bomb': { const c = tileCenter(e.i); fx.boom(c.x, c.y); fx.shake(el.board); audio.play('bomb'); fx.buzz([30, 20, 40]); break; }
+      case 'bomb': { const c = tileCenter(e.i); fx.boom(c.x, c.y); fx.shake(el.board); audio.play('bomb'); fx.haptic('heavy'); break; }
       case 'disarm': { const c = tileCenter(e.i); fx.dust(c.x, c.y); break; }
       case 'scroll': { const c = tileCenter(e.i); fx.magic(c.x, c.y); fx.ring(c.x, c.y, '#3fe0ff', 110); audio.play('scroll'); break; }
       case 'buy': audio.play('coin'); break;
@@ -391,22 +436,22 @@ function consume(events) {
         const r = G.relicById(e.id);
         const c = fx.center(el.relicBar.hidden ? el.lv : el.relicBar);
         fx.ring(c.x, c.y, rarityColor(r), 130); fx.magic(c.x, c.y); fx.flash('gold');
-        audio.play('levelup'); toast('遗物 · ' + r.name, 'magic');
+        audio.play('levelup'); fx.haptic('heavy'); toast('遗物 · ' + r.name, 'magic');
         break;
       }
       case 'deny': audio.play('deny'); break;
-      case 'locked': audio.play('locked'); toast('阶梯被符文锁封住了', 'bad'); break;
-      case 'blocked': audio.play('deny'); fx.shake(el.board); toast('这一击会要了你的命', 'bad'); break;
-      case 'chord': audio.play('open'); break;
+      case 'locked': audio.play('locked'); toast('钥匙守卫也算「雷」，打掉它才能夺钥', 'bad'); break;
+      case 'blocked': audio.play('deny'); fx.shake(el.board); fx.haptic('light'); toast('这一击会要了你的命', 'bad'); break;
+      case 'chord': audio.play('open'); fx.haptic('medium'); break;
       case 'chordHint': {
         audio.play('deny');
         for (const j of G.neighbors(e.i)) if (!S.tiles[j].revealed) { tiles[j].classList.add('hint'); setTimeout(() => tiles[j].classList.remove('hint'), 1500); }
         break;
       }
       case 'mode': audio.play('ui'); break;
-      case 'descend': break;
-      case 'death': break;
-      case 'win': break;
+      case 'descend': fx.haptic('medium'); break;
+      case 'death': fx.rumble(420); fx.shake(el.board); fx.flash('hurt'); break;
+      case 'win': fx.rumble(260); later(() => fx.rumble(260), 320); break;
     }
   }
   if (pops.size && !events.some((e) => ['encounter', 'combat', 'damage', 'bomb', 'scroll'].includes(e.type))) audio.play('reveal');
@@ -553,10 +598,10 @@ function openShop() {
 function openHelp() {
   const legend = [
     ['hand', '未探索的砖', '点开后可能是空地、怪物或宝藏', '#c9a3ff'],
-    ['flag', '标记', '长按或右键插旗，圈出可疑的威胁', '#ffd27a'],
-    ['bat', '怪物', '数字算的就是它；点击可预演战斗', '#ff8098'],
+    ['flag', '标记', '插旗＝确认并规避：该格怪物不再骚扰你；旗数上限＝本层威胁总数', '#ffd27a'],
+    ['bat', '怪物', '底部两行是生命 / 攻击·防御（防御为 0 时省略）；点击可预演战斗', '#ff8098'],
     ['trap', '尖刺陷阱', '踩中直接扣血，同样计入数字', '#ff9f3a'],
-    ['guardian', '钥匙守卫', '第 2 层起持有下行钥匙，必须击破', '#ffd54a'],
+    ['guardian', '钥匙守卫', '它本身也算一格「雷」，就藏在暗格里；击败或炸掉即夺钥', '#ffd54a'],
     ['chest', '宝箱', '发光的宝箱需要再点一下才开启', '#ffd54a'],
     ['potion', '药水', '同样要点击拾取，恢复 30% 最大生命', '#7dff5a'],
     ['altar', '祭坛', '三选一的献祭，每层只出现一次', '#ff4fd8'],
@@ -579,7 +624,9 @@ function openHelp() {
     <div class="help-sec">
       <h3 class="help-h">三种操作</h3>
       <p class="help-p"><b>探索</b>：点击砖块。开到怪物不会立刻受伤，会先弹出战斗预演。<br>
-      <b>标记</b>：切到标记模式，或<b>长按 / 右键</b>任意暗格插旗。<br>
+      <b>标记</b>：切到标记模式，或<b>长按 / 右键</b>任意暗格插旗。旗子意味着「我已确认它、并绕着走」：
+      被标记的怪物<b>不再骚扰你</b>，但旗数上限是<b>本层威胁总数</b>，所以插旗是要花预算的决策。<br>
+      插旗格<b>可以直接点开</b>（自动拔旗）——想主动开战时不必先手动拔旗；旗子只挡批量展开，不挡你的主动点击。<br>
       <b>快速展开</b>：点击已探明的数字格，若周围旗数正好等于数字，其余暗格会一次性安全展开。</p>
     </div>
     <div class="help-sec">
@@ -595,6 +642,8 @@ function openHelp() {
       带倒计时角标的那只就是下一次出手的。<b>杀掉它，下一击就换更弱的顶上；全部清光，骚扰停止。</b></p>
       <p class="help-p">时钟只按<b>操作</b>推进，不按真实时间——<b>思考、插旗、切模式、喝药、购物都不消耗回合</b>。
       它逼你规划路线与清怪顺序，而不是催你手快。</p>
+      <p class="help-p"><b>插旗可以免骚扰</b>：被标记的怪物不计入惊扰，红色芯片的数字会随之减少；拔旗或翻开它，它就重新加入。
+      于是「标出来绕开」和「点开打掉」都是有效解法，而不是被迫清场。</p>
     </div>
     <div class="help-sec">
       <h3 class="help-h">目标</h3>

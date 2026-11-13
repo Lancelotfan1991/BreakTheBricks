@@ -8,6 +8,16 @@
     "dev": "node tools/serve.mjs",
     "test": "node --test tests/game.test.mjs",
     "sim": "node tests/simulate.mjs 200",
-    "deploy": "wrangler pages deploy public --project-name=break-the-brick --commit-dirty=true"
+    "deploy": "wrangler pages deploy public --project-name=break-the-brick --commit-dirty=true",
+    "apk": "node tools/build-apk.mjs",
+    "icons": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/make-icons.ps1"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.3",
+    "@capacitor/core": "^6.2.3",
+    "@capacitor/haptics": "^6.0.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.3"
   }
 }

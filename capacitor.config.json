@@ -1,0 +1,9 @@
+{
+  "appId": "com.lancelotfan.breakthebrick",
+  "appName": "破砖深渊",
+  "webDir": "public",
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#14101c"
+  }
+}

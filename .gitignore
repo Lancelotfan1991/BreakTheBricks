@@ -8,3 +8,10 @@ node_modules/
 Thumbs.db
 .idea/
 .vscode/
+dist/
+vibe_images/
+android/.gradle/
+android/**/build/
+android/local.properties
+android/app/src/main/assets/public/
+gradle-*.zip
