@@ -408,7 +408,6 @@ test('死亡与通关状态', () => {
   const evs = G.attack(w, boss.i);
   assert.ok(evs.some((e) => e.type === 'win'));
   assert.equal(w.status, 'won');
-  assert.ok(G.score(w) > 600);
 });
 
 test('存档序列化往返一致', () => {
@@ -453,16 +452,16 @@ test('模式切换与道具耗尽保护', () => {
   G.setMode(s, 'explore'); assert.equal(s.mode, 'explore');
 });
 
-test('分数与统计随进程增长', () => {
+test('击杀统计随进程增长', () => {
   const s = fresh('normal', 66);
-  const s0 = G.score(s);
+  const gold0 = s.stats.goldEarned;
   s.player.atk = 9999;
   for (const t of find(s, 'monster').slice(0, 3)) {
     G.tapTile(s, t.i);
     if (s.pendingCombat >= 0) { s.player.hp = s.player.maxHp; G.attack(s, s.pendingCombat); }
   }
-  assert.ok(G.score(s) > s0);
   assert.equal(s.stats.kills, 3);
+  assert.ok(s.stats.goldEarned > gold0);
 });
 
 /* ─────────── 遗物 ─────────── */
@@ -474,9 +473,9 @@ function grant(s, id) {
 const hiddenThreats = (s) => s.tiles.filter((t) => !t.revealed && ['monster', 'elite', 'trap', 'boss'].includes(t.kind));
 function atFloor(s, f) { s.floor = f; G.buildFloor(s); G.tapTile(s, 30); G.closePending(s); return s; }
 
-test('遗物表完整：20 件、id 唯一、分类与稀有度合法', () => {
-  assert.equal(G.RELICS.length, 20);
-  assert.equal(new Set(G.RELICS.map((r) => r.id)).size, 20);
+test('遗物表完整：21 件、id 唯一、分类与稀有度合法', () => {
+  assert.equal(G.RELICS.length, 21);
+  assert.equal(new Set(G.RELICS.map((r) => r.id)).size, 21);
   for (const r of G.RELICS) {
     assert.ok(G.RELIC_CATS[r.cat], `${r.id} 分类非法`);
     assert.ok(G.RELIC_RARITY[r.rarity], `${r.id} 稀有度非法`);
@@ -805,53 +804,66 @@ function arena(seed = 7) {
     t.used = false; t.revealed = false; t.flagged = false;
   }
   s.threatTotal = 0;
-  s.aggroClock = null;
   G.recalc(s);
   return s;
 }
 function putMob(s, i, over = {}) {
   const t = s.tiles[i];
   t.kind = 'monster';
-  t.mob = { id: 'bat', name: '测试蝠', icon: 'bat', flavor: '', hp: 20, maxHp: 20, atk: 10, def: 0, xp: 1, gold: 1, elite: false, boss: false, awake: false, ...over };
+  t.mob = { id: 'bat', name: '测试蝠', icon: 'bat', flavor: '', hp: 20, maxHp: 20, atk: 10, def: 0, xp: 1, gold: 1, elite: false, boss: false, period: 16, cd: null, awake: false, ...over };
   G.recalc(s);
   return t;
 }
-function withPeriod(n, fn) {
-  const old = G.BAL.aggroPeriod;
-  G.BAL.aggroPeriod = n;
-  try { fn(); } finally { G.BAL.aggroPeriod = old; }
-}
 
-test('惊扰：标记与无效点击不消耗回合，翻开才推进时钟', () => {
+test('惊扰：标记与无效点击不消耗回合，翻开才推进倒计时', () => {
   const s = arena();
   const m = putMob(s, 0);
   G.tapTile(s, 1);
   assert.equal(m.mob.awake, true, '相邻翻开即惊扰');
-  assert.equal(s.aggroClock, G.BAL.aggroPeriod - 1, '惊扰的那次翻开本身算一回合');
-  const turns = s.stats.turns, clock = s.aggroClock;
+  assert.equal(m.mob.cd, m.mob.period - 1, '惊扰的那次翻开本身算一回合');
+  const turns = s.stats.turns, cd = m.mob.cd;
   G.setMode(s, 'flag');
   for (let k = 0; k < 12; k++) G.tapTile(s, 5);
   G.setMode(s, 'explore');
   G.tapTile(s, 1);
   assert.equal(s.stats.turns, turns, '标记 / 重复点击已探明格不消耗回合');
-  assert.equal(s.aggroClock, clock, '标记不推进惊扰时钟');
+  assert.equal(m.mob.cd, cd, '标记不推进倒计时');
   G.tapTile(s, 7);
-  assert.equal(s.aggroClock, clock - 1, '翻开新格推进一回合');
+  assert.equal(m.mob.cd, cd - 1, '翻开新格推进一回合');
   assert.equal(s.stats.turns, turns + 1);
 });
 
-test('惊扰：倒计时归零造成伤害，但不致死，命中后重置', () => {
-  withPeriod(2, () => {
-    const s = arena();
-    putMob(s, 0, { atk: 40 });
-    s.player.def = 0; s.player.maxHp = 40; s.player.hp = 5;
-    G.tapTile(s, 1);
-    assert.equal(s.player.hp, 5, '倒计时未到不掉血');
-    G.tapTile(s, 7);
-    assert.equal(s.player.hp, 1, '骚扰压到 1 血为止，不致死');
-    assert.equal(s.status, 'playing');
-    assert.equal(s.aggroClock, 2, '命中后重置倒计时');
-  });
+test('惊扰：倒计时归零出手，伤害足够时直接致死', () => {
+  const s = arena();
+  putMob(s, 0, { atk: 40, period: 2 });
+  s.player.def = 0; s.player.maxHp = 40; s.player.hp = 5;
+  G.tapTile(s, 1);
+  assert.equal(s.player.hp, 5, '倒计时未到不掉血');
+  G.tapTile(s, 7);
+  assert.equal(s.player.hp, 0, '骚扰不再夹到 1 血');
+  assert.equal(s.status, 'dead');
+});
+
+test('惊扰：伤害不足以致死时只扣血，命中后按自己的间隔重置', () => {
+  const s = arena();
+  const m = putMob(s, 0, { atk: 40, period: 2 });
+  s.player.def = 0; s.player.maxHp = 40; s.player.hp = 30;
+  G.tapTile(s, 1);
+  G.tapTile(s, 7);
+  assert.equal(s.player.hp, 20);
+  assert.equal(s.status, 'playing');
+  assert.equal(m.mob.cd, 2, '命中后重置为自己的间隔');
+});
+
+test('惊扰：同一回合多只到点逐只结算，玩家死亡即停', () => {
+  const s = arena();
+  putMob(s, 0, { atk: 40, period: 2 });
+  putMob(s, 2, { atk: 40, period: 2 });
+  s.player.def = 0; s.player.maxHp = 40; s.player.hp = 5;
+  G.tapTile(s, 1);
+  const evs = G.tapTile(s, 7);
+  assert.equal(s.status, 'dead');
+  assert.equal(evs.filter((e) => e.type === 'aggro').length, 1, '第一口就致死，后面的不再结算');
 });
 
 test('惊扰：伤害走战斗减免，且至少 1 点', () => {
@@ -867,71 +879,71 @@ test('惊扰：伤害走战斗减免，且至少 1 点', () => {
   assert.equal(G.aggroDamage(s.player, m.mob), 1, '减免后仍至少 1 点');
 });
 
-test('惊扰：全场共用一个时钟，每次只有最凶的那只出手', () => {
-  withPeriod(2, () => {
-    const s = arena();
-    putMob(s, 0, { atk: 10 });
-    const strong = putMob(s, 2, { atk: 40 });
-    s.player.def = 0; s.player.maxHp = 200; s.player.hp = 200;
-    G.tapTile(s, 1);
-    const hp = s.player.hp;
-    G.tapTile(s, 7);
-    assert.equal(hp - s.player.hp, 10, '两只惊扰也只出手一次，取最凶的');
-    s.player.atk = 999;
-    G.tapTile(s, 2);
-    G.attack(s, 2);
-    assert.equal(strong.mob.hp, 0);
-    assert.equal(G.aggroSummary(s).dmg, 3, '杀掉最凶的之后，下一击变轻');
-  });
+test('惊扰：每只怪有自己的间隔，各按各的节奏出手', () => {
+  const s = arena();
+  const fast = putMob(s, 0, { atk: 10, period: 2 });
+  const slow = putMob(s, 2, { atk: 40, period: 4 });
+  s.player.def = 0; s.player.maxHp = 400; s.player.hp = 400;
+  G.tapTile(s, 1);
+  assert.equal(fast.mob.cd, 1);
+  assert.equal(slow.mob.cd, 3);
+  G.tapTile(s, 7);
+  assert.equal(s.player.hp, 397, '只有快的那只到点，咬 3 点');
+  assert.equal(fast.mob.cd, 2, '出手后重置为自己的间隔');
+  assert.equal(slow.mob.cd, 2, '慢的还在憋');
+  G.tapTile(s, 8);
+  assert.equal(s.player.hp, 397, '都没到点');
+  G.tapTile(s, 9);
+  assert.equal(s.player.hp, 384, '同一回合两只都到点，各咬一口');
+  assert.equal(fast.mob.cd, 2);
+  assert.equal(slow.mob.cd, 4);
+  assert.deepEqual(G.aggroSummary(s), { count: 2, next: 2 }, '汇总取最近的那一口');
 });
 
 test('惊扰：击杀后不再骚扰，下行重置', () => {
-  withPeriod(2, () => {
-    const s = arena();
-    const m = putMob(s, 0, { hp: 1, atk: 40 });
-    s.player.atk = 99; s.player.maxHp = 40; s.player.hp = 30;
-    G.tapTile(s, 1);
-    G.tapTile(s, 0);
-    G.attack(s, 0);
-    assert.equal(m.mob.hp, 0);
-    assert.equal(s.aggroClock, null, '最后一只被清除后时钟停摆');
-    const hp = s.player.hp;
-    G.tapTile(s, 7); G.tapTile(s, 8);
-    assert.equal(s.player.hp, hp, '已清除的怪物不再骚扰');
-    s.floor = 2;
-    G.buildFloor(s);
-    assert.equal(s.aggroClock, null);
-    assert.ok(s.tiles.every((t) => !t.mob || !t.mob.awake), '下行后惊扰全部重置');
-  });
+  const s = arena();
+  const m = putMob(s, 0, { hp: 1, atk: 40, period: 2 });
+  s.player.atk = 99; s.player.maxHp = 40; s.player.hp = 30;
+  G.tapTile(s, 1);
+  G.tapTile(s, 0);
+  G.attack(s, 0);
+  assert.equal(m.mob.hp, 0);
+  assert.equal(G.aggroSummary(s), null, '最后一只被清除后汇总清空');
+  const hp = s.player.hp;
+  G.tapTile(s, 7); G.tapTile(s, 8);
+  assert.equal(s.player.hp, hp, '已清除的怪物不再骚扰');
+  s.floor = 2;
+  G.buildFloor(s);
+  assert.ok(s.tiles.every((t) => !t.mob || (!t.mob.awake && t.mob.cd == null)), '下行后惊扰与倒计时全部重置');
 });
 
-test('惊扰：汇总只给数量/回合/伤害，不泄露未探明位置', () => {
+test('惊扰：汇总只给数量与最近一口的回合，不泄露未探明位置', () => {
   const s = arena();
-  const a = putMob(s, 0, { atk: 40 });
-  putMob(s, 2, { atk: 20 });
-  putMob(s, 6, { atk: 40 });
+  const a = putMob(s, 0, { atk: 40, period: 5 });
+  putMob(s, 2, { atk: 20, period: 9 });
+  putMob(s, 6, { atk: 40, period: 5 });
   s.player.def = 0; s.player.maxHp = 200; s.player.hp = 200;
   assert.equal(G.aggroSummary(s), null, '未惊扰时不显示');
   G.tapTile(s, 1);
   const sum = G.aggroSummary(s);
   assert.equal(sum.count, 2, '一次翻开可同时惊扰两只');
-  assert.equal(sum.next, G.BAL.aggroPeriod - 1);
-  assert.equal(sum.dmg, 10, '预演的是最凶那只的伤害');
-  assert.ok(!('i' in sum) && !('tiles' in sum), '汇总不含坐标');
+  assert.equal(sum.next, 4, '取倒计时最小的那只');
+  assert.ok(!('i' in sum) && !('tiles' in sum) && !('dmg' in sum), '汇总不含坐标与伤害');
   assert.equal(G.tileLabel(s.tiles[6]), '未探索', '未探明怪物不暴露身份');
   assert.equal(G.tileLabel(a), '未探索', '被惊扰但未探明的怪物同样不暴露身份');
   G.tapTile(s, 0);
-  assert.ok(G.tileLabel(a, s.aggroClock).includes('回合后骚扰'), '已探明怪物显示倒计时');
+  assert.ok(G.tileLabel(a).includes('回合后骚扰'), '已探明怪物显示自己的倒计时');
 });
 
-test('惊扰：时钟可存档往返', () => {
+test('惊扰：每只怪的间隔与倒计时可存档往返', () => {
   const s = arena();
-  putMob(s, 0);
+  const m = putMob(s, 0, { period: 5 });
   G.tapTile(s, 1);
   G.tapTile(s, 7);
   const back = G.deserialize(G.serialize(s));
   assert.ok(back);
-  assert.equal(back.aggroClock, s.aggroClock);
+  assert.equal(back.tiles[0].mob.cd, m.mob.cd);
+  assert.equal(back.tiles[0].mob.period, m.mob.period);
   assert.equal(back.tiles[0].mob.awake, true);
   assert.deepEqual(G.aggroSummary(back), G.aggroSummary(s));
 });
@@ -984,38 +996,246 @@ test('钥匙守卫：攻击与炸弹两条路径都必定掉钥匙，不存在�
   }
 });
 
-test('旗数预算：上限＝本层威胁总数，超限拒绝，拔旗后归还', () => {
+test('旗数预算：上限＝难度基数，超限拒绝，拔旗后归还', () => {
   const s = fresh('normal', 21);
-  const total = s.threatTotal;
-  assert.equal(total, s.plan.monsters + s.plan.traps + (s.plan.elite ? 1 : 0) + (s.plan.boss ? 1 : 0));
+  const cap = G.flagCap(s);
+  assert.equal(cap, G.DIFFICULTIES.normal.flags, '开局上限就是难度基数');
   const hidden = s.tiles.filter((t) => !t.revealed);
-  assert.ok(hidden.length > total, '暗格应多于威胁数，预算才有约束力');
-  for (const t of hidden.slice(0, total)) G.toggleFlag(s, t.i);
-  assert.equal(s.flags, total);
+  assert.ok(hidden.length > cap, '暗格应多于旗数，预算才有约束力');
+  for (const t of hidden.slice(0, cap)) G.toggleFlag(s, t.i);
+  assert.equal(s.flags, cap);
 
-  const extra = hidden[total];
+  const extra = hidden[cap];
   const out = G.toggleFlag(s, extra.i);
   assert.equal(extra.flagged, false, '超预算不能再插旗');
-  assert.equal(s.flags, total);
-  assert.ok(out.some((e) => e.type === 'flagLimit'), '应给出旗数用尽事件');
+  assert.equal(s.flags, cap);
+  const limit = out.find((e) => e.type === 'flagLimit');
+  assert.ok(limit, '应给出旗数用尽事件');
+  assert.equal(limit.cap, cap, '事件带上当前上限，UI 才能提示');
 
   G.toggleFlag(s, hidden[0].i);
-  assert.equal(s.flags, total - 1);
+  assert.equal(s.flags, cap - 1);
   G.toggleFlag(s, extra.i);
   assert.equal(extra.flagged, true, '拔掉一面就能再插');
-  assert.equal(s.flags, total);
+  assert.equal(s.flags, cap);
 
   s.floor = 2; G.buildFloor(s);
-  assert.equal(s.flags, 0, '下行重置旗子');
-  assert.ok(s.threatTotal > 0, '下行重置预算');
+  assert.equal(s.flags, 0, '下行收回全部旗子');
+  assert.equal(G.flagCap(s), cap, '下行不改变上限');
 });
 
-test('惊扰：插旗＝规避，被标记的怪物不再骚扰，拔旗后恢复', () => {
+test('旗子上限与怪物数量脱钩，且难度越高越少', () => {
+  const bases = {};
+  for (const diff of ['easy', 'normal', 'hard']) {
+    bases[diff] = G.DIFFICULTIES[diff].flags;
+    for (let seed = 1; seed <= 12; seed++) {
+      const s = fresh(diff, seed);
+      assert.equal(G.flagCap(s), bases[diff], `${diff} seed${seed} 上限恒定`);
+      assert.ok(s.threatTotal > G.flagCap(s), `${diff} seed${seed} 威胁应多于旗子，插旗才需要取舍`);
+    }
+  }
+  assert.ok(bases.hard < bases.normal && bases.normal < bases.easy, '炼狱 < 深渊 < 地窖');
+});
+
+test('商店旗囊：+1 上限，价格递增，可反复购买', () => {
+  const s = fresh('normal', 21);
+  const base = G.flagCap(s);
+  s.player.gold = 999;
+  const prices = [];
+  for (let k = 0; k < 3; k++) {
+    prices.push(G.shopPrice(s, 'pouch'));
+    G.buy(s, 'pouch');
+    assert.equal(G.flagCap(s), base + k + 1, `第 ${k + 1} 次购买后上限`);
+  }
+  assert.ok(prices[1] > prices[0] && prices[2] > prices[1], '旗囊越买越贵');
+  assert.equal(s.flags, 0, '买上限不会凭空插旗');
+
+  const poor = fresh('normal', 21);
+  poor.player.gold = 0;
+  assert.ok(G.buy(poor, 'pouch').some((e) => e.type === 'deny'), '没钱买不到');
+  assert.equal(G.flagCap(poor), base, '被拒绝时上限不变');
+});
+
+test('祭坛旗帜祝福：+2 上限，且不附带贪婪的副作用', () => {
+  const s = fresh('normal', 21);
+  s.floor = 3; G.buildFloor(s); G.ensureBoard(s, 30);
+  const altar = find(s, 'altar')[0];
+  assert.ok(altar, '第 3 层应有祭坛');
+  const base = G.flagCap(s);
+  const def = s.player.def, gold = s.player.gold, hp = s.player.hp;
+  G.altarChoose(s, altar.i, 'banner');
+  assert.equal(G.flagCap(s), base + G.ALTAR_FLAG_BONUS);
+  assert.equal(s.player.def, def, '不该扣防御');
+  assert.equal(s.player.gold, gold, '不该给金币');
+  assert.equal(s.player.hp, hp, '不该扣血');
+  assert.deepEqual(G.altarChoose(s, altar.i, 'banner'), [], '同一座祭坛不能重复献祭');
+  assert.equal(G.flagCap(s), base + G.ALTAR_FLAG_BONUS);
+});
+
+test('遗物旗手纹章：+3 上限，且出现在图鉴与抽取池中', () => {
+  const r = G.RELICS.find((x) => x.id === 'bannerBearer');
+  assert.ok(r, '遗物应已注册');
+  assert.equal(r.cat, 'explore');
+  const s = fresh('normal', 21);
+  const base = G.flagCap(s);
+  s.relicChoices = ['bannerBearer'];
+  G.chooseRelic(s, 'bannerBearer');
+  assert.equal(G.flagCap(s), base + G.RELIC_FLAG_BONUS);
+  assert.ok(s.relics.includes('bannerBearer'));
+});
+
+test('三条渠道可叠加，加成跨层保留而旗子每层收回', () => {
+  const s = fresh('normal', 21);
+  s.floor = 3; G.buildFloor(s); G.ensureBoard(s, 30);
+  const base = G.DIFFICULTIES.normal.flags;
+  s.player.gold = 999;
+  G.buy(s, 'pouch');
+  G.buy(s, 'pouch');
+  const altar = find(s, 'altar')[0];
+  G.altarChoose(s, altar.i, 'banner');
+  s.relicChoices = ['bannerBearer'];
+  G.chooseRelic(s, 'bannerBearer');
+  const cap = base + 2 + G.ALTAR_FLAG_BONUS + G.RELIC_FLAG_BONUS;
+  assert.equal(G.flagCap(s), cap, '三条渠道线性叠加');
+
+  const hidden = s.tiles.filter((t) => !t.revealed);
+  for (const t of hidden.slice(0, cap)) G.toggleFlag(s, t.i);
+  assert.equal(s.flags, cap, '投资后真的能插满');
+
+  const back = G.deserialize(G.serialize(s));
+  assert.equal(G.flagCap(back), cap, '存档往返保住加成');
+  assert.equal(back.flags, cap);
+
+  s.floor = 3; G.buildFloor(s);
+  assert.equal(s.flags, 0, '旗子收回');
+  assert.equal(s.tiles.some((t) => t.flagged), false, '棋盘上没有残留旗帜');
+  assert.equal(G.flagCap(s), cap, '加成是整局永久的');
+});
+
+// ---------- 完全识破 ----------
+const THREATS = ['monster', 'elite', 'trap', 'boss'];
+// 把一层做到「只剩最后一个安全格」，翻开它就等价于扫雷解出整层
+function nearlySolved(diff = 'normal', seed = 21) {
+  const s = fresh(diff, seed);
+  const safe = s.tiles.filter((t) => !THREATS.includes(t.kind) && !t.revealed);
+  const last = safe.find((t) => t.kind === 'empty');
+  assert.ok(last, `${diff} seed${seed} 应留有未翻开的空地`);
+  for (const t of safe) if (t !== last) t.revealed = true;
+  G.recalc(s);
+  return { s, last };
+}
+
+test('完全识破：安全格全翻开即自动揭示，零伤害、收回旗帜、惊扰停摆', () => {
+  for (const diff of ['easy', 'normal', 'hard']) {
+    for (let seed = 1; seed <= 6; seed++) {
+      const { s, last } = nearlySolved(diff, seed);
+      const threats = s.tiles.filter((t) => THREATS.includes(t.kind) && !t.revealed);
+      for (const t of threats.slice(0, 2)) G.toggleFlag(s, t.i);
+      const mob = threats.find((t) => t.mob && t.mob.hp > 0);
+      mob.mob.awake = true; mob.mob.cd = 1;
+      const hp = s.player.hp;
+      const out = G.tapTile(s, last.i);
+      const tag = `${diff} seed${seed}`;
+      assert.equal(s.solved, true, `${tag} 应判定为已识破`);
+      assert.equal(s.player.hp, hp, `${tag} 完成推理的那一次操作不该再挨骚扰`);
+      assert.ok(!out.some((e) => e.type === 'damage'), `${tag} 不该有任何伤害事件`);
+      assert.equal(s.tiles.filter((t) => !t.revealed).length, 0, `${tag} 剩余威胁全部揭示`);
+      assert.equal(s.flags, 0, `${tag} 旗帜收回`);
+      assert.equal(s.tiles.some((t) => t.flagged), false, `${tag} 棋盘无残留旗帜`);
+      assert.ok(s.tiles.every((t) => !t.mob || t.mob.cd == null), `${tag} 惊扰倒计时清空`);
+      assert.equal(G.aggroSummary(s), null, `${tag} 惊扰汇总清空`);
+      assert.equal(s.tiles.some((t) => t.mob && t.mob.awake), false, `${tag} 自动揭示的怪物不被惊扰`);
+      assert.equal(s.pendingCombat, -1, `${tag} 不强行拉进战斗`);
+      assert.equal(out.filter((e) => e.type === 'solved').length, 1, `${tag} 恰好一次识破事件`);
+    }
+  }
+});
+
+test('完全识破：陷阱安全拆除，怪物仍可自愿开战', () => {
+  const { s, last } = nearlySolved();
+  G.tapTile(s, last.i);
+  const traps = find(s, 'trap');
+  assert.ok(traps.length, '本层应有陷阱');
+  assert.ok(traps.every((t) => t.used && t.revealed), '陷阱被拆除而非触发');
+  const hp = s.player.hp;
+  const out = G.tapTile(s, traps[0].i);
+  assert.equal(s.player.hp, hp, '识破后点陷阱不扣血');
+  assert.deepEqual(out, [], '已拆除的陷阱点了没反应');
+
+  const mob = find(s, 'monster').find((t) => t.mob.hp > 0);
+  const co = G.tapTile(s, mob.i);
+  assert.equal(s.pendingCombat, mob.i, '识破后仍能主动点开怪物赚经验');
+  assert.ok(co.some((e) => e.type === 'encounter'));
+  assert.ok(!co.some((e) => e.type === 'aggro'), '主动开战也不会被骚扰');
+  assert.equal(G.aggroSummary(s), null);
+});
+
+test('未识破时规则不变：插旗陷阱照扣血，惊扰照走', () => {
+  const s = fresh('normal', 21);
+  const trap = find(s, 'trap').find((t) => !t.revealed);
+  G.toggleFlag(s, trap.i);
+  const hp = s.player.hp;
+  G.tapTile(s, trap.i);
+  assert.ok(s.player.hp < hp, '推理未完成时，点开插旗陷阱仍是玩家自己的冒进');
+  assert.equal(s.solved, false);
+  assert.equal(G.boardSolved(s), false, '还有安全格没翻开就不算解出');
+});
+
+test('完全识破只触发一次，下行重置', () => {
+  const { s, last } = nearlySolved();
+  G.tapTile(s, last.i);
+  const mob = find(s, 'monster').find((t) => t.mob.hp > 0);
+  const out = G.tapTile(s, mob.i);
+  assert.ok(!out.some((e) => e.type === 'solved'), '不重复播报');
+  s.floor = 2; G.buildFloor(s);
+  assert.equal(s.solved, false, '下行重置识破状态');
+  assert.equal(s.solvedFlags, 0, '下行重置旗数记账');
+});
+
+test('旗帜领主：识破收回旗帜后，仍按插对的旗数回血', () => {
+  const { s, last } = nearlySolved();
+  const threats = s.tiles.filter((t) => THREATS.includes(t.kind) && !t.revealed);
+  for (const t of threats.slice(0, 3)) G.toggleFlag(s, t.i);
+  G.tapTile(s, last.i);
+  assert.equal(s.solvedFlags, 3, '暗格全是威胁，所以插着的旗必然插对');
+  assert.equal(s.flags, 0);
+  s.relics.push('bannerLord');
+  s.player.hp = 5;
+  s.stairsFound = true; s.hasKey = true;
+  G.tryDescend(s);
+  assert.ok(s.log.some((l) => l.text.includes('旗帜领主认出了 3 面插对的旗')), '完美推理不该让旗帜领主少回血');
+});
+
+test('boardSolved 把宝箱/药水/祭坛/阶梯都算安全格', () => {
+  const s = fresh('normal', 21);
+  const chest = find(s, 'chest')[0];
+  assert.ok(chest, '本层应有宝箱');
+  chest.revealed = false; // 首点泛洪可能已经顺带露出它，这里要一个确定未翻开的安全格
+  for (const t of s.tiles) if (!THREATS.includes(t.kind) && t !== chest) t.revealed = true;
+  G.recalc(s);
+  assert.equal(G.boardSolved(s), false, '还有未翻开的宝箱就不算解出');
+  chest.revealed = true;
+  assert.equal(G.boardSolved(s), true);
+});
+
+test('识破状态可存档往返，旧版本存档被拒绝', () => {
+  const { s, last } = nearlySolved();
+  for (const t of s.tiles.filter((x) => THREATS.includes(x.kind) && !x.revealed).slice(0, 2)) G.toggleFlag(s, t.i);
+  G.tapTile(s, last.i);
+  const back = G.deserialize(G.serialize(s));
+  assert.equal(back.solved, true);
+  assert.equal(back.solvedFlags, s.solvedFlags);
+  assert.equal(back.tiles.filter((t) => !t.revealed).length, 0);
+  assert.equal(G.deserialize(JSON.stringify({ ...s, v: 7 })), null, 'v7 存档应被拒绝');
+});
+
+test('惊扰：插旗＝规避，被标记的怪物不再骚扰且倒计时冻结，拔旗后恢复', () => {
   const s = fresh('normal', 33);
   const mob = find(s, 'monster').find((t) => !t.revealed);
   // 只留这一只活口，骚扰来源才唯一可断言
   for (const t of s.tiles) if (t.mob && t.i !== mob.i) t.mob.hp = 0;
-  mob.mob.awake = true; mob.mob.atk = 50; s.aggroClock = 1;
+  s.player.maxHp = 200; s.player.hp = 200;
+  mob.mob.awake = true; mob.mob.atk = 50; mob.mob.cd = 1;
   const provoke = () => {
     const t = s.tiles.find((x) => !x.revealed && x.kind === 'monster' && x.i !== mob.i);
     return G.tapTile(s, t.i);
@@ -1026,14 +1246,14 @@ test('惊扰：插旗＝规避，被标记的怪物不再骚扰，拔旗后恢�
 
   G.toggleFlag(s, mob.i);
   assert.equal(G.aggroSummary(s), null, '插旗后不再计入惊扰');
-  s.aggroClock = 1;
+  mob.mob.cd = 1;
   const hp = s.player.hp;
   assert.ok(!provoke().some((e) => e.type === 'aggro'), '插旗期间不受骚扰');
   assert.equal(s.player.hp, hp);
+  assert.equal(mob.mob.cd, 1, '插旗期间倒计时冻结，拔旗后从原处继续');
 
   G.toggleFlag(s, mob.i);
-  s.aggroClock = 1;
-  assert.ok(provoke().some((e) => e.type === 'aggro' && e.i === mob.i), '拔旗后它又是最凶的那只');
+  assert.ok(provoke().some((e) => e.type === 'aggro' && e.i === mob.i), '拔旗后它又开始咬人');
   assert.equal(G.aggroSummary(s).count, 1, '拔旗后重新计入惊扰');
 });
 

@@ -14,11 +14,12 @@ const el = {
   hpFill: $('#hpFill'), hpText: $('#hpText'), hpBar: document.querySelector('.hp-bar'),
   atk: $('#atkVal'), def: $('#defVal'), gold: $('#goldVal'), lv: $('#lvNum'), ring: $('#xpRing'),
   threat: $('#threatVal'), flagText: $('#flagText'), threatChip: $('#threatChip'), keyChip: $('#keyChip'),
-  aggroChip: $('#aggroChip'), aggroCount: $('#aggroCount'), aggroNext: $('#aggroNext'),
-  potion: $('#potionCount'), bomb: $('#bombCount'), scroll: $('#scrollCount'),
+  aggroChip: $('#aggroChip'), aggroCount: $('#aggroCount'),
+  potion: $('#potionCount'), bomb: $('#bombCount'), scroll: $('#scrollCount'), flag: $('#flagCount'),
   descend: $('#btnDescend'), log: $('#logLine'), ticker: document.querySelector('.ticker'),
   scrim: $('#scrim'), sheet: $('#sheet'), sheetBody: $('#sheetBody'),
   toast: $('#toast'), floorCard: $('#floorCard'), fcDepth: $('#fcDepth'), fcName: $('#fcName'),
+  solveCard: $('#solveCard'), scSub: $('#scSub'),
   diffGrid: $('#diffGrid'), record: $('#record'), btnContinue: $('#btnContinue'), actionbar: $('#actionbar'),
   relicBar: $('#relicBar'), relicSlots: $('#relicSlots'),
 };
@@ -31,10 +32,11 @@ let sheetKind = null;
 let sheetLock = false;
 let busy = false;
 let toastTimer = 0;
+let solveTimer = 0;
 
 function loadMeta() {
-  try { return Object.assign({ best: 0, bestFloor: 0, wins: 0, runs: 0 }, JSON.parse(localStorage.getItem(META_KEY) || '{}')); }
-  catch { return { best: 0, bestFloor: 0, wins: 0, runs: 0 }; }
+  try { return Object.assign({ wins: 0, runs: 0 }, JSON.parse(localStorage.getItem(META_KEY) || '{}')); }
+  catch { return { wins: 0, runs: 0 }; }
 }
 function saveMeta() { localStorage.setItem(META_KEY, JSON.stringify(meta)); }
 function saveRun() {
@@ -98,7 +100,7 @@ function bindTile(b, i) {
 
 function tileView(t) {
   const rev = t.revealed;
-  let cls = 'tile', inner = '', n = 0, label = G.tileLabel(t, S.aggroClock);
+  let cls = 'tile', inner = '', n = 0, label = G.tileLabel(t);
   if (!rev) {
     cls += t.flagged ? ' tile-hidden tile-flag' : ' tile-hidden';
     if (t.flagged) inner = svg('flag');
@@ -116,9 +118,11 @@ function tileView(t) {
       + (m.def ? `<i class="ts-def">${svg('shield')}<b>${m.def}</b></i>` : '')
       + '</span></span>';
     if (t.kind !== 'monster') inner += `<span class="tile-crown">${svg(t.kind === 'boss' ? 'crown' : 'key')}</span>`;
-    if (m.awake && S.aggroClock != null) {
+    if (m.awake && m.cd != null) {
       cls += ' tile-awake';
-      if (t.i === aggroTopIdx) inner += `<span class="tile-aggro">${S.aggroClock}</span>`;
+      if (m.cd <= 2) cls += ' tile-aggro-soon';
+      // 每只怪有自己的节奏，倒计时因此挂在每一只头上：数字最小的那只最先扑你
+      inner += `<span class="tile-aggro"><b>!</b><i>${m.cd}</i></span>`;
     }
     label += ` 生命${m.hp} 攻击${m.atk} 防御${m.def}`;
     return { cls, inner, n, label };
@@ -139,7 +143,9 @@ function tileView(t) {
   // 占用失效后必须和空地一样给出邻雷数，否则这些格子会成为推断雷位的信息黑洞
   n = t.n;
   cls += t.kind === 'empty' ? (n ? '' : ' tile-empty') : ' tile-dead';
-  if (n) inner = `<span class="tile-num">${n}</span>`;
+  // 数字只统计未探明的威胁，翻开怪物后会减小；减到 0 时留一个暗 0，
+  // 否则空白格会被当成「这里没给信息」，玩家以为数字丢了。
+  inner = n ? `<span class="tile-num">${n}</span>` : '<span class="tile-num tile-zero">0</span>';
   return { cls, inner, n, label };
 }
 
@@ -149,16 +155,23 @@ function renderBoard(popSet) {
     const v = tileView(t);
     const sig = v.cls + '|' + v.inner + '|' + v.n;
     if (b._sig !== sig) {
+      const shifted = t.revealed && b._n != null && b._n !== v.n;
       b.className = v.cls;
       b.innerHTML = v.inner;
       b.dataset.n = v.n ? String(v.n) : '';
       b.setAttribute('aria-label', v.label);
       b._sig = sig;
+      // 数字变小是「你刚探明了那处威胁」的结果，闪一下让玩家看见因果，而不是以为数字丢了
+      if (shifted) {
+        b.classList.add('num-shift');
+        setTimeout(() => b.classList.remove('num-shift'), 620);
+      }
       if (popSet && popSet.has(i)) {
         b.classList.add('pop');
         setTimeout(() => b.classList.remove('pop'), 360);
       }
     } else if (b.getAttribute('aria-label') !== v.label) b.setAttribute('aria-label', v.label);
+    b._n = v.n;
   }
   el.board.classList.remove('mode-explore', 'mode-flag', 'mode-bomb', 'mode-scroll');
   el.board.classList.add('mode-' + S.mode);
@@ -166,6 +179,7 @@ function renderBoard(popSet) {
 
 /* ─────────── HUD ─────────── */
 let prev = {};
+let prevFlag = null;
 function bump(node) { node.classList.remove('bump'); void node.offsetWidth; node.classList.add('bump'); setTimeout(() => node.classList.remove('bump'), 460); }
 
 function renderHud() {
@@ -182,22 +196,29 @@ function renderHud() {
   el.ring.style.strokeDashoffset = String(119.4 * (1 - p.xp / p.xpNext));
   const remain = S.generated ? G.remainingThreats(S) : S.threatTotal;
   el.threat.textContent = remain;
-  el.flagText.textContent = `${S.flags}/${S.threatTotal}`;
-  el.threatChip.classList.toggle('full', S.flags >= S.threatTotal);
-  el.threatChip.setAttribute('aria-label', `剩余威胁 ${remain}，旗子已用 ${S.flags}，上限 ${S.threatTotal}`);
+  const cap = G.flagCap(S);
+  el.flagText.textContent = `${S.flags}/${cap}`;
+  el.threatChip.classList.toggle('full', S.flags >= cap);
+  el.threatChip.setAttribute('aria-label', `剩余威胁 ${remain}，旗子已用 ${S.flags}，上限 ${cap}`);
   el.keyChip.hidden = !S.hasKey;
   const ag = G.aggroSummary(S);
   el.aggroChip.hidden = !ag;
   if (ag) {
     el.aggroCount.textContent = ag.count;
-    el.aggroNext.textContent = `·${ag.next}→-${ag.dmg}`;
     el.aggroChip.classList.toggle('soon', ag.next <= 2);
-    el.aggroChip.setAttribute('aria-label', `${ag.count} 只怪物被惊扰，${ag.next} 回合后承受 ${ag.dmg} 点骚扰伤害`);
+    el.aggroChip.setAttribute('aria-label', `${ag.count} 只怪物被惊扰`);
   }
   el.potion.textContent = p.potions; el.bomb.textContent = p.bombs; el.scroll.textContent = p.scrolls;
   el.potion.parentElement.classList.toggle('empty', p.potions === 0);
   el.bomb.parentElement.classList.toggle('empty', p.bombs === 0);
   el.scroll.parentElement.classList.toggle('empty', p.scrolls === 0);
+  // 标记按钮右上角＝还能插几面旗，和卷轴/炸弹/药水的角标同一套语言
+  const flagLeft = Math.max(0, cap - S.flags);
+  el.flag.textContent = flagLeft;
+  el.flag.parentElement.classList.toggle('empty', flagLeft === 0);
+  el.flag.parentElement.setAttribute('aria-label', `标记模式，剩余旗子 ${flagLeft}，上限 ${cap}`);
+  if (prevFlag != null && prevFlag !== flagLeft) bump(el.flag.parentElement);
+  prevFlag = flagLeft;
   for (const k of ['atk', 'def', 'gold', 'lv']) if (prev[k] != null && prev[k] !== p[k]) bump(el[k].parentElement.classList.contains('chip') ? el[k].parentElement : el.lv.parentElement);
   prev = { atk: p.atk, def: p.def, gold: p.gold, lv: p.lv };
 
@@ -218,19 +239,7 @@ function renderHud() {
   }
 }
 
-function render(popSet) { syncAggroTop(); renderBoard(popSet); renderHud(); renderRelics(); }
-
-// 惊扰时钟全场共用，只有最凶的那只出手——角标只标它，其余惊扰怪只亮红环。
-let aggroTopIdx = -1;
-function syncAggroTop() {
-  aggroTopIdx = -1;
-  let best = -1;
-  for (const t of S.tiles) {
-    if (!t.mob || t.mob.hp <= 0 || !t.mob.awake || t.flagged) continue;
-    const d = G.aggroDamage(S.player, t.mob);
-    if (d > best) { best = d; aggroTopIdx = t.i; }
-  }
-}
+function render(popSet) { renderBoard(popSet); renderHud(); renderRelics(); }
 
 /* ─────────── 遗物 ─────────── */
 const rarityColor = (r) => G.RELIC_RARITY[r.rarity].color;
@@ -359,7 +368,7 @@ function consume(events) {
       }
       case 'encounter': audio.play('open'); fx.haptic('light'); break;
       case 'flag': audio.play(e.on ? 'flag' : 'unflag'); fx.haptic('tick'); break;
-      case 'flagLimit': audio.play('deny'); toast(`旗子用完了：本层共 ${e.total} 处威胁`, 'bad'); break;
+      case 'flagLimit': audio.play('deny'); toast(`旗子用完（上限 ${e.cap}）：旗囊/旗帜祝福/旗手纹章可提升`, 'bad'); break;
       case 'aggro': {
         if (S.tiles[e.i] && S.tiles[e.i].revealed) { const c = tileCenter(e.i); fx.ring(c.x, c.y, '#ff3b5c', 90); }
         break;
@@ -449,12 +458,13 @@ function consume(events) {
         break;
       }
       case 'mode': audio.play('ui'); break;
+      case 'solved': audio.play('levelup'); fx.haptic('heavy'); fx.flash('heal'); showSolve(e.count); break;
       case 'descend': fx.haptic('medium'); break;
       case 'death': fx.rumble(420); fx.shake(el.board); fx.flash('hurt'); break;
       case 'win': fx.rumble(260); later(() => fx.rumble(260), 320); break;
     }
   }
-  if (pops.size && !events.some((e) => ['encounter', 'combat', 'damage', 'bomb', 'scroll'].includes(e.type))) audio.play('reveal');
+  if (pops.size && !events.some((e) => ['encounter', 'combat', 'damage', 'bomb', 'scroll', 'solved'].includes(e.type))) audio.play('reveal');
   return pops;
 }
 
@@ -505,7 +515,7 @@ function closeSheet() {
   el.sheetBody.innerHTML = '';
   if (S) { G.closePending(S); saveRun(); }
 }
-function forceClose() { sheetLock = false; closeSheet(); }
+function forceClose() { sheetLock = false; closeSheet(); hideSolve(); }
 
 function openCombat(i) {
   const t = S.tiles[i], m = t.mob, p = S.player;
@@ -519,9 +529,9 @@ function openCombat(i) {
     : f.take === 0
       ? `<p class="fc-note">一击必杀，毫发无伤。</p>`
       : `<p class="fc-note">你先出手，${f.rounds} 回合内解决战斗，其间被反击 ${f.rounds - 1} 次。</p>`;
-  const aggroRow = m.awake && S.aggroClock != null
-    ? `<div class="fc-row hurt"><span>惊扰骚扰（每 ${G.BAL.aggroPeriod} 回合）</span><b>-${G.aggroDamage(p, m)}</b></div>
-       <p class="fc-note danger">它已被惊扰。留着不打，就会一直扑上来撕你——骚扰不致死，但会把你压到陷阱能补刀的血线。</p>`
+  const aggroRow = m.awake && m.cd != null
+    ? `<div class="fc-row hurt"><span>惊扰骚扰（每 ${m.period} 回合）</span><b>-${G.aggroDamage(p, m)}</b></div>
+       <p class="fc-note danger">它已被惊扰，${m.cd} 回合后扑来。留着不打，它会按自己的节奏一直撕你——骚扰<b>可以致死</b>。</p>`
     : '';
   openSheet('combat', `
     <div class="sheet-head">
@@ -596,10 +606,11 @@ function openShop() {
 }
 
 function openHelp() {
+  const flagBases = Object.values(G.DIFFICULTIES).map((d) => `${d.name} ${d.flags}`).join(' / ');
   const legend = [
     ['hand', '未探索的砖', '点开后可能是空地、怪物或宝藏', '#c9a3ff'],
-    ['flag', '标记', '插旗＝确认并规避：该格怪物不再骚扰你；旗数上限＝本层威胁总数', '#ffd27a'],
-    ['bat', '怪物', '底部两行是生命 / 攻击·防御（防御为 0 时省略）；点击可预演战斗', '#ff8098'],
+    ['flag', '标记', '插旗＝确认并规避：该格怪物不再骚扰你；按钮右上角＝还能插几面旗。上限是稀缺资源，要靠商店/祭坛/遗物抬高', '#ffd27a'],
+    ['bat', '怪物', '底部属性牌两行：生命 / 攻击·防御（防御为 0 时省略）；左上叹号＝几回合后扑来，右上钥匙＝守卫', '#ff8098'],
     ['trap', '尖刺陷阱', '踩中直接扣血，同样计入数字', '#ff9f3a'],
     ['guardian', '钥匙守卫', '它本身也算一格「雷」，就藏在暗格里；击败或炸掉即夺钥', '#ffd54a'],
     ['chest', '宝箱', '发光的宝箱需要再点一下才开启', '#ffd54a'],
@@ -616,7 +627,9 @@ function openHelp() {
     </div>
     <div class="help-sec">
       <h3 class="help-h">数字的含义</h3>
-      <p class="help-p">空地上的数字 = 周围 8 格中<b>尚未探明</b>的威胁数量（怪物 + 陷阱 + 守卫 + 龙王）。威胁被探明或清除后，数字会随之减小。</p>
+      <p class="help-p">空地上的数字 = 周围 8 格中<b>尚未探明</b>的威胁数量（怪物 + 陷阱 + 守卫 + 龙王）。威胁被探明或清除后，数字会随之减小，
+      变化时格子会闪一下。<b>减到 0 会显示一个暗色的 0</b>，意思是「这一带已经安全」，不是数字丢了。<br>
+      注意：<b>点开怪物再退出来</b>也算探明——它从此不再计入周围数字，所以数字变小是正常的推理进度。</p>
       <div class="numline">${nums}</div>
       <p class="help-p">首次点击永远安全，并会自动展开一片安全区。<br>
       展开时顺带露出的<b>宝箱与药水不会自动拾取</b>——它们会持续发光，再点一下才收入行囊。</p>
@@ -624,10 +637,17 @@ function openHelp() {
     <div class="help-sec">
       <h3 class="help-h">三种操作</h3>
       <p class="help-p"><b>探索</b>：点击砖块。开到怪物不会立刻受伤，会先弹出战斗预演。<br>
-      <b>标记</b>：切到标记模式，或<b>长按 / 右键</b>任意暗格插旗。旗子意味着「我已确认它、并绕着走」：
-      被标记的怪物<b>不再骚扰你</b>，但旗数上限是<b>本层威胁总数</b>，所以插旗是要花预算的决策。<br>
+      <b>标记</b>：切到标记模式，或<b>长按 / 右键</b>任意暗格插旗。按钮右上角的角标是<b>还能插几面旗</b>。旗子意味着「我已确认它、并绕着走」：
+      被标记的怪物<b>不再骚扰你</b>，但旗数<b>上限很小</b>（${flagBases}），所以插旗是要花预算的决策。<br>
       插旗格<b>可以直接点开</b>（自动拔旗）——想主动开战时不必先手动拔旗；旗子只挡批量展开，不挡你的主动点击。<br>
       <b>快速展开</b>：点击已探明的数字格，若周围旗数正好等于数字，其余暗格会一次性安全展开。</p>
+    </div>
+    <div class="help-sec">
+      <h3 class="help-h">抬高旗子上限</h3>
+      <p class="help-p">旗子上限<b>与怪物数量无关</b>，开局只有 ${flagBases} 面。想多插旗就得投资：
+      商店<b>旗囊</b> +1（越买越贵）、祭坛<b>旗帜祝福</b> +${G.ALTAR_FLAG_BONUS}、遗物<b>旗手纹章</b> +${G.RELIC_FLAG_BONUS}。</p>
+      <p class="help-p">加成<b>整局永久生效</b>，下行不清零；但每层的<b>旗子本身会全部收回</b>，重新分配。
+      于是「免骚扰」是一种越玩越宽裕的能力，而不是每层免费发满。</p>
     </div>
     <div class="help-sec">
       <h3 class="help-h">战斗与成长</h3>
@@ -637,13 +657,24 @@ function openHelp() {
     <div class="help-sec">
       <h3 class="help-h">惊扰</h3>
       <p class="help-p">翻开怪物<b>周围 8 格</b>中的任意一格，就会把它<b>惊扰</b>。被惊扰的怪物不再安静待着：
-      全场共用一个时钟，每 <b>${G.BAL.aggroPeriod} 次操作</b>，其中<b>最凶的那只</b>会扑上来撕你一口（至少 1 点，<b>不会致死</b>）。</p>
-      <p class="help-p">顶部红色芯片显示「几只被惊扰 · 几回合后 · 掉多少血」；棋盘上只有<b>已探明</b>的惊扰怪会亮红环，
-      带倒计时角标的那只就是下一次出手的。<b>杀掉它，下一击就换更弱的顶上；全部清光，骚扰停止。</b></p>
+      <b>每只怪有自己的攻击间隔</b>，倒计时归零就扑上来撕你一口（至少 1 点，<b>可以致死</b>）。
+      快而弱的咬得勤，慢而重的憋得久——间隔写在每种怪身上，不是全场一个节拍。</p>
+      <p class="help-p">棋盘上只有<b>已探明</b>的惊扰怪会亮红环，左上角是<b>红色叹号 + 它自己的倒计时</b>；
+      倒计时 ≤2 时那一格<b>红边框急闪</b>，表示马上要挨打。<b>数字最小的那只最先扑你</b>，先杀谁由此决定。</p>
+      <p class="help-p">顶部红色芯片只显示<b>几只被惊扰</b>。惊扰的怪越多，你挨的口数就越密——清场或插旗都能减压。</p>
       <p class="help-p">时钟只按<b>操作</b>推进，不按真实时间——<b>思考、插旗、切模式、喝药、购物都不消耗回合</b>。
       它逼你规划路线与清怪顺序，而不是催你手快。</p>
-      <p class="help-p"><b>插旗可以免骚扰</b>：被标记的怪物不计入惊扰，红色芯片的数字会随之减少；拔旗或翻开它，它就重新加入。
-      于是「标出来绕开」和「点开打掉」都是有效解法，而不是被迫清场。</p>
+      <p class="help-p"><b>插旗可以免骚扰</b>：被标记的怪物不计入惊扰，倒计时<b>冻结</b>，红色芯片的数字会随之减少；
+      拔旗或翻开它，它就从冻结处继续。于是「标出来绕开」和「点开打掉」都是有效解法，而不是被迫清场。</p>
+    </div>
+    <div class="help-sec">
+      <h3 class="help-h">完全识破</h3>
+      <p class="help-p">当你把<b>所有安全格都翻开</b>——剩余暗格<b>全部</b>是怪物/陷阱/守卫/龙王——这一层就算<b>解开了</b>，
+      等价于传统扫雷的胜利条件。游戏不会读心，但它认得这个局面。</p>
+      <p class="help-p">此时会弹出<b>绿色横幅「本层已识破」</b>，并且：<b>剩余威胁全部自动揭示</b>、<b>旗帜全部收回</b>、
+      <b>惊扰立刻停止</b>。自动揭示<b>不带任何代价</b>——陷阱直接拆除不扣血，怪物不会扑你，也不会强行把你拉进战斗。</p>
+      <p class="help-p">之后你可以从容地<b>点开怪物赚经验金币</b>、用炸弹清场，或直接下楼。
+      钥匙守卫仍需击败或炸掉才能夺钥——识破免除的是<b>惩罚</b>，不是<b>目标</b>。</p>
     </div>
     <div class="help-sec">
       <h3 class="help-h">目标</h3>
@@ -683,11 +714,8 @@ function openMenu() {
 
 function endSequence(win) {
   busy = true;
-  const sc = G.score(S);
   meta.runs++;
   if (win) meta.wins++;
-  meta.best = Math.max(meta.best, sc);
-  meta.bestFloor = Math.max(meta.bestFloor, S.floor);
   saveMeta(); saveRun();
   audio.play(win ? 'win' : 'death');
   fx.flash(win ? 'gold' : 'hurt');
@@ -707,7 +735,6 @@ function endSequence(win) {
         <div class="result-ic">${svg(win ? 'crown' : 'skull')}</div>
         <h2 class="result-title">${win ? '重见天光' : '长眠砖下'}</h2>
         <p class="result-sub">${win ? '深渊龙王轰然崩塌，第八层的穹顶裂开一道光。你带着满身尘土走了出去。' : `你倒在了第 ${S.floor} 层「${G.FLOOR_NAMES[S.floor]}」。砖石重新合拢，等待下一个冒险者。`}</p>
-        <div class="score-big">${sc}</div><div class="score-lb">SCORE</div>
       </div>
       <div class="res-grid">
         <div class="stat"><i>深度</i><b>${S.floor}</b></div>
@@ -715,7 +742,7 @@ function endSequence(win) {
         <div class="stat"><i>击杀</i><b>${st.kills}</b></div>
         <div class="stat gold"><i>金币</i><b>${st.goldEarned}</b></div>
       </div>
-      <div class="gold-line">${svg('sparkle')}<span>历史最佳</span><b>${meta.best}</b><span>· 通关 ${meta.wins}/${meta.runs}</span></div>
+      <div class="gold-line">${svg('sparkle')}<span>通关</span><b>${meta.wins}</b><span>/ ${meta.runs} 局</span></div>
       <div class="sheet-actions">
         <button class="btn btn-ghost" data-sheet="title">返回标题</button>
         <button class="btn btn-primary" data-sheet="again">${svg('down')}<span>再来一次</span></button>
@@ -725,6 +752,7 @@ function endSequence(win) {
 
 function descendSequence() {
   busy = true;
+  hideSolve();
   audio.play('descend');
   el.fcDepth.textContent = 'DEPTH ' + S.floor;
   el.fcName.textContent = G.FLOOR_NAMES[S.floor];
@@ -735,6 +763,18 @@ function descendSequence() {
   setTimeout(() => { buildBoard(); render(); fitBoard(); }, 620);
   setTimeout(() => { el.floorCard.hidden = true; busy = false; saveRun(); }, 1680);
 }
+
+// 解谜完成横幅：不锁输入（pointer-events:none），玩家可以直接继续打怪或下楼
+function showSolve(count) {
+  el.scSub.textContent = `${count} 处威胁全部揭示 · 旗帜已收回 · 不再被骚扰`;
+  el.solveCard.hidden = false;
+  el.solveCard.style.animation = 'none'; void el.solveCard.offsetWidth; el.solveCard.style.animation = '';
+  const c = { x: innerWidth / 2, y: innerHeight / 2 };
+  fx.ring(c.x, c.y, '#7dff5a', 250); fx.heal(c.x, c.y);
+  clearTimeout(solveTimer);
+  solveTimer = setTimeout(hideSolve, 1680);
+}
+function hideSolve() { clearTimeout(solveTimer); el.solveCard.hidden = true; }
 
 /* ─────────── 提示 ─────────── */
 function toast(text, tone = '') {
@@ -794,12 +834,12 @@ function renderTitle() {
   el.diffGrid.innerHTML = Object.values(G.DIFFICULTIES).map((d) => {
     const c = d.id === 'easy' ? '#7dff5a' : d.id === 'normal' ? '#ffab2e' : '#ff3b5c';
     return `<button class="diff" role="radio" data-diff="${d.id}" style="--dc:${c}" aria-checked="${d.id === difficulty}">
-      <b>${d.name}</b><i>${d.tag}</i><s>${d.desc}</s></button>`;
+      <b>${d.name}</b><i>${d.tag}</i><s>${d.desc}<br>初始旗 ${d.flags} 面</s></button>`;
   }).join('');
   const has = !!G.deserialize(localStorage.getItem(RUN_KEY) || '');
   el.btnContinue.hidden = !has;
   el.record.innerHTML = meta.runs
-    ? `历史最佳 <b>${meta.best}</b> 分 · 最深 <b>${meta.bestFloor}</b> 层 · 通关 <b>${meta.wins}</b> / ${meta.runs} 局`
+    ? `通关 <b>${meta.wins}</b> / ${meta.runs} 局`
     : '第一次下潜？先从「地窖」开始，学会读数字。';
   syncSound();
 }

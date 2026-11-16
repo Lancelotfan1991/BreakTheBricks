@@ -3,30 +3,34 @@ export const COLS = 7;
 export const ROWS = 9;
 export const SIZE = COLS * ROWS;
 export const MAX_FLOOR = 8;
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 8;
 
 export const DIFFICULTIES = {
-  easy: { id: 'easy', name: '地窖', tag: '轻松', desc: '怪物孱弱 · 补给充裕', threat: 0.78, power: 0.82, loot: 1.35, hp: 38, gold: 25, potions: 2 },
-  normal: { id: 'normal', name: '深渊', tag: '标准', desc: '标准的地牢体验', threat: 1, power: 1, loot: 1, hp: 32, gold: 10, potions: 2 },
-  hard: { id: 'hard', name: '炼狱', tag: '噩梦', desc: '寸步难行 · 精英横行', threat: 1.22, power: 1.1, loot: 0.8, hp: 28, gold: 0, potions: 2 },
+  easy: { id: 'easy', name: '地窖', tag: '轻松', desc: '怪物孱弱 · 补给充裕', threat: 0.78, power: 0.82, loot: 1.35, hp: 38, gold: 25, potions: 2, flags: 4 },
+  normal: { id: 'normal', name: '深渊', tag: '标准', desc: '标准的地牢体验', threat: 1, power: 1, loot: 1, hp: 32, gold: 10, potions: 2, flags: 3 },
+  hard: { id: 'hard', name: '炼狱', tag: '噩梦', desc: '寸步难行 · 精英横行', threat: 1.22, power: 1.1, loot: 0.8, hp: 28, gold: 0, potions: 2, flags: 2 },
 };
 
 export const SHOP = [
   { id: 'potion', name: '治疗药水', icon: 'potion', desc: '恢复 30% 最大生命', base: 30, step: 12 },
   { id: 'whet', name: '磨刀石', icon: 'sword', desc: '永久 +1 攻击', base: 30, step: 14 },
   { id: 'plate', name: '铁甲片', icon: 'shield', desc: '永久 +1 防御', base: 30, step: 16 },
+  { id: 'pouch', name: '旗囊', icon: 'flag', desc: '永久 +1 旗子上限', base: 25, step: 10 },
   { id: 'scroll', name: '侦查卷轴', icon: 'scroll', desc: '安全探明 3×3 区域', base: 22, step: 6 },
   { id: 'bomb', name: '裂石炸弹', icon: 'bomb', desc: '无伤摧毁一个威胁', base: 40, step: 10 },
 ];
 
+// period＝这只怪自己的骚扰间隔（按操作回合数）。快而弱的咬得勤，慢而重的憋得久，
+// 于是「先杀谁」不再只是比伤害大小，而是比谁的节奏更迫近。
+// 间隔取 38～58 而非个位数：每只怪各自出手，总压力随惊扰数量叠加，调短会让胜率崩掉。
 const BESTIARY = [
-  { id: 'bat', name: '洞穴蝠', icon: 'bat', hp: 0.7, atk: 1.15, def: 0, min: 1, max: 3, flavor: '尖啸着俯冲，脆弱却迅捷。' },
-  { id: 'slime', name: '腐黏怪', icon: 'slime', hp: 1.35, atk: 0.78, def: 0, min: 1, max: 4, flavor: '吞下了太多冒险者的铁器。' },
-  { id: 'skeleton', name: '骸骨兵', icon: 'skeleton', hp: 1, atk: 1, def: 1, min: 2, max: 6, flavor: '锈剑仍在执行千年前的军令。' },
-  { id: 'spider', name: '织网蛛', icon: 'spider', hp: 0.85, atk: 1.28, def: 0, min: 3, max: 7, flavor: '毒牙比石壁上的裂缝更细。' },
-  { id: 'orc', name: '穴居兽人', icon: 'orc', hp: 1.12, atk: 1.18, def: 1, min: 4, max: 8, flavor: '它把守这条路，只是为了晚饭。' },
-  { id: 'golem', name: '石像鬼', icon: 'golem', hp: 1.55, atk: 0.9, def: 3, min: 5, max: 8, flavor: '砖石本身站了起来。' },
-  { id: 'wraith', name: '深渊怨灵', icon: 'wraith', hp: 0.92, atk: 1.12, def: 4, min: 6, max: 8, flavor: '寒气穿过甲胄，直接啃咬骨头。' },
+  { id: 'bat', name: '洞穴蝠', icon: 'bat', hp: 0.7, atk: 1.15, def: 0, min: 1, max: 3, period: 38, flavor: '尖啸着俯冲，脆弱却迅捷。' },
+  { id: 'slime', name: '腐黏怪', icon: 'slime', hp: 1.35, atk: 0.78, def: 0, min: 1, max: 4, period: 52, flavor: '吞下了太多冒险者的铁器。' },
+  { id: 'skeleton', name: '骸骨兵', icon: 'skeleton', hp: 1, atk: 1, def: 1, min: 2, max: 6, period: 45, flavor: '锈剑仍在执行千年前的军令。' },
+  { id: 'spider', name: '织网蛛', icon: 'spider', hp: 0.85, atk: 1.28, def: 0, min: 3, max: 7, period: 40, flavor: '毒牙比石壁上的裂缝更细。' },
+  { id: 'orc', name: '穴居兽人', icon: 'orc', hp: 1.12, atk: 1.18, def: 1, min: 4, max: 8, period: 48, flavor: '它把守这条路，只是为了晚饭。' },
+  { id: 'golem', name: '石像鬼', icon: 'golem', hp: 1.55, atk: 0.9, def: 3, min: 5, max: 8, period: 58, flavor: '砖石本身站了起来。' },
+  { id: 'wraith', name: '深渊怨灵', icon: 'wraith', hp: 0.92, atk: 1.12, def: 4, min: 6, max: 8, period: 42, flavor: '寒气穿过甲胄，直接啃咬骨头。' },
 ];
 
 export const FLOOR_NAMES = ['', '苔痕门厅', '锈铁回廊', '蛛丝墓室', '兽骨仓窖', '熔渣锻层', '石像长廊', '哀嚎深井', '深渊王座'];
@@ -44,6 +48,8 @@ export const RELIC_DRAW_COUNT = 3;
 export const RELIC_WHET_CAP = 6;
 export const RELIC_BANNER_CAP = 12;
 export const RELIC_WARD_CHARGES = 3;
+export const RELIC_FLAG_BONUS = 3;
+export const ALTAR_FLAG_BONUS = 2;
 
 export const RELICS = [
   { id: 'spikeSoles', name: '钉底靴', icon: 'boot', cat: 'explore', rarity: 'common', desc: '陷阱伤害降低 30%。', flavor: '靴底钉着前人的碎骨，踩下去反而稳。' },
@@ -51,6 +57,7 @@ export const RELICS = [
   { id: 'trapSalvage', name: '拾荒爪', icon: 'coin', cat: 'explore', rarity: 'common', desc: '每次踩中陷阱额外捡到 10 金币。', flavor: '尖刺上总挂着几个没能走完的人的钱袋。' },
   { id: 'blastWave', name: '冲击波', icon: 'bomb', cat: 'explore', rarity: 'rare', desc: '炸弹同时摧毁目标周围 8 格的所有陷阱。', flavor: '砖石记得每一次爆炸的形状。' },
   { id: 'bannerLord', name: '旗帜领主', icon: 'flag', cat: 'explore', rarity: 'rare', desc: '下行时，每面插对的旗回复 2 生命（最多 12）。', flavor: '它只奖赏那些真正读懂了数字的人。' },
+  { id: 'bannerBearer', name: '旗手纹章', icon: 'flag', cat: 'explore', rarity: 'rare', desc: `旗子上限永久 +${RELIC_FLAG_BONUS}。`, flavor: '纹章上的旗面比你的手臂还长，插下去就没人敢拔。' },
 
   { id: 'thornMail', name: '荆棘甲', icon: 'shield', cat: 'combat', rarity: 'common', desc: '战斗承伤固定减少 2 点。', flavor: '甲片缝隙里长出了倒刺，先扎到的是敌人。' },
   { id: 'dragonWard', name: '龙鳞护符', icon: 'dragon', cat: 'combat', rarity: 'rare', desc: '战斗承伤减少 25%。', flavor: '一片幼龙的鳞，还留着体温。' },
@@ -131,24 +138,24 @@ export function forecast(p, mob) {
 // ---------- 惊扰 ----------
 // 怪物是「可选 + 信息完全 + 结算确定」的，理性玩家永远只打打得过的仗，
 // 于是怪物沦为路障而非威胁。惊扰给「不打它」加上代价。
-// 全场共用一个时钟，每次只有最凶的那只出手——频率因此与怪物数量无关，
-// 而「先杀谁」决定了每一下有多痛。时钟按操作推进而非真实时间：思考免费，标记也免费。
+// 每只怪有自己的间隔与倒计时，到点各自扑一口——压力因此随惊扰数量上升，
+// 而「先杀谁」取决于谁的节奏更迫近、谁咬得更痛。时钟按操作推进而非真实时间：思考免费，标记也免费。
 export function aggroDamage(p, mob) {
   let dmg = hitDamage(mob.atk, p.def) * BAL.aggroMul;
   if (mob.elite || mob.boss) dmg *= p.eliteTakeMul;
   return Math.max(1, Math.round(dmg * p.takeMul) - p.takeFlat);
 }
 
-// 插旗＝我已确认并规避它，被标记的怪物不再骚扰——旗子因此有实际收益，而不只是推理记号
+// 插旗＝我已确认并规避它：被标记的怪物不再骚扰，倒计时也冻结，拔旗后从原处继续
 const awakeMobs = (s) => s.tiles.filter((t) => t.mob && t.mob.hp > 0 && t.mob.awake && !t.flagged);
 
-// 汇总只给「几只 / 几回合后 / 多少伤害」，不给位置——未探明怪物的坐标仍要靠演绎。
+// 汇总只给「几只 / 最近一口还有几回合」，不给位置——未探明怪物的坐标仍要靠演绎。
 export function aggroSummary(s) {
   const awake = awakeMobs(s);
-  if (!awake.length || s.aggroClock == null) return null;
-  let top = awake[0];
-  for (const t of awake) if (aggroDamage(s.player, t.mob) > aggroDamage(s.player, top.mob)) top = t;
-  return { count: awake.length, next: s.aggroClock, dmg: Math.min(aggroDamage(s.player, top.mob), Math.max(0, s.player.hp - 1)) };
+  if (!awake.length) return null;
+  let next = Infinity;
+  for (const t of awake) next = Math.min(next, t.mob.cd ?? t.mob.period);
+  return { count: awake.length, next };
 }
 
 function awaken(s, i) {
@@ -156,27 +163,24 @@ function awaken(s, i) {
     const t = s.tiles[j];
     if (t.mob && t.mob.hp > 0 && !t.mob.awake) {
       t.mob.awake = true;
-      if (s.aggroClock == null) s.aggroClock = BAL.aggroPeriod;
+      if (t.mob.cd == null) t.mob.cd = t.mob.period;
     }
   }
 }
 
 function tickAggro(s, out) {
   if (s.status !== 'playing') return;
-  const awake = awakeMobs(s);
-  if (!awake.length) { s.aggroClock = null; return; }
-  if (s.aggroClock == null) s.aggroClock = BAL.aggroPeriod;
-  if (--s.aggroClock > 0) return;
-  s.aggroClock = BAL.aggroPeriod;
-  const p = s.player;
-  let top = awake[0];
-  for (const t of awake) if (aggroDamage(p, t.mob) > aggroDamage(p, top.mob)) top = t;
-  // 骚扰不致死：致死权仍留给陷阱与玩家自己的冒进，也避免残血被守卫锁死。
-  const real = Math.min(aggroDamage(p, top.mob), p.hp - 1);
-  if (real <= 0) return;
-  say(s, `${top.mob.name}趁隙扑来，撕掉你 ${real} 点生命。`, 'bad');
-  ev(out, 'aggro', { i: top.i, amount: real });
-  hurt(s, real, out, top.mob.name, top.i);
+  for (const t of awakeMobs(s)) {
+    const m = t.mob;
+    if (m.cd == null) m.cd = m.period;
+    if (--m.cd > 0) continue;
+    m.cd = m.period;
+    const dmg = aggroDamage(s.player, m);
+    say(s, `${m.name}趁隙扑来，撕掉你 ${dmg} 点生命。`, 'bad');
+    ev(out, 'aggro', { i: t.i, amount: dmg });
+    hurt(s, dmg, out, m.name, t.i);
+    if (s.status !== 'playing') return;
+  }
 }
 
 // ---------- creation ----------
@@ -199,13 +203,15 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
     hasKey: false,
     stairsFound: false,
     stairsIndex: -1,
-    aggroClock: null,
     mode: 'explore',
     threatTotal: 0,
     flags: 0,
+    flagBonus: 0,
+    solved: false,
+    solvedFlags: 0,
     pendingCombat: -1,
     pendingAltar: -1,
-    stats: { kills: 0, elites: 0, revealed: 0, goldEarned: 0, damage: 0, turns: 0, floors: 0 },
+    stats: { kills: 0, revealed: 0, goldEarned: 0, damage: 0, turns: 0 },
     log: [],
     logId: 0,
   };
@@ -229,10 +235,11 @@ export function buildFloor(s) {
   s.stairsFound = false;
   s.stairsIndex = -1;
   s.flags = 0;
+  s.solved = false;
+  s.solvedFlags = 0;
   s.mode = 'explore';
   s.pendingCombat = -1;
   s.pendingAltar = -1;
-  s.aggroClock = null;
   s.relicState.firstKill = false;
   syncRelicMods(s);
   s.plan = planFloor(s, f, d);
@@ -257,15 +264,15 @@ export const BAL = {
   lvXp: 12, lvXpF: 10, lvHp: 4, lvAtk: 1, lvDefEvery: 3,
   potionPct: 0.3, prayPct: 0.45, descendPct: 0.05,
   trapBase: 4, trapF: 2.6,
-  aggroPeriod: 16, aggroMul: 0.25,
+  aggroMul: 0.25,
   bloodCost: 10, bloodAtk: 2,
   eliteCap: 0.9, bossCap: 0.95, shopWhet: 1, mobGold: 2, mobGoldF: 1, chestGold: 8, chestGoldF: 3,
 };
 
 function makeMob(s, f, d, type) {
   const pool = BESTIARY.filter((b) => f >= b.min && f <= b.max);
-  const b = type === 'elite' ? { id: 'guardian', name: '钥匙守卫', icon: 'guardian', hp: 1, atk: 1, def: 0, flavor: '它吞下了这一层的钥匙。' }
-    : type === 'boss' ? { id: 'dragon', name: '深渊龙王', icon: 'dragon', hp: 1, atk: 1, def: 0, flavor: '砖石深渊的心脏，正在缓慢跳动。' }
+  const b = type === 'elite' ? { id: 'guardian', name: '钥匙守卫', icon: 'guardian', hp: 1, atk: 1, def: 0, period: 52, flavor: '它吞下了这一层的钥匙。' }
+    : type === 'boss' ? { id: 'dragon', name: '深渊龙王', icon: 'dragon', hp: 1, atk: 1, def: 0, period: 48, flavor: '砖石深渊的心脏，正在缓慢跳动。' }
       : pick(s, pool.length ? pool : BESTIARY);
   const P = d.power;
   const p = s.player;
@@ -280,7 +287,7 @@ function makeMob(s, f, d, type) {
   let gold = Math.round((BAL.mobGold + BAL.mobGoldF * f) * d.loot);
   if (type === 'elite') { hp = Math.round(hp * 1.9); atk = Math.round(atk * 1.3); xp *= 3; gold = Math.round(gold * 3.2); }
   if (type === 'boss') { hp = Math.round(hp * 3.4); atk = Math.round(atk * 1.45); xp = 120; gold = 260; }
-  const mob = { id: b.id, name: b.name, icon: b.icon, flavor: b.flavor, hp, maxHp: hp, atk, def, xp, gold, elite: type === 'elite', boss: type === 'boss', awake: false };
+  const mob = { id: b.id, name: b.name, icon: b.icon, flavor: b.flavor, hp, maxHp: hp, atk, def, xp, gold, elite: type === 'elite', boss: type === 'boss', period: b.period, cd: null, awake: false };
   // 反锁死：钥匙守卫 / 龙王在生成时必须是「满血可胜」的。
   // 这里刻意忽略 freeKill——否则「势如破竹」会让守卫绕过上限生成，一旦首杀被小怪用掉就无解。
   if (type === 'elite' || type === 'boss') {
@@ -346,13 +353,39 @@ const ev = (list, type, data = {}) => { list.push({ type, ...data }); return lis
 export function remainingThreats(s) {
   return s.tiles.filter((t) => isThreat(t) && !t.used && !(t.mob && t.mob.hp <= 0)).length;
 }
+// 旗子上限＝难度固定基数 + 事件投资，刻意与敌人数量脱钩：
+// 旗子是稀缺资源，「插旗免骚扰」因此是要花钱买的决策，而不是每层免费发满。
+export function flagCap(s) {
+  return DIFFICULTIES[s.difficulty].flags + s.flagBonus;
+}
+// 剩余暗格全是威胁＝安全格已全部翻开，等价于扫雷已经解出。
+// 这时还让怪物骚扰、还让玩家自己踩陷阱，是在惩罚一次成功的推理。
+export function boardSolved(s) {
+  return s.generated && s.tiles.every((t) => t.revealed || isThreat(t));
+}
+
+function revealSolved(s, out) {
+  const hidden = s.tiles.filter((t) => !t.revealed && isThreat(t));
+  if (!hidden.length) return;
+  s.solved = true;
+  // 暗格全是威胁，所以此刻插着的每一面旗都必然插对——先记账再收回，旗帜领主才不会因完美推理而少回血
+  s.solvedFlags = s.flags;
+  for (const t of s.tiles) t.flagged = false;
+  s.flags = 0;
+  for (const t of hidden) {
+    t.revealed = true;
+    s.stats.revealed++;
+    if (t.kind === 'trap') { t.used = true; ev(out, 'disarm', { i: t.i }); }
+    else ev(out, 'reveal', { i: t.i, kind: t.kind });
+  }
+  for (const t of s.tiles) if (t.mob) { t.mob.awake = false; t.mob.cd = null; }
+  say(s, `本层解谜完成：${hidden.length} 处威胁全部揭示，旗帜已收回，它们不再骚扰你。`, 'magic');
+  ev(out, 'solved', { count: hidden.length });
+}
 export function shopPrice(s, id) {
   const item = SHOP.find((x) => x.id === id);
   const base = item.base + item.step * (s.bought[id] || 0);
   return Math.max(1, Math.round(base * (hasRelic(s, 'deepPockets') ? 0.75 : 1)));
-}
-export function score(s) {
-  return s.stats.floors * 120 + s.stats.kills * 12 + s.stats.elites * 40 + s.player.lv * 25 + s.stats.goldEarned + (s.status === 'won' ? 600 : 0);
 }
 
 function gainXp(s, amount, out) {
@@ -528,10 +561,11 @@ export function toggleFlag(s, i) {
   if (s.status !== 'playing') return out;
   const t = s.tiles[i];
   if (t.revealed) return out;
-  // 旗数预算＝本层威胁总数：免疫骚扰是有代价的决策，乱插旗不再免费
-  if (!t.flagged && s.flags >= s.threatTotal) {
-    say(s, `旗子用完了：本层共 ${s.threatTotal} 处威胁，先拔掉一面再插。`, 'warn');
-    ev(out, 'flagLimit', { total: s.threatTotal });
+  // 上限是稀缺资源，拒绝时直接指出三条抬高上限的路，否则玩家只会觉得被卡住
+  const cap = flagCap(s);
+  if (!t.flagged && s.flags >= cap) {
+    say(s, `旗子用完（上限 ${cap}）：旗囊/旗帜祝福/旗手纹章可提升`, 'warn');
+    ev(out, 'flagLimit', { cap });
     return out;
   }
   t.flagged = !t.flagged;
@@ -542,8 +576,11 @@ export function toggleFlag(s, i) {
 
 export function tapTile(s, i) {
   const r = tapInner(s, i);
-  if (r.spent) { s.stats.turns++; tickAggro(s, r.out); }
-  return finish(s, r.out);
+  if (r.spent) s.stats.turns++;
+  // 先判定识破再推进惊扰时钟：完成推理的那一次操作不该再挨一口
+  finish(s, r.out);
+  if (r.spent) tickAggro(s, r.out);
+  return r.out;
 }
 
 // spent 表示这次操作是否推进惊扰时钟。标记、切换模式、查看预演、无效点击一律免费，
@@ -621,6 +658,7 @@ function tapInner(s, i) {
 }
 
 function finish(s, out) {
+  if (s.status === 'playing' && !s.solved && boardSolved(s)) revealSolved(s, out);
   recalc(s);
   return out;
 }
@@ -661,7 +699,6 @@ export function attack(s, i) {
   t.mob.hp = 0;
   t.used = true;
   s.stats.kills++;
-  if (t.kind === 'elite') s.stats.elites++;
   say(s, `${t.mob.name}倒下了！${f.rounds} 回合，承受 ${f.take} 伤害，+${t.mob.xp} 经验。`, 'good');
   ev(out, 'kill', { i, mob: t.mob });
   addGold(s, t.mob.gold, out);
@@ -715,6 +752,7 @@ export function buy(s, id) {
   if (id === 'potion') p.potions++;
   if (id === 'whet') p.atk += BAL.shopWhet;
   if (id === 'plate') p.def += 1;
+  if (id === 'pouch') s.flagBonus += 1;
   if (id === 'scroll') p.scrolls++;
   if (id === 'bomb') p.bombs++;
   say(s, `购入 ${item.name}（-${price} 金币）。`, 'good');
@@ -726,6 +764,7 @@ export const ALTAR_OPTIONS = [
   { id: 'blood', name: '血之契约', icon: 'sword', desc: '献祭 10 点生命，永久 +2 攻击' },
   { id: 'pray', name: '静默祈祷', icon: 'heart', desc: '恢复 45% 最大生命' },
   { id: 'greed', name: '贪婪低语', icon: 'coin', desc: '立刻获得 45 金币，但防御 -1' },
+  { id: 'banner', name: '旗帜祝福', icon: 'flag', desc: `永久 +${ALTAR_FLAG_BONUS} 旗子上限` },
 ];
 
 export function altarChoose(s, i, choice) {
@@ -745,6 +784,9 @@ export function altarChoose(s, i, choice) {
   } else if (choice === 'pray') {
     const h = heal(s, Math.ceil(p.maxHp * (hasRelic(s, 'altarGrace') ? 0.75 : BAL.prayPct)), out);
     say(s, `温暖的光包裹了你，恢复 ${h} 点生命。`, 'good');
+  } else if (choice === 'banner') {
+    s.flagBonus += ALTAR_FLAG_BONUS;
+    say(s, `紫火卷成一面旗落进你手里：旗子上限提升到 ${flagCap(s)}。`, 'magic');
   } else {
     addGold(s, 45, out);
     p.def = Math.max(0, p.def - 1);
@@ -763,11 +805,10 @@ export function tryDescend(s) {
   if (s.status !== 'playing') return out;
   if (!s.stairsFound) { say(s, '还没找到下行阶梯。', 'warn'); return out; }
   if (s.floor > 1 && !s.hasKey) { say(s, '阶梯被符文锁封住。钥匙守卫也算一格「雷」，就藏在未探明的砖格里——击败它或炸掉它才能夺钥。', 'warn'); ev(out, 'locked'); return out; }
-  s.stats.floors++;
   const bonus = addGold(s, (10 + s.floor * 3) * (hasRelic(s, 'prospector') ? 2 : 1), out);
   heal(s, Math.ceil(s.player.maxHp * BAL.descendPct), out);
   if (hasRelic(s, 'bannerLord')) {
-    const correct = s.tiles.filter((t) => t.flagged && !t.revealed && isThreat(t)).length;
+    const correct = s.solvedFlags + s.tiles.filter((t) => t.flagged && !t.revealed && isThreat(t)).length;
     if (correct) {
       const h = heal(s, Math.min(RELIC_BANNER_CAP, correct * 2), out);
       say(s, `旗帜领主认出了 ${correct} 面插对的旗，回复 ${h} 生命。`, 'good');
@@ -783,7 +824,6 @@ export function tryDescend(s) {
 
 function winRun(s) {
   s.status = 'won';
-  s.stats.floors++;
   say(s, '深渊龙王轰然崩塌，砖石之上重见天光。你通关了！', 'good');
   return ev([], 'win', { floor: s.floor });
 }
@@ -830,6 +870,7 @@ export function chooseRelic(s, id) {
   if (id === 'bloodPact') { p.atk += 4; p.maxHp = Math.max(8, p.maxHp - 8); p.hp = Math.min(p.hp, p.maxHp); }
   if (id === 'glassCannon') p.atk += 6;
   if (id === 'carefulStep') s.relicState.trapWard = RELIC_WARD_CHARGES;
+  if (id === 'bannerBearer') s.flagBonus += RELIC_FLAG_BONUS;
   syncRelicMods(s);
   const r = relicById(id);
   say(s, `获得遗物「${r.name}」：${r.desc}`, 'magic');
@@ -847,9 +888,9 @@ export function deserialize(text) {
   } catch { return null; }
 }
 
-export function tileLabel(t, clock = null) {
+export function tileLabel(t) {
   if (!t.revealed) return t.flagged ? '已标记' : '未探索';
-  if (t.mob && t.mob.hp > 0) return t.mob.name + (t.mob.awake && clock != null ? `，${clock} 回合后骚扰` : '');
+  if (t.mob && t.mob.hp > 0) return t.mob.name + (t.mob.awake && t.mob.cd != null ? `，${t.mob.cd} 回合后骚扰` : '');
   if (t.kind === 'stairs') return '下行阶梯';
   const name = t.mob ? t.mob.name + '（已清除）'
     : t.kind === 'trap' ? (t.used ? '已触发陷阱' : '陷阱')

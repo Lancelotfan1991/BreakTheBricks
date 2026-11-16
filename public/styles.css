@@ -234,6 +234,10 @@ b,strong{font-weight:700}
 .tile[data-n="6"] .tile-num{color:#ff3b5c}
 .tile[data-n="7"] .tile-num{color:#ff4fd8}
 .tile[data-n="8"] .tile-num{color:#e6dcff}
+/* 威胁探明后数字会减小，减到 0 也要留个暗 0：空白格会被读成「这里没信息」 */
+.tile-zero{font-size:calc(var(--tile)*.3);color:rgba(190,170,215,.3);text-shadow:none}
+.tile.num-shift .tile-num{animation:numShift .6s ease-out}
+@keyframes numShift{0%{transform:scale(1.5);opacity:.35}45%{transform:scale(1.12);opacity:1}100%{transform:scale(1)}}
 .tile-empty{background:linear-gradient(170deg,#171021,#0f0a16)}
 .tile-flag{background:linear-gradient(158deg,#5a3a2a,#3a2418);border-color:rgba(255,171,46,.5);
   box-shadow:inset 0 1px 0 rgba(255,210,122,.3),0 0 14px -3px rgba(255,171,46,.6)}
@@ -241,15 +245,15 @@ b,strong{font-weight:700}
 @keyframes flagPlant{from{transform:translateY(-8px) scale(.4);opacity:0}to{transform:none;opacity:1}}
 .tile-mob{background:linear-gradient(165deg,#4a1428,#2a0c18);border-color:rgba(255,59,92,.34);
   box-shadow:inset 0 0 16px rgba(255,59,92,.2),0 0 12px -4px rgba(255,59,92,.6)}
-.tile-mob .ic{color:#ff8098;filter:drop-shadow(0 1px 2px rgba(0,0,0,.8))}
+.tile-mob>.ic{color:#ff8098;filter:drop-shadow(0 1px 2px rgba(0,0,0,.8))}
 .tile-mob:hover{filter:brightness(1.2)}
 .tile-mob:active{transform:scale(.94)}
 .tile-elite{background:linear-gradient(165deg,#4a3a10,#2a1c06);border-color:rgba(255,213,74,.5);
   box-shadow:inset 0 0 18px rgba(255,213,74,.22),0 0 18px -4px rgba(255,213,74,.75)}
-.tile-elite .ic{color:var(--gold)}
+.tile-elite>.ic{color:var(--gold)}
 .tile-boss{background:linear-gradient(165deg,#4b1060,#260736);border-color:rgba(255,79,216,.55);
   box-shadow:inset 0 0 20px rgba(255,79,216,.28),0 0 24px -4px rgba(255,79,216,.9);animation:bossPulse 1.9s ease-in-out infinite}
-.tile-boss .ic{color:#ff8ae8}
+.tile-boss>.ic{color:#ff8ae8}
 @keyframes bossPulse{0%,100%{box-shadow:inset 0 0 20px rgba(255,79,216,.28),0 0 18px -6px rgba(255,79,216,.8)}50%{box-shadow:inset 0 0 26px rgba(255,79,216,.42),0 0 30px -2px rgba(255,79,216,1)}}
 .tile-dead{background:linear-gradient(170deg,#1c1424,#120c1a);border-color:rgba(255,255,255,.05);box-shadow:inset 0 2px 7px rgba(0,0,0,.7)}
 .tile-dead .ic{color:#4d3f5c;width:calc(var(--tile)*.46);height:calc(var(--tile)*.46);opacity:.75}
@@ -278,28 +282,37 @@ b,strong{font-weight:700}
 @keyframes portal{0%,100%{filter:brightness(1)}50%{filter:brightness(1.35)}}
 .tile-lock{position:absolute;right:2px;bottom:2px;width:calc(var(--tile)*.32);height:calc(var(--tile)*.32);color:var(--gold);opacity:.95}
 .tile-lock .ic{width:100%;height:100%}
-/* 怪物属性：生命一行、攻防一行。三项横排在 44px 格子里必然溢出被 overflow 裁掉，
-   两行才放得下三位数血量；图标同步缩小上移，避免压住属性条。 */
-.tile-stats{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;
-  line-height:1.1;pointer-events:none;font-family:var(--num);font-size:calc(var(--tile)*.2);font-weight:700;
-  background:linear-gradient(180deg,transparent,rgba(0,0,0,.88) 42%)}
-.tile-stats i{display:flex;align-items:center;gap:calc(var(--tile)*.02);font-style:normal}
-.ts-row{display:flex;align-items:center;gap:calc(var(--tile)*.06)}
-.tile .tile-stats .ic{width:calc(var(--tile)*.14);height:calc(var(--tile)*.14)}
-.tile-mob>.ic,.tile-elite>.ic,.tile-boss>.ic{width:calc(var(--tile)*.42);height:calc(var(--tile)*.42);
-  transform:translateY(calc(var(--tile)*-.18))}
+/* 怪物属性牌：生命一行、攻防一行。三项横排在 44px 格子里必然溢出被 overflow 裁掉，
+   两行才放得下三位数血量。内嵌圆角实色牌比原来的全宽黑色渐变更像一张卡片，
+   两行文字都有足够对比度；怪物图标退到牌后面当底纹，不再和属性挤在一起。 */
+.tile-stats{position:absolute;left:2px;right:2px;bottom:2px;display:flex;flex-direction:column;align-items:center;
+  gap:calc(var(--tile)*.012);padding:calc(var(--tile)*.035) 0;border-radius:calc(var(--tile)*.1);
+  line-height:1.05;pointer-events:none;font-family:var(--num);font-size:calc(var(--tile)*.2);font-weight:700;
+  background:rgba(7,4,12,.9);box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 -1px 6px rgba(0,0,0,.5)}
+.tile-stats i{display:flex;align-items:center;gap:calc(var(--tile)*.025);font-style:normal}
+.ts-row{display:flex;align-items:center;gap:calc(var(--tile)*.07)}
+.tile .tile-stats .ic{width:calc(var(--tile)*.15);height:calc(var(--tile)*.15);flex:none}
+.tile-mob>.ic,.tile-elite>.ic,.tile-boss>.ic{position:absolute;top:calc(var(--tile)*.02);left:50%;
+  width:calc(var(--tile)*.46);height:calc(var(--tile)*.46);transform:translateX(-50%);opacity:.6}
 .ts-hp{color:#ff9aab}.ts-hp .ic{color:var(--blood)}
 .ts-atk{color:#ffc46b}.ts-atk .ic{color:var(--amber)}
 .ts-def{color:#93dcff}.ts-def .ic{color:var(--cyan)}
-.tile-crown{position:absolute;top:1px;right:1px;width:calc(var(--tile)*.3);height:calc(var(--tile)*.3);color:var(--gold)}
+.tile-crown{position:absolute;top:1px;right:1px;width:calc(var(--tile)*.28);height:calc(var(--tile)*.28);color:var(--gold);
+  filter:drop-shadow(0 0 3px rgba(255,213,74,.9))}
 .tile-crown .ic{width:100%;height:100%}
 .tile-awake::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
   box-shadow:inset 0 0 0 2px rgba(255,59,92,.8);animation:awakePulse 1.7s ease-in-out infinite}
 @keyframes awakePulse{0%,100%{opacity:.3}50%{opacity:1}}
-.tile-aggro{position:absolute;top:1px;left:1px;min-width:calc(var(--tile)*.3);height:calc(var(--tile)*.3);padding:0 2px;
-  display:flex;align-items:center;justify-content:center;border-radius:5px;pointer-events:none;
-  font-family:var(--num);font-size:calc(var(--tile)*.22);font-weight:700;line-height:1;
+/* 临击：倒计时 ≤2 的那一格，红边框加粗并急闪，读作「马上要挨这一口」 */
+.tile-aggro-soon::after{box-shadow:inset 0 0 0 3px rgba(255,59,92,1),0 0 12px rgba(255,59,92,.7);
+  animation:awakePulse .5s ease-in-out infinite}
+/* 每只怪自己的节奏：红色叹号 + 它自己的倒计时，读作「这只还有 N 回合扑过来」 */
+.tile-aggro{position:absolute;top:1px;left:1px;height:calc(var(--tile)*.28);padding:0 calc(var(--tile)*.05);
+  display:flex;align-items:center;gap:calc(var(--tile)*.03);border-radius:calc(var(--tile)*.09);pointer-events:none;
+  font-family:var(--num);font-weight:700;line-height:1;
   background:var(--blood);color:#fff;box-shadow:0 0 6px rgba(255,59,92,.85)}
+.tile-aggro b{font-size:calc(var(--tile)*.22)}
+.tile-aggro i{font-style:normal;font-size:calc(var(--tile)*.19);opacity:.92}
 .tile.hint{animation:hintPulse .7s ease-out 2}
 @keyframes hintPulse{0%,100%{box-shadow:inset 0 0 0 0 rgba(63,224,255,0)}50%{box-shadow:inset 0 0 0 2px rgba(63,224,255,.9),0 0 14px rgba(63,224,255,.6)}}
 .tile.target{outline:2px dashed var(--amber);outline-offset:-2px}
@@ -500,8 +513,6 @@ b,strong{font-weight:700}
 .result-title{font-family:var(--display);font-size:29px;letter-spacing:.16em;margin:0;text-indent:.16em}
 .result.win .result-title{background:linear-gradient(178deg,#fff6e2,#ffd27a 40%,#ff9a2e);-webkit-background-clip:text;background-clip:text;color:transparent}
 .result-sub{margin:0;font-size:12px;color:var(--ink-3);line-height:1.7;max-width:300px}
-.score-big{font-family:var(--num);font-size:42px;font-weight:700;line-height:1;color:var(--gold);text-shadow:0 0 26px rgba(255,213,74,.5)}
-.score-lb{font-size:9.5px;letter-spacing:.3em;color:var(--ink-3);text-indent:.3em}
 .res-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;width:100%}
 
 /* ── 层间过场 ───────────────────────────────── */
@@ -515,6 +526,13 @@ b,strong{font-weight:700}
   background:linear-gradient(178deg,#fff6e2,#ffd27a 42%,#e0561a);-webkit-background-clip:text;background-clip:text;color:transparent;
   filter:drop-shadow(0 0 26px rgba(255,150,50,.45))}
 .fc-line{width:120px;height:1px;background:linear-gradient(90deg,transparent,var(--amber),transparent)}
+/* 解谜完成横幅：与层间过场同构但换成安全绿，读作「这一层被你解开了」，而不是「又下了一层」 */
+.floor-card.solve{background:radial-gradient(circle at 50% 50%,rgba(8,26,14,.86),rgba(3,9,5,.97))}
+.floor-card.solve .fc-depth{color:var(--acid)}
+.floor-card.solve .fc-name{background:linear-gradient(178deg,#f4fff2,#7dff5a 44%,#1f9c46);
+  filter:drop-shadow(0 0 26px rgba(90,255,140,.42))}
+.floor-card.solve .fc-line{background:linear-gradient(90deg,transparent,var(--acid),transparent)}
+.fc-sub{font-size:12px;letter-spacing:.06em;line-height:1.6;color:var(--ink-2);text-align:center;max-width:82vw}
 
 /* ── 提示 / 闪屏 ───────────────────────────────── */
 .toast{position:fixed;left:50%;top:calc(72px + env(safe-area-inset-top));transform:translateX(-50%);z-index:95;

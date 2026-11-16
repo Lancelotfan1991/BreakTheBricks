@@ -108,7 +108,7 @@
           <span class="chip chip-gold"><svg class="ic"><use href="#i-coin"/></svg><b id="goldVal">0</b></span>
           <span class="chip chip-key" id="keyChip" hidden><svg class="ic"><use href="#i-key"/></svg><b>钥匙</b></span>
           <span class="chip chip-threat" id="threatChip"><svg class="ic"><use href="#i-skull"/></svg><b id="threatVal">0</b><i><svg class="ic"><use href="#i-flag"/></svg><span id="flagText">0/0</span></i></span>
-          <span class="chip chip-aggro" id="aggroChip" hidden><svg class="ic"><use href="#i-fang"/></svg><b id="aggroCount">0</b><i id="aggroNext"></i></span>
+          <span class="chip chip-aggro" id="aggroChip" hidden><svg class="ic"><use href="#i-fang"/></svg><b id="aggroCount">0</b></span>
         </div>
       </div>
     </section>
@@ -129,7 +129,7 @@
 
     <nav class="actionbar" id="actionbar">
       <button class="act is-on" data-mode="explore"><svg class="ic"><use href="#i-hand"/></svg><span>探索</span></button>
-      <button class="act" data-mode="flag"><svg class="ic"><use href="#i-flag"/></svg><span>标记</span></button>
+      <button class="act" data-mode="flag"><svg class="ic"><use href="#i-flag"/></svg><span>标记</span><em id="flagCount">0</em></button>
       <button class="act" data-mode="scroll"><svg class="ic"><use href="#i-scroll"/></svg><span>卷轴</span><em id="scrollCount">1</em></button>
       <button class="act" data-mode="bomb"><svg class="ic"><use href="#i-bomb"/></svg><span>炸弹</span><em id="bombCount">1</em></button>
       <button class="act act-potion" data-act="potion"><svg class="ic"><use href="#i-potion"/></svg><span>药水</span><em id="potionCount">2</em></button>
@@ -142,6 +142,7 @@
 <div id="scrim" class="scrim" hidden></div>
 <div id="sheet" class="sheet" role="dialog" aria-modal="true" hidden><div class="sheet-grip"></div><div id="sheetBody" class="sheet-body"></div></div>
 <div id="floorCard" class="floor-card" hidden><div class="fc-inner"><span class="fc-depth" id="fcDepth">DEPTH 2</span><b class="fc-name" id="fcName">锈铁回廊</b><span class="fc-line"></span></div></div>
+<div id="solveCard" class="floor-card solve" hidden><div class="fc-inner"><span class="fc-depth">PUZZLE SOLVED</span><b class="fc-name">本层已识破</b><span class="fc-line"></span><span class="fc-sub" id="scSub"></span></div></div>
 <div id="toast" class="toast" hidden></div>
 <div id="flash" class="flash" aria-hidden="true"></div>
 

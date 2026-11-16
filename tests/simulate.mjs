@@ -1,7 +1,7 @@
 // 自动玩家：用于平衡性与稳定性验证（node tests/simulate.mjs [runs] [difficulty]）
 import {
   createRun, tapTile, attack, usePotion, buy, altarChoose, tryDescend, closePending,
-  forecast, neighbors, canDescend, SIZE, MAX_FLOOR, score, shopPrice, setMode, chooseRelic,
+  forecast, neighbors, canDescend, SIZE, MAX_FLOOR, shopPrice, setMode, chooseRelic,
 } from '../public/src/game.js';
 
 const isMob = (t) => t.mob && t.mob.hp > 0;
@@ -55,7 +55,7 @@ function shopPass(s) {
 
 const RELIC_PREF = ['momentum', 'dragonWard', 'ironStomach', 'vampiricEdge', 'guardianBane', 'thornMail',
   'alchemist', 'whetSoul', 'spikeSoles', 'carefulStep', 'mint', 'deepPockets', 'altarGrace', 'prospector',
-  'blastWave', 'trapSalvage', 'bloodPact', 'glassCannon', 'greedyHeart', 'bannerLord'];
+  'blastWave', 'trapSalvage', 'bloodPact', 'glassCannon', 'greedyHeart', 'bannerLord', 'bannerBearer'];
 
 function pickRelic(s, prefer) {
   if (prefer) {
@@ -65,10 +65,12 @@ function pickRelic(s, prefer) {
   }
   const hurt = s.player.hp < s.player.maxHp * 0.6;
   const val = (id) => {
-    let v = RELIC_PREF.length - RELIC_PREF.indexOf(id);
+    const idx = RELIC_PREF.indexOf(id);
+    // 表外遗物给低分而不是 indexOf(-1) 反推出的最高分，否则新增遗物会被机器人当成首选
+    let v = idx < 0 ? -5 : RELIC_PREF.length - idx;
     if (hurt && ['ironStomach', 'vampiricEdge', 'alchemist', 'dragonWard', 'altarGrace'].includes(id)) v += 12;
     if (!hurt && ['whetSoul', 'bloodPact', 'glassCannon', 'momentum'].includes(id)) v += 8;
-    if (id === 'bannerLord') v -= 20; // 自动玩家不插旗，这条对它等于白板
+    if (id === 'bannerLord' || id === 'bannerBearer') v -= 20; // 自动玩家不插旗，这两条对它等于白板
     return v;
   };
   return s.relicChoices.slice().sort((a, b) => val(b) - val(a))[0];
@@ -79,6 +81,7 @@ export function playRun(difficulty, seed, verbose = false, prefer = null) {
   const trace = [];
   const floors = [];
   let guard = 0, dmg = 0, healed = 0, potionsUsed = 0, blocked = 0, aggroDmg = 0, aggroHits = 0;
+  let forced = -1, forcedSig = '';
   let mark = { floor: 1, dmg: 0, healed: 0 };
   const snap = () => {
     floors.push({ floor: mark.floor, hp: s.player.hp, maxHp: s.player.maxHp, lv: s.player.lv, atk: s.player.atk, def: s.player.def, gold: s.player.gold, potions: s.player.potions, dmg: dmg - mark.dmg, healed: healed - mark.healed });
@@ -138,13 +141,22 @@ export function playRun(difficulty, seed, verbose = false, prefer = null) {
     const i = bestSafeTile(s);
     if (i < 0) {
       if (canDescend(s)) { run(tryDescend); continue; }
+      // 棋盘被完全识破后，守卫/龙王就摆在明面上且不会自动进预演：
+      // 必须主动去夺钥或通关，而不是把「没有暗格」当成无路可走。
+      const must = s.tiles.find((t) => t.revealed && (t.kind === 'elite' || t.kind === 'boss') && isMob(t));
+      const sig = `${p.hp}|${p.atk}|${p.def}|${p.bombs}|${p.potions}`;
+      if (must && (forced !== must.i || forcedSig !== sig)) {
+        forced = must.i; forcedSig = sig;
+        run(tapTile, must.i);
+        continue;
+      }
       break;
     }
     run(tapTile, i);
   }
   const res = {
     seed, difficulty, status: s.status, floor: s.floor, lv: s.player.lv, hp: s.player.hp, maxHp: s.player.maxHp,
-    atk: s.player.atk, def: s.player.def, kills: s.stats.kills, turns: s.stats.turns, score: score(s), guard,
+    atk: s.player.atk, def: s.player.def, kills: s.stats.kills, turns: s.stats.turns, guard,
     stuck: guard >= 4000, dmg, healed, potionsUsed, blocked, aggroDmg, aggroHits, trace: trace.join('>'), floors,
     relics: s.relics.slice(), whet: s.relicState.whet,
   };
