@@ -413,6 +413,68 @@ test('死亡与通关状态', () => {
   assert.equal(w.status, 'won');
 });
 
+test('龙王生成即现身：亮在棋盘、首步就开始计时、不计入邻格数字', () => {
+  for (let seed = 1; seed <= 30; seed++) {
+    const s = G.createRun('normal', seed);
+    s.floor = G.MAX_FLOOR;
+    G.buildFloor(s);
+    assert.equal(s.generated, false, '生成前棋盘仍是暗的');
+    G.tapTile(s, 30);
+    const boss = find(s, 'boss')[0];
+    assert.ok(boss, `seed${seed} 第 8 层应有龙王`);
+    assert.equal(boss.revealed, true, '龙王不藏在砖下');
+    assert.equal(boss.mob.awake, true, '生成即苏醒');
+    assert.equal(boss.mob.cd, boss.mob.period - 1, '首点那一步已经计入倒计时');
+    assert.ok(![30, ...G.neighbors(30)].includes(boss.i), '现身也不侵占首点安全区');
+    // 数字只数未探明的威胁：龙王已经亮着，邻格数字不该再把它算进去
+    const count = (i) => G.neighbors(i).filter((j) => {
+      const x = s.tiles[j];
+      return !x.revealed && ['monster', 'elite', 'trap', 'boss'].includes(x.kind);
+    }).length;
+    for (let i = 0; i < G.SIZE; i++) assert.equal(s.tiles[i].n, count(i), `seed${seed} 第 ${i} 格数字`);
+    // 把龙王也当成暗雷来数，它的邻格应当正好少 1：现身的龙王不再贡献数字
+    const raw = (i) => G.neighbors(i).filter((k) => ['monster', 'elite', 'trap', 'boss'].includes(s.tiles[k].kind)).length;
+    for (const j of G.neighbors(boss.i)) assert.equal(s.tiles[j].n, raw(j) - 1, '龙王格不贡献邻格数字');
+  }
+});
+
+test('龙王：在顶栏计数、倒计时归零扑咬、出手后重新计时', () => {
+  const s = G.createRun('normal', 9);
+  s.floor = G.MAX_FLOOR; G.buildFloor(s); G.tapTile(s, 30);
+  const boss = find(s, 'boss')[0];
+  const sum = G.aggroSummary(s);
+  assert.ok(sum && sum.count >= 1, '龙王从第一步起就在骚扰队列里');
+  assert.ok(sum.next <= boss.mob.cd, '汇总的最近一口不会晚于龙王自己的倒计时');
+
+  const back = G.deserialize(G.serialize(s));
+  assert.ok(back);
+  assert.deepEqual(back.tiles[boss.i].mob, boss.mob, '倒计时与苏醒状态可存档往返');
+
+  // 找一块远离龙王的暗格改成空地，用它安全地走一回合
+  const spend = s.tiles.filter((t) => !t.revealed && t.i !== boss.i && !G.neighbors(boss.i).includes(t.i)).slice(0, 1);
+  for (const t of spend) { t.kind = 'empty'; t.mob = null; }
+  G.recalc(s);
+  boss.mob.cd = 1;
+  const hp = s.player.hp;
+  G.tapTile(s, spend[0].i);
+  assert.ok(s.player.hp < hp, '倒计时归零要掉血');
+  assert.equal(boss.mob.cd, boss.mob.period, '扑咬后重新计时');
+});
+
+test('完全识破后龙王也停止计时', () => {
+  const s = arena();
+  putMob(s, 0, { boss: true, hp: 80, atk: 40, period: 4, awake: true, cd: 2 });
+  for (let i = 1; i < G.SIZE; i++) s.tiles[i].revealed = true;
+  G.recalc(s);
+  assert.ok(G.aggroSummary(s), '识破前龙王在计时');
+  G.tapTile(s, 1);
+  assert.equal(s.solved, true);
+  assert.equal(s.tiles[0].revealed, true);
+  assert.equal(s.tiles[0].mob.awake, false);
+  assert.equal(s.tiles[0].mob.cd, null);
+  assert.equal(G.aggroSummary(s), null, '识破后不再骚扰');
+});
+
 test('存档序列化往返一致', () => {
   const s = fresh('normal', 55);
   G.toggleFlag(s, firstHidden(s));

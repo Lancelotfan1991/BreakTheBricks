@@ -49,6 +49,15 @@ b,strong{font-weight:700}
    噪点纹理保留，去掉位移即可，静态颗粒同样有胶片感。 */
 .grain{position:absolute;inset:-50%;opacity:.055;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E")}
 .vignette{position:absolute;inset:0;background:radial-gradient(115% 85% at 50% 42%,transparent 42%,rgba(4,2,8,.72) 100%)}
+/* 龙王层：整层压成暗红，边缘随心跳加快加深 */
+body.boss-floor .ambient{background:
+  radial-gradient(120% 80% at 50% -10%,#3a0d2a 0%,transparent 62%),
+  linear-gradient(178deg,#1b0814 0%,#0b0409 55%,#160510 100%)}
+body.boss-floor .amb-1{background:radial-gradient(circle,#ff2d6f 0%,rgba(255,45,111,0) 68%);opacity:.4}
+body.boss-floor .amb-2{background:radial-gradient(circle,#8a0bb0 0%,rgba(138,11,176,0) 66%);opacity:.55}
+body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transparent 38%,rgba(62,0,16,.8) 100%);
+  animation:bossVignette 2.8s ease-in-out infinite}
+@keyframes bossVignette{0%,100%{opacity:.82}50%{opacity:1}}
 #fx{position:fixed;inset:0;z-index:70;pointer-events:none}
 
 /* ── 布局 ───────────────────────────────── */
@@ -196,6 +205,38 @@ b,strong{font-weight:700}
 .relic-codex:hover{color:var(--amber-hi);border-color:rgba(255,171,46,.42)}
 .relic-codex .ic{width:14px;height:14px;color:var(--violet)}
 
+/* ── 龙王血条 ─────────────────────────────── */
+.boss-bar{flex:none;display:flex;align-items:center;gap:8px;padding:5px 9px;border-radius:var(--r-m);
+  background:linear-gradient(160deg,rgba(255,79,216,.18),rgba(58,6,38,.6));border:1px solid rgba(255,79,216,.4);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 6px 20px -12px rgba(255,79,216,.9);
+  animation:bossBarIn .45s cubic-bezier(.2,1.4,.4,1)}
+.boss-bar[hidden]{display:none}
+.bb-crest{width:30px;height:30px;flex:none;display:grid;place-items:center;border-radius:9px;color:#ff8ae8;
+  background:radial-gradient(80% 80% at 35% 20%,rgba(255,79,216,.35),rgba(0,0,0,.4));border:1px solid rgba(255,79,216,.5)}
+.bb-crest .ic{width:20px;height:20px;filter:drop-shadow(0 0 6px rgba(255,79,216,.9))}
+.bb-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.bb-line{display:flex;align-items:center;gap:7px;line-height:1}
+.bb-line>b{font-family:var(--display);font-size:12.5px;letter-spacing:.12em;color:#ffd9f6;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bb-atk,.bb-cd{display:inline-flex;align-items:center;gap:3px;font-style:normal;
+  font-family:var(--num);font-size:11px;font-weight:700}
+.bb-atk .ic,.bb-cd .ic{width:11px;height:11px}
+.bb-atk{color:#ff9aab}.bb-atk .ic{color:var(--blood)}
+/* 倒计时靠右：右侧这枚数字就是「它还有几回合扑来」 */
+.bb-cd{margin-left:auto;color:#ffc46b;padding:1px 5px;border-radius:6px;
+  background:rgba(255,59,92,.2);border:1px solid rgba(255,59,92,.45)}
+.bb-cd .ic{color:var(--amber-hi)}
+.bb-cd[hidden]{display:none}
+.bb-track{flex:none;height:11px;border-color:rgba(255,79,216,.35);background:rgba(0,0,0,.6)}
+.bb-track i{background:linear-gradient(90deg,#ff2d6f,#ff4fd8 62%,#ff9df0);box-shadow:0 0 12px rgba(255,79,216,.65) inset}
+.bb-track span{font-size:9.5px;letter-spacing:.05em}
+@keyframes bossBarIn{from{opacity:0;transform:translateY(-8px) scale(.97)}to{opacity:1;transform:none}}
+/* 临击：和格子上的红边框同一个语义，血条整条跟着心跳 */
+.boss-bar.soon{animation:bossSoon 1s ease-in-out infinite}
+@keyframes bossSoon{0%,100%{border-color:rgba(255,79,216,.4);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 0 0 0 rgba(255,59,92,0)}
+  50%{border-color:rgba(255,59,92,.9);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 0 16px -2px rgba(255,59,92,.85)}}
+.boss-bar.dying{animation:none;opacity:.55;filter:grayscale(.4);transition:opacity .7s ease-out,filter .7s ease-out}
+
 /* ── 棋盘 ───────────────────────────────── */
 .board-wrap{flex:1;min-height:0;display:grid;place-items:center;padding:2px 0}
 .board-frame{position:relative;padding:7px;border-radius:16px;
@@ -210,6 +251,11 @@ b,strong{font-weight:700}
 .board{display:grid;grid-template-columns:repeat(7,var(--tile));grid-auto-rows:var(--tile);gap:var(--gap);perspective:600px}
 .board.shake{animation:shake .34s cubic-bezier(.36,.07,.19,.97)}
 @keyframes shake{10%,90%{transform:translate(-2px,1px)}20%,80%{transform:translate(3px,-2px)}30%,50%,70%{transform:translate(-4px,2px)}40%,60%{transform:translate(4px,-1px)}}
+/* 龙王专属：整屏动，幅度约为格子震屏的三倍 */
+.shake-heavy{animation:shakeHeavy .5s cubic-bezier(.36,.07,.19,.97)}
+@keyframes shakeHeavy{10%{transform:translate(-6px,3px)}20%{transform:translate(7px,-5px)}30%{transform:translate(-8px,5px)}
+  40%{transform:translate(8px,-4px)}50%{transform:translate(-6px,6px)}60%{transform:translate(6px,-6px)}
+  70%{transform:translate(-4px,3px)}80%{transform:translate(3px,-2px)}90%{transform:translate(-2px,1px)}}
 
 .tile{position:relative;width:var(--tile);height:var(--tile);border-radius:var(--r-s);display:grid;place-items:center;
   padding:0;overflow:hidden;transition:transform .12s,filter .16s;transform-style:preserve-3d}
@@ -258,6 +304,10 @@ b,strong{font-weight:700}
   box-shadow:inset 0 0 20px rgba(255,79,216,.28),0 0 24px -4px rgba(255,79,216,.9);animation:bossPulse 1.9s ease-in-out infinite}
 .tile-boss>.ic{color:#ff8ae8}
 @keyframes bossPulse{0%,100%{box-shadow:inset 0 0 20px rgba(255,79,216,.28),0 0 18px -6px rgba(255,79,216,.8)}50%{box-shadow:inset 0 0 26px rgba(255,79,216,.42),0 0 30px -2px rgba(255,79,216,1)}}
+/* 现身：从一点紫光里撑开，1.2s 后交回 bossPulse 的呼吸 */
+.tile-boss.boss-in{animation:bossIn 1.25s cubic-bezier(.2,.9,.3,1)}
+@keyframes bossIn{0%{transform:scale(.18) rotate(-8deg);filter:brightness(3.4) saturate(1.8);opacity:.2}
+  45%{transform:scale(1.14) rotate(2deg);filter:brightness(2)}100%{transform:scale(1);filter:none;opacity:1}}
 .tile-dead{background:linear-gradient(170deg,#1c1424,#120c1a);border-color:rgba(255,255,255,.05);box-shadow:inset 0 2px 7px rgba(0,0,0,.7)}
 .tile-dead .ic{color:#4d3f5c;width:calc(var(--tile)*.46);height:calc(var(--tile)*.46);opacity:.75}
 .tile-trap .ic{color:#ff9f3a}
@@ -562,6 +612,8 @@ b,strong{font-weight:700}
 .flash.hurt{background:radial-gradient(120% 90% at 50% 50%,transparent 34%,rgba(255,20,60,.62) 100%)}
 .flash.gold{animation:flashHurt .6s ease-out;background:radial-gradient(120% 90% at 50% 50%,rgba(255,213,74,.28) 0%,transparent 62%)}
 .flash.heal{animation:flashHurt .6s ease-out;background:radial-gradient(120% 90% at 50% 60%,rgba(125,255,90,.22) 0%,transparent 60%)}
+.flash.boss{animation:flashBoss .72s ease-out;background:radial-gradient(120% 90% at 50% 50%,rgba(255,79,216,.34) 0%,transparent 66%)}
+@keyframes flashBoss{0%{opacity:0}10%{opacity:1}35%{opacity:.4}60%{opacity:.86}100%{opacity:0}}
 
 /* 浮动数字 */
 .float{position:fixed;z-index:78;pointer-events:none;font-family:var(--num);font-weight:700;font-size:20px;
@@ -598,6 +650,10 @@ b,strong{font-weight:700}
 }
 /* 遗物条是新增的一行，在矮屏上先于其它元素压缩，把高度还给棋盘 */
 @media (max-height:720px){
+  .boss-bar{padding:3px 8px;gap:6px}
+  .bb-crest{width:26px;height:26px}
+  .bb-crest .ic{width:17px;height:17px}
+  .bb-main{gap:3px}
   .relic-bar{padding:2px 8px;gap:6px}
   .relic-slots{padding:2px 3px 3px;gap:4px}
   .relic-chip{width:26px;height:26px;border-radius:8px}
@@ -630,6 +686,12 @@ b,strong{font-weight:700}
   .relic-chip em{font-size:7.5px;padding:1px 2px;right:-2px;bottom:-2px}
   .relic-codex{padding:3px 6px}
   .relic-codex span{display:none}
+  .boss-bar{padding:2px 7px;gap:5px}
+  .bb-crest{width:22px;height:22px;border-radius:7px}
+  .bb-crest .ic{width:14px;height:14px}
+  .bb-line>b{font-size:11px}
+  .bb-track{height:9px}
+  .bb-track span{font-size:8.5px}
 }
 @media (max-width:340px){
   .act span{font-size:8.5px}

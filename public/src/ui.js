@@ -22,6 +22,8 @@ const el = {
   toast: $('#toast'), floorCard: $('#floorCard'), fcDepth: $('#fcDepth'), fcName: $('#fcName'),
   diffGrid: $('#diffGrid'), record: $('#record'), btnContinue: $('#btnContinue'), actionbar: $('#actionbar'),
   relicBar: $('#relicBar'), relicSlots: $('#relicSlots'),
+  bossBar: $('#bossBar'), bossName: $('#bossName'), bossFill: $('#bossFill'),
+  bossHp: $('#bossHp'), bossAtk: $('#bossAtk'), bossCdWrap: $('#bossCdWrap'), bossCd: $('#bossCd'),
 };
 
 let S = null;
@@ -192,6 +194,80 @@ let prev = {};
 let prevFlag = null;
 function bump(node) { node.classList.remove('bump'); void node.offsetWidth; node.classList.add('bump'); setTimeout(() => node.classList.remove('bump'), 460); }
 
+/* ─────────── 龙王血条 ─────────── */
+let bossAnnounced = false;
+let bossDying = false;
+let bossShown = false;
+
+function bossTile() {
+  if (!S || !S.tiles) return null;
+  return S.tiles.find((t) => t.kind === 'boss' && t.revealed && t.mob && t.mob.hp > 0) || null;
+}
+
+function resetBossUi() {
+  bossAnnounced = false;
+  bossDying = false;
+  bossShown = false;
+  el.bossBar.hidden = true;
+  el.bossBar.classList.remove('soon', 'dying');
+  document.body.classList.remove('boss-floor');
+}
+
+function updateBossBar() {
+  const t = bossTile();
+  const show = !!t || bossDying;
+  el.bossBar.hidden = !show;
+  // 血条出现/消失会挤压棋盘，必须重算格子尺寸，否则龙王层会被顶出可视区
+  if (show !== bossShown) { bossShown = show; fitBoard(); }
+  // 龙王倒下后红雾留到结算，别在击杀瞬间突然褪色
+  document.body.classList.toggle('boss-floor', !!t || bossDying);
+  if (!t) return;
+  const m = t.mob;
+  const cd = m.cd ?? m.period;
+  el.bossName.textContent = G.mobName(m);
+  el.bossFill.style.transform = `scaleX(${Math.max(0, m.hp / m.maxHp)})`;
+  el.bossHp.textContent = `${m.hp} / ${m.maxHp}`;
+  el.bossAtk.textContent = String(m.atk);
+  el.bossCd.textContent = String(cd);
+  // 识破后龙王会重新安静下来，倒计时藏起来比显示一个假的满值更诚实
+  el.bossCdWrap.hidden = !(m.awake && m.cd != null);
+  el.bossBar.classList.toggle('soon', m.awake && m.cd != null && cd <= 2);
+  el.bossBar.setAttribute('aria-label', m.awake && m.cd != null
+    ? tr('ui.boss.aria', { name: G.mobName(m), hp: m.hp, max: m.maxHp, atk: m.atk, cd })
+    : tr('ui.boss.aria.asleep', { name: G.mobName(m), hp: m.hp, max: m.maxHp, atk: m.atk }));
+}
+
+// 龙王第一次亮在棋盘上：咆哮、震屏、红光，一次把「这一层不一样」说完
+function announceBoss() {
+  const t = bossTile();
+  if (!t || bossAnnounced) return;
+  bossAnnounced = true;
+  const b = tiles[t.i];
+  const c = fx.center(b);
+  audio.play('boss');
+  fx.flash('boss');
+  fx.shake(el.game, 'heavy');
+  fx.haptic('heavy');
+  fx.ring(c.x, c.y, '#ff4fd8', 280);
+  fx.magic(c.x, c.y);
+  b.classList.add('boss-in');
+  setTimeout(() => b.classList.remove('boss-in'), 1300);
+  toast(tr('ui.toast.boss', { name: G.mobName(t.mob) }), 'magic');
+}
+
+function markBossFelled(mob) {
+  bossDying = true;
+  el.bossBar.classList.add('dying');
+  el.bossBar.classList.remove('soon');
+  el.bossFill.style.transform = 'scaleX(0)';
+  el.bossHp.textContent = `0 / ${mob.maxHp}`;
+  el.bossCdWrap.hidden = true;
+  fx.flash('boss');
+  fx.shake(el.game, 'heavy');
+  fx.rumble(520);
+  audio.play('boss');
+}
+
 function renderHud() {
   const p = S.player;
   el.floorNum.textContent = S.floor;
@@ -254,9 +330,10 @@ function renderHud() {
     el.ticker.className = 'ticker t-' + last.tone;
     el.log.classList.remove('in'); void el.log.offsetWidth; el.log.classList.add('in');
   }
+  updateBossBar();
 }
 
-function render(popSet) { renderBoard(popSet); renderHud(); renderRelics(); }
+function render(popSet) { renderBoard(popSet); renderHud(); renderRelics(); announceBoss(); }
 
 /* ─────────── 遗物 ─────────── */
 const rarityColor = (r) => G.RELIC_RARITY[r.rarity].color;
@@ -403,7 +480,11 @@ function consume(events) {
         const src = e.at >= 0 ? e.at : S.pendingCombat;
         const at = src >= 0 && S.tiles[src] && S.tiles[src].revealed ? src : -1;
         const c = at >= 0 ? tileCenter(at) : fx.center(el.hpFill);
-        fx.flash('hurt'); fx.shake(el.board); fx.blood(c.x, c.y);
+        // 龙王的每一口都该有分量：整屏重震 + 专属红光，和普通小怪的抖动区分开
+        const bossHit = at >= 0 && S.tiles[at].mob && S.tiles[at].mob.boss;
+        fx.flash(bossHit ? 'boss' : 'hurt');
+        fx.shake(bossHit ? el.game : el.board, bossHit ? 'heavy' : '');
+        fx.blood(c.x, c.y);
         fx.float(c.x, c.y - 10, '-' + e.amount, 'dmg');
         audio.play(e.source === 'trap' ? 'trap' : 'hit'); fx.haptic('heavy');
         break;
@@ -428,6 +509,7 @@ function consume(events) {
         fx.float(c.x, c.y - 18, '+' + e.mob.xp + ' XP', 'xp');
         audio.play('kill'); fx.haptic('medium');
         if (e.mob.elite || e.mob.boss) fx.shake(el.board);
+        if (e.mob.boss) markBossFelled(e.mob);
         break;
       }
       case 'combat': audio.play('swing'); fx.haptic('light'); break;
@@ -500,7 +582,11 @@ function apply(events, opts = {}) {
   saveRun();
   if (events.some((e) => e.type === 'descend')) return descendSequence();
   if (S.status === 'dead') return endSequence(false);
-  if (S.status === 'won') return endSequence(true);
+  if (S.status === 'won') {
+    // 血条排空 + 重震之后再把结算页推上来，让「龙王倒下」这一下站稳
+    if (events.some((e) => e.type === 'kill' && e.mob.boss)) { busy = true; setTimeout(() => endSequence(true), 820); return; }
+    return endSequence(true);
+  }
   const sv = events.find((e) => e.type === 'solved');
   // 抽屉会盖住棋盘，这时候逐格回放没人看得见，直接落到终态
   if (sv && !S.relicChoices && S.pendingCombat < 0 && S.pendingAltar < 0) return solveSequence(sv);
@@ -885,6 +971,7 @@ function startRun(diff, seed) {
   S = G.createRun(diff, seed ?? ((Date.now() ^ (Math.random() * 0xffffff)) | 0));
   prev = {};
   busy = false;
+  resetBossUi();
   forceClose();
   el.title.hidden = true;
   el.game.hidden = false;
@@ -901,6 +988,7 @@ function resumeRun() {
   if (!s) return false;
   S = s; difficulty = s.difficulty; prev = {};
   busy = false;
+  resetBossUi();
   forceClose();
   el.title.hidden = true; el.game.hidden = false;
   buildBoard(); render();
@@ -915,6 +1003,7 @@ function resumeRun() {
 function toTitle() {
   clearSolve();
   busy = false;
+  resetBossUi();
   forceClose();
   saveRun();
   S = null;

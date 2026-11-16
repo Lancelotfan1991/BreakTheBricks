@@ -387,7 +387,17 @@ export function ensureBoard(s, safeIndex) {
   const far = (i) => { const a = xy(i), b = xy(safeIndex); return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) >= 4; };
 
   if (p.stairs) { const i = take(far); s.tiles[i].kind = 'stairs'; s.stairsIndex = i; }
-  if (p.boss) { const i = take(far); s.tiles[i].kind = 'boss'; s.tiles[i].mob = makeMob(s, f, d, 'boss'); }
+  if (p.boss) {
+    const i = take(far), t = s.tiles[i];
+    t.kind = 'boss';
+    t.mob = makeMob(s, f, d, 'boss');
+    // 龙王不藏在砖下：它是这一层的压力来源，生成即亮在棋盘上，并从第一步开始计时。
+    // 现身不等于「已探明」以外的特权：它只是不再计入邻格数字，其余规则照旧。
+    t.revealed = true;
+    t.mob.awake = true;
+    t.mob.cd = t.mob.period;
+    say(s, 'log.boss.awake', { mob: ref('mob.' + t.mob.id + '.name'), period: t.mob.period }, 'bad');
+  }
   if (p.elite) { const i = take(far); s.tiles[i].kind = 'elite'; s.tiles[i].mob = makeMob(s, f, d, 'elite'); }
   if (p.altar) s.tiles[take()].kind = 'altar';
   for (let k = 0; k < p.monsters; k++) { const i = take(); s.tiles[i].kind = 'monster'; s.tiles[i].mob = makeMob(s, f, d, 'monster'); }

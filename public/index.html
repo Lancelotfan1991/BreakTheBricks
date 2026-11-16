@@ -118,6 +118,18 @@
       <button class="relic-codex" data-act="codex" aria-label="遗物图鉴" data-i18n-aria="ui.btn.codex"><svg class="ic"><use href="#i-relic"/></svg><span data-i18n="ui.relic.codex.short">图鉴</span></button>
     </div>
 
+    <div class="boss-bar" id="bossBar" hidden>
+      <span class="bb-crest"><svg class="ic"><use href="#i-dragon"/></svg></span>
+      <div class="bb-main">
+        <div class="bb-line">
+          <b id="bossName">深渊龙王</b>
+          <i class="bb-atk"><svg class="ic"><use href="#i-sword"/></svg><b id="bossAtk">0</b></i>
+          <i class="bb-cd" id="bossCdWrap"><svg class="ic"><use href="#i-fang"/></svg><b id="bossCd">0</b></i>
+        </div>
+        <div class="bar bb-track"><i id="bossFill"></i><span id="bossHp">0 / 0</span></div>
+      </div>
+    </div>
+
     <div class="board-wrap" id="boardWrap">
       <div class="board-frame">
         <span class="sconce sconce-l"></span><span class="sconce sconce-r"></span>

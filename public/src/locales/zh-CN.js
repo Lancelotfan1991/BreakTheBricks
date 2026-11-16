@@ -214,6 +214,7 @@ export default {
   'log.chest.bomb': '宝箱开启：裂石炸弹 ×1。',
   'log.pickup.potion': '拾取治疗药水 ×1。',
   'log.encounter': '遭遇 {mob}！生命 {hp} · 攻击 {atk}',
+  'log.boss.awake': '{mob}从砖石深处抬起头——它已苏醒，每 {period} 回合扑来撕咬。',
   'log.trap.disarm': '卷轴的微光提前引爆了陷阱，你安然无恙。',
   'log.trap.ward': '你翻开了一张陷阱！猫步让你在尖刺合拢前收回了脚——毫发无伤。（剩 {n} 次）',
   'log.trap.hit': '你翻开了一张陷阱！尖刺陷阱对你造成了 {dmg} 点伤害。',
@@ -295,6 +296,8 @@ export default {
   'ui.hud.def.aria.debt': '防御 {def}，祭坛借走 {n} 点，下行时恢复',
   'ui.hud.threat.aria': '剩余威胁 {remain}，旗子已用 {used}，上限 {cap}',
   'ui.hud.aggro.aria': '{n} 只怪物被惊扰',
+  'ui.boss.aria': '{name}：生命 {hp}/{max}，攻击 {atk}，{cd} 回合后扑来',
+  'ui.boss.aria.asleep': '{name}：生命 {hp}/{max}，攻击 {atk}，已被识破，不再骚扰',
   'ui.hud.flag.aria': '标记模式，剩余旗子 {left}，上限 {cap}',
   'ui.descend.locked': '需钥匙',
   'ui.descend.next': '下一层',
@@ -415,7 +418,7 @@ export default {
   'ui.help.lg.stairs.t': '下行阶梯',
   'ui.help.lg.stairs.d': '找到它并持有钥匙即可下一层',
   'ui.help.lg.dragon.t': '深渊龙王',
-  'ui.help.lg.dragon.d': '第 8 层的终点，击败即通关',
+  'ui.help.lg.dragon.d': '第 8 层的终点；一进入这层就现身开始倒数，击败即通关。顶部血条右侧的利牙数字＝它还有几回合扑来',
 
   // ---------- 暂停菜单 ----------
   'ui.menu.title': '暂停',
@@ -450,6 +453,7 @@ export default {
   'ui.toast.levelup': '等级提升！Lv.{lv}',
   'ui.toast.key': '获得钥匙 · 阶梯已解封',
   'ui.toast.stairs': '发现下行阶梯',
+  'ui.toast.boss': '{name}苏醒',
   'ui.toast.relic': '遗物 · {name}',
   'ui.toast.locked': '钥匙守卫也算「雷」，打掉它才能夺钥',
   'ui.toast.lethal': '这一击会要了你的命',

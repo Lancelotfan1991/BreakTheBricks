@@ -190,6 +190,12 @@ export class Audio {
         [523, 659, 784, 1046, 784, 1046, 1318].forEach((f, i) => this._tone({ freq: f, type: 'triangle', dur: 0.5, vol: 0.13, delay: i * 0.13 }));
         [262, 330, 392].forEach((f) => this._tone({ freq: f, type: 'sine', dur: 1.6, vol: 0.07, delay: 0.9 }));
         break;
+      case 'boss':
+        this._tone({ freq: 92, to: 46, type: 'sawtooth', dur: 0.9, vol: 0.2 });
+        this._tone({ freq: 138, to: 68, type: 'square', dur: 0.75, vol: 0.1, delay: 0.05 });
+        this._burst({ dur: 0.85, vol: 0.2, freq: 700, sweep: 60 });
+        [330, 392, 494].forEach((f, i) => this._tone({ freq: f, to: f * 0.5, type: 'sawtooth', dur: 0.6, vol: 0.07, delay: 0.18 + i * 0.1 }));
+        break;
       case 'altar':
         this._tone({ freq: 220, to: 440, type: 'sine', dur: 0.7, vol: 0.1 });
         this._tone({ freq: 331, to: 662, type: 'sine', dur: 0.8, vol: 0.07, delay: 0.06 });

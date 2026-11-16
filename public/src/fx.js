@@ -157,12 +157,13 @@ export const fx = {
     a.onfinish = arrive;
     a.oncancel = arrive;
   },
-  shake(el) {
+  shake(el, power = '') {
     if (reduced || !el) return;
-    el.classList.remove('shake');
+    const cls = power === 'heavy' ? 'shake-heavy' : 'shake';
+    el.classList.remove('shake', 'shake-heavy');
     void el.offsetWidth;
-    el.classList.add('shake');
-    setTimeout(() => el.classList.remove('shake'), 380);
+    el.classList.add(cls);
+    setTimeout(() => el.classList.remove(cls), power === 'heavy' ? 520 : 380);
   },
   flash(kind) {
     const el = document.getElementById('flash');
