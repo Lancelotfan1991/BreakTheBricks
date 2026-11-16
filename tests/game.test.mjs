@@ -239,6 +239,9 @@ test('陷阱扣血、插旗格可直接点开、炸弹无伤清除', () => {
   assert.equal(s.flags, 0, '自动拔旗要归还旗数预算');
   assert.equal(trap.used, true);
   assert.ok(s.player.hp < hp0);
+  const hit = s.log[s.log.length - 1];
+  assert.equal(hit.k, 'log.trap.hit', '日志应明确说明踩中了陷阱');
+  assert.equal(hit.p.dmg, hp0 - s.player.hp, '日志伤害应与实际扣血一致');
 
   const s2 = fresh('normal', 9);
   const trap2 = find(s2, 'trap')[0];
@@ -1321,6 +1324,30 @@ test('卷轴与冲击波掀开插旗格时，旗数预算同步归还', () => {
   assert.equal(tr.revealed, true, '冲击波连带掀开它');
   assert.equal(tr.flagged, false);
   assert.equal(s2.flags, 0, '冲击波清旗后预算不漂移');
+});
+
+test('完整推理后快速展开不会踩中陷阱', () => {
+  const kinds = ['monster', 'elite', 'trap', 'boss'];
+  let s = null, target = null;
+  for (let seed = 1; seed <= 60 && !target; seed++) {
+    const c = fresh('normal', seed);
+    for (const t of c.tiles) {
+      if (!t.revealed || t.kind !== 'empty' || t.n === 0) continue;
+      const hid = G.neighbors(t.i).filter((j) => !c.tiles[j].revealed && !c.tiles[j].flagged);
+      const threats = hid.filter((j) => kinds.includes(c.tiles[j].kind));
+      if (threats.length !== t.n || threats.length === hid.length) continue;
+      s = c; target = { t, hid, threats }; break;
+    }
+  }
+  assert.ok(target, '应能找到旗位可唯一确定的数字格');
+  for (const j of target.threats) G.toggleFlag(s, j);
+  assert.equal(s.flags, target.t.n);
+  const hp = s.player.hp;
+  const evs = G.tapTile(s, target.t.i);
+  assert.ok(!evs.some((e) => e.type === 'damage'), '旗位完全正确时快速展开不应受伤');
+  assert.equal(s.player.hp, hp);
+  const safe = target.hid.filter((j) => !target.threats.includes(j));
+  for (const j of safe) assert.equal(s.tiles[j].revealed, true, '安全暗格应被展开');
 });
 
 test('快速展开仍然跳过插旗格', () => {

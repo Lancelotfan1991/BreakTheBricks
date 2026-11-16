@@ -329,7 +329,7 @@ export const BAL = {
   refBurn: 0.055, refBurnF: 0.012,
   lvXp: 12, lvXpF: 10, lvHp: 4, lvAtk: 1, lvDefEvery: 3,
   potionPct: 0.3, prayPct: 0.45, descendPct: 0.05,
-  trapBase: 4, trapF: 2.6,
+  trapBase: 5, trapF: 2.8,
   aggroMul: 0.25,
   bloodCost: 10, bloodAtk: 2,
   eliteCap: 0.9, bossCap: 0.95, shopWhet: 1, mobGold: 2, mobGoldF: 1, chestGold: 8, chestGoldF: 3,
