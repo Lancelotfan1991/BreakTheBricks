@@ -79,21 +79,24 @@ function shopPass(s, build) {
   }
 }
 
-const RELIC_PREF = ['momentum', 'strataOath', 'dragonWard', 'ironStomach', 'vampiricEdge', 'guardianBane',
-  'thornMail', 'recoilMail', 'alchemist', 'whetSoul', 'vigor', 'bannerLord', 'bannerBearer', 'siegeBreak',
-  'moraleBreak', 'spikeSoles', 'carefulStep', 'mint', 'deepPockets', 'altarGrace', 'prospector', 'perfectMind',
-  'blastWave', 'cartographer', 'trapSalvage', 'bloodPact', 'glassCannon', 'greedyHeart'];
+const RELIC_PREF = ['momentum', 'strataOath', 'vow', 'dragonWard', 'ironStomach', 'vampiricEdge', 'heartEater',
+  'guardianBane', 'thornMail', 'recoilMail', 'alchemist', 'whetSoul', 'vigor', 'bannerLord',
+  'bannerBearer', 'siegeBreak', 'moraleBreak', 'spikeSoles', 'carefulStep', 'mint', 'deepPockets', 'greedyHeart',
+  'altarGrace', 'warPaint', 'prospector', 'torch', 'perfectMind', 'trapSalvage', 'tally', 'blastWave',
+  'cartographer', 'bloodPact', 'glassCannon', 'chronicle', 'bonePlate', 'rations'];
 
 // 两条构筑轴各自的取舍顺序：用来验证「专投一条」是否真的能通关，而不是只测混合抓取
 const BUILD_PREF = {
-  reason: ['bannerBearer', 'siegeBreak', 'moraleBreak', 'perfectMind', 'bannerLord', 'cartographer', 'momentum',
-    'dragonWard', 'guardianBane', 'recoilMail', 'thornMail', 'whetSoul', 'vigor', 'ironStomach', 'vampiricEdge',
-    'alchemist', 'mint', 'deepPockets', 'altarGrace', 'prospector', 'spikeSoles', 'carefulStep', 'blastWave',
-    'trapSalvage', 'strataOath', 'bloodPact', 'glassCannon', 'greedyHeart'],
-  body: ['strataOath', 'recoilMail', 'vigor', 'ironStomach', 'vampiricEdge', 'dragonWard', 'thornMail',
-    'guardianBane', 'momentum', 'alchemist', 'whetSoul', 'altarGrace', 'bloodPact', 'glassCannon', 'bannerLord',
-    'bannerBearer', 'siegeBreak', 'moraleBreak', 'spikeSoles', 'carefulStep', 'mint', 'deepPockets', 'prospector',
-    'perfectMind', 'blastWave', 'cartographer', 'trapSalvage', 'greedyHeart'],
+  reason: ['bannerBearer', 'siegeBreak', 'moraleBreak', 'perfectMind', 'bannerLord', 'cartographer', 'tally',
+    'trapSalvage', 'chronicle', 'momentum', 'dragonWard', 'guardianBane', 'recoilMail', 'thornMail', 'whetSoul',
+    'vigor', 'ironStomach', 'vampiricEdge', 'bonePlate', 'rations', 'alchemist', 'mint', 'deepPockets',
+    'greedyHeart', 'altarGrace', 'warPaint', 'prospector', 'spikeSoles', 'carefulStep', 'blastWave', 'torch',
+    'strataOath', 'bloodPact', 'glassCannon', 'heartEater', 'vow'],
+  body: ['strataOath', 'recoilMail', 'vigor', 'vow', 'ironStomach', 'vampiricEdge', 'heartEater', 'dragonWard',
+    'thornMail', 'guardianBane', 'momentum', 'alchemist', 'whetSoul', 'altarGrace', 'warPaint', 'bloodPact',
+    'glassCannon', 'bannerLord', 'bannerBearer', 'siegeBreak', 'moraleBreak', 'spikeSoles', 'carefulStep', 'mint',
+    'deepPockets', 'greedyHeart', 'prospector', 'perfectMind', 'blastWave', 'cartographer', 'trapSalvage',
+    'bonePlate', 'rations', 'tally', 'chronicle', 'torch'],
 };
 
 function pickRelic(s, prefer) {
@@ -108,8 +111,8 @@ function pickRelic(s, prefer) {
     const idx = table.indexOf(id);
     // 表外遗物给低分而不是 indexOf(-1) 反推出的最高分，否则新增遗物会被机器人当成首选
     let v = idx < 0 ? -5 : table.length - idx;
-    if (hurt && ['ironStomach', 'vampiricEdge', 'alchemist', 'dragonWard', 'altarGrace'].includes(id)) v += 12;
-    if (!hurt && ['whetSoul', 'bloodPact', 'glassCannon', 'momentum'].includes(id)) v += 8;
+    if (hurt && ['ironStomach', 'vampiricEdge', 'alchemist', 'dragonWard', 'altarGrace', 'chronicle', 'rations', 'vow', 'heartEater'].includes(id)) v += 12;
+    if (!hurt && ['whetSoul', 'bloodPact', 'glassCannon', 'momentum', 'warPaint', 'heartEater', 'tally', 'trapSalvage', 'torch'].includes(id)) v += 8;
     if (['bannerLord', 'bannerBearer', 'siegeBreak', 'moraleBreak'].includes(id)) v += 4; // 机器人会插旗，这几条不再是白板
     return v;
   };
@@ -139,7 +142,7 @@ export function playRun(difficulty, seed, verbose = false, prefer = null, build 
     }
     return evs;
   };
-  while (s.status === 'playing' && guard++ < 4000) {
+  while (s.status === 'playing' && guard++ < 12000) {
     if (s.relicChoices) { run(chooseRelic, pickRelic(s, build || prefer)); continue; }
     if (s.pendingAltar >= 0) {
       const p = s.player;
@@ -189,7 +192,7 @@ export function playRun(difficulty, seed, verbose = false, prefer = null, build 
     const cheap = s.tiles.find((t) => t.revealed && isMob(t) && !forecast(p, t.mob).lethal && forecast(p, t.mob).take <= p.hp * 0.3);
     if (cheap) { run(attack, cheap.i); continue; }
 
-    if (canDescend(s) && (s.floor === 1 || s.hasKey)) {
+    if (canDescend(s)) {
       const left = s.tiles.filter((t) => t.revealed && isMob(t) && !forecast(p, t.mob).lethal && forecast(p, t.mob).take <= p.hp * 0.22);
       if (!left.length || p.hp < p.maxHp * 0.4) { run(tryDescend); trace.push(`F${s.floor}`); continue; }
       run(attack, left[0].i); continue;
@@ -213,7 +216,7 @@ export function playRun(difficulty, seed, verbose = false, prefer = null, build 
   const res = {
     seed, difficulty, status: s.status, floor: s.floor, lv: s.player.lv, hp: s.player.hp, maxHp: s.player.maxHp,
     atk: s.player.atk, def: s.player.def, kills: s.stats.kills, turns: s.stats.turns, guard,
-    stuck: guard >= 4000, dmg, healed, potionsUsed, blocked, aggroDmg, aggroHits, trace: trace.join('>'), floors,
+    stuck: guard >= 12000, dmg, healed, potionsUsed, blocked, aggroDmg, aggroHits, trace: trace.join('>'), floors,
     relics: s.relics.slice(), whet: s.relicState.whet, solves, solveFlags, perfect,
     thorns: s.player.thorns, survey: s.relicState.survey, atkBonus: s.player.atkBonus, flagBonus: s.flagBonus,
   };

@@ -5,8 +5,11 @@ import { t as tr, ref } from './i18n.js';
 export const COLS = 7;
 export const ROWS = 9;
 export const SIZE = COLS * ROWS;
-export const MAX_FLOOR = 8;
-export const SAVE_VERSION = 10;
+export const MAX_FLOOR = 30;
+export const BOSS_EVERY = 10;
+export const SAVE_VERSION = 12;
+export const isBossFloor = (f) => f % BOSS_EVERY === 0;
+export const isFinalFloor = (f) => f >= MAX_FLOOR;
 
 export const DIFFICULTIES = {
   easy: { id: 'easy', threat: 0.78, power: 0.82, loot: 1.35, hp: 38, gold: 25, potions: 2, flags: 4 },
@@ -75,27 +78,62 @@ export const RELIC_CATS = ['explore', 'combat', 'supply', 'pact'];
 export const rarityName = (id) => tr('rarity.' + id);
 export const catName = (id) => tr('cat.' + id);
 export const RELIC_DRAW_COUNT = 3;
+// 一局能拿到的遗物必须远少于池子，构筑才有取舍。守卫每 2 层才掉一次，龙王另给一次。
+export const RELIC_EVERY = 2;
+export const isRelicFloor = (f) => !isBossFloor(f) && f % RELIC_EVERY === 0;
 export const RELIC_WHET_CAP = 6;
 export const RELIC_BANNER_CAP = 12;
 export const RELIC_WARD_CHARGES = 3;
 export const RELIC_FLAG_BONUS = 3;
 export const ALTAR_FLAG_BONUS = 2;
+export const RELIC_TALLY_XP = 5;        // 结绳：每面插对的旗换经验
+export const RELIC_TRAP_FLAG_GOLD = 8;  // 拾荒爪：每面插对的陷阱换金币
+export const RELIC_CHRONICLE_HEAL = 0.15; // 编年史：完美识破回复生命上限的 15%
+export const RELIC_HEART_GAIN = 2;      // 噬心：每次击杀的生命上限成长
+export const RELIC_HEART_CAP = 10;      // 噬心：击杀累积的次数上限
+export const RELIC_PAINT_ATK = 2;       // 战纹：攻击加成
+export const RELIC_PAINT_DEF = 1;       // 战纹：防御代价
+export const RELIC_RATION_HEAL = 0.07;  // 干粮：下行额外回复
+export const RELIC_TORCH_GOLD = 15;     // 火把：炸弹清除目标的额外金币
+export const RELIC_TORCH_SHOP = 0.5;    // 火把：炸弹售价倍率
+export const RELIC_PLATE_STEP = 40;     // 骨甲：每 40 生命上限换 1 点固定减伤
+export const RELIC_PLATE_CAP = 4;       // 骨甲：固定减伤上限
+export const RELIC_VOW_HP = 30;         // 静默誓约：生命上限加成
+export const RELIC_VOW_DEF = 3;         // 静默誓约：防御加成
+export const RELIC_VOW_ATK = 2;         // 静默誓约：攻击代价
+export const GREEDY_HEART_SHOP = 1.2;   // 贪婪之心：商店价格倍率
+
+// 越深越容易遇到高品质遗物。权重随层数连续漂移：
+// 第 1 层 60/30/10，第 30 层 30/45/30，中间平滑过渡。
+export function relicRarityWeights(floor = 1) {
+  const t = Math.max(0, Math.min(1, (floor - 1) / (MAX_FLOOR - 1)));
+  return {
+    common: RELIC_RARITY.common.weight * (1 - 0.5 * t),
+    rare: RELIC_RARITY.rare.weight * (1 + 0.5 * t),
+    epic: RELIC_RARITY.epic.weight * (1 + 2 * t),
+  };
+}
 
 export const RELICS = [
   { id: 'spikeSoles', icon: 'boot', cat: 'explore', rarity: 'common' },
   { id: 'carefulStep', icon: 'hand', cat: 'explore', rarity: 'rare' },
   { id: 'trapSalvage', icon: 'coin', cat: 'explore', rarity: 'common' },
+  { id: 'tally', icon: 'tally', cat: 'explore', rarity: 'common' },
   { id: 'blastWave', icon: 'bomb', cat: 'explore', rarity: 'rare' },
   { id: 'bannerLord', icon: 'flag', cat: 'explore', rarity: 'rare' },
   { id: 'bannerBearer', icon: 'flag', cat: 'explore', rarity: 'rare' },
   { id: 'cartographer', icon: 'scroll', cat: 'explore', rarity: 'rare' },
+  { id: 'chronicle', icon: 'book', cat: 'explore', rarity: 'rare' },
   { id: 'perfectMind', icon: 'eye', cat: 'explore', rarity: 'epic' },
 
   { id: 'thornMail', icon: 'shield', cat: 'combat', rarity: 'common' },
   { id: 'dragonWard', icon: 'dragon', cat: 'combat', rarity: 'rare' },
   { id: 'guardianBane', icon: 'key', cat: 'combat', rarity: 'rare' },
   { id: 'vampiricEdge', icon: 'fang', cat: 'combat', rarity: 'common' },
+  { id: 'heartEater', icon: 'fang', cat: 'combat', rarity: 'common' },
+  { id: 'warPaint', icon: 'paint', cat: 'combat', rarity: 'rare' },
   { id: 'momentum', icon: 'sparkle', cat: 'combat', rarity: 'epic' },
+  { id: 'bonePlate', icon: 'shield', cat: 'combat', rarity: 'epic' },
   { id: 'whetSoul', icon: 'sword', cat: 'combat', rarity: 'rare' },
   { id: 'siegeBreak', icon: 'sword', cat: 'combat', rarity: 'rare' },
   { id: 'moraleBreak', icon: 'fang', cat: 'combat', rarity: 'rare' },
@@ -106,26 +144,43 @@ export const RELICS = [
   { id: 'alchemist', icon: 'potion', cat: 'supply', rarity: 'rare' },
   { id: 'mint', icon: 'coin', cat: 'supply', rarity: 'common' },
   { id: 'deepPockets', icon: 'chest', cat: 'supply', rarity: 'common' },
+  { id: 'torch', icon: 'torch', cat: 'supply', rarity: 'common' },
   { id: 'altarGrace', icon: 'altar', cat: 'supply', rarity: 'rare' },
+  { id: 'rations', icon: 'bread', cat: 'supply', rarity: 'rare' },
   { id: 'prospector', icon: 'eye', cat: 'supply', rarity: 'common' },
 
   { id: 'bloodPact', icon: 'heart', cat: 'pact', rarity: 'epic' },
   { id: 'glassCannon', icon: 'crown', cat: 'pact', rarity: 'epic' },
   { id: 'greedyHeart', icon: 'skull', cat: 'pact', rarity: 'rare' },
   { id: 'strataOath', icon: 'altar', cat: 'pact', rarity: 'epic' },
+  { id: 'vow', icon: 'lock', cat: 'pact', rarity: 'epic' },
 ];
+
+// 一局最多能拿到的遗物数：遗物层守卫 + 中途倒下的每一位龙王
+export const RELIC_MAX_DRAWS = Array.from({ length: MAX_FLOOR }, (_, k) => k + 1)
+  .filter(isRelicFloor).length + Math.floor((MAX_FLOOR - 1) / BOSS_EVERY);
 
 // 描述里出现的平衡数字由这里注入，改数值不必改译文，翻译不必碰数字
 const RELIC_PARAMS = {
   bannerBearer: { n: RELIC_FLAG_BONUS },
   cartographer: { cap: RELIC_SURVEY_CAP },
   perfectMind: { xp: RELIC_MIND_XP, def: RELIC_MIND_DEF },
+  tally: { xp: RELIC_TALLY_XP },
+  trapSalvage: { gold: RELIC_TRAP_FLAG_GOLD },
+  chronicle: { pct: Math.round(RELIC_CHRONICLE_HEAL * 100) },
   whetSoul: { cap: RELIC_WHET_CAP },
   siegeBreak: { cap: RELIC_SIEGE_CAP },
   moraleBreak: { cap: RELIC_MORALE_CAP },
   recoilMail: { n: RELIC_RECOIL },
   vigor: { step: RELIC_VIGOR_STEP },
+  heartEater: { gain: RELIC_HEART_GAIN, hp: RELIC_HEART_GAIN * RELIC_HEART_CAP },
+  warPaint: { atk: RELIC_PAINT_ATK, def: RELIC_PAINT_DEF },
+  bonePlate: { step: RELIC_PLATE_STEP, cap: RELIC_PLATE_CAP },
+  torch: { gold: RELIC_TORCH_GOLD },
+  rations: { pct: Math.round(RELIC_RATION_HEAL * 100) },
   strataOath: { def: STRATA_DEF, hp: STRATA_HP },
+  vow: { hp: RELIC_VOW_HP, def: RELIC_VOW_DEF, atk: RELIC_VOW_ATK },
+  greedyHeart: { pct: Math.round((GREEDY_HEART_SHOP - 1) * 100) },
 };
 export const relicName = (r) => tr('relic.' + r.id + '.name');
 export const relicDesc = (r) => tr('relic.' + r.id + '.desc', RELIC_PARAMS[r.id]);
@@ -258,10 +313,11 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
     bought: {},
     relics: [],
     relicChoices: null,
-    relicState: { whet: 0, firstKill: false, trapWard: 0, survey: 0 },
+    relicState: { whet: 0, firstKill: false, trapWard: 0, survey: 0, heart: 0 },
     hasKey: false,
     stairsFound: false,
     stairsIndex: -1,
+    bossDown: false,
     mode: 'explore',
     threatTotal: 0,
     flags: 0,
@@ -294,6 +350,7 @@ export function buildFloor(s) {
   s.hasKey = false;
   s.stairsFound = false;
   s.stairsIndex = -1;
+  s.bossDown = false;
   s.flags = 0;
   s.solved = false;
   s.solvedFlags = 0;
@@ -312,13 +369,18 @@ export function buildFloor(s) {
   s.threatTotal = s.plan.monsters + s.plan.traps + (s.plan.elite ? 1 : 0) + (s.plan.boss ? 1 : 0);
 }
 
+// 怪物强度按「深度」而非层号成长：前 8 层保持原始曲线，之后每两层折算一层。
+// 若继续线性外推，第 30 层的怪物攻击会涨到八层的四倍，任何构筑都接不住。
+const depthOf = (f) => (f <= 8 ? f : 8 + (f - 8) * 0.5);
+
 function planFloor(s, f, d) {
-  const final = f >= MAX_FLOOR;
-  const monsters = Math.max(5, Math.round((6 + f * 1.3) * d.threat));
-  const traps = Math.max(1, Math.round((1 + f * 0.35) * d.threat));
-  const chests = Math.max(2, Math.round((3 + (f % 2)) * d.loot));
+  const boss = isBossFloor(f);
+  // 63 格里要塞下整层内容：深层靠更狠的怪而不是更多怪施压，否则满盘都是威胁，数字就不再提供信息
+  const monsters = Math.round(Math.min(20, Math.max(5, (6 + f * 1.3) * d.threat)) * (boss ? 0.7 : 1));
+  const traps = Math.min(6, Math.max(1, Math.round((1 + f * 0.35) * d.threat)));
+  const chests = Math.min(8, Math.max(2, Math.round((3 + f * 0.15) * d.loot)));
   const potions = Math.max(1, d.potions);
-  return { monsters, traps, chests, potions, elite: final ? 0 : f >= 2 ? 1 : 0, boss: final ? 1 : 0, altar: f >= 2 ? 1 : 0, stairs: final ? 0 : 1 };
+  return { monsters, traps, chests, potions, elite: boss || f < 2 ? 0 : 1, boss: boss ? 1 : 0, altar: f >= 2 ? 1 : 0, stairs: 1 };
 }
 
 export const BAL = {
@@ -327,7 +389,7 @@ export const BAL = {
   adapt: 0.5,            // 怪物随玩家强度自适应的比例
   refRounds: 2.0, refRoundsF: 0.14,
   refBurn: 0.055, refBurnF: 0.012,
-  lvXp: 12, lvXpF: 10, lvHp: 4, lvAtk: 1, lvDefEvery: 3,
+  lvXp: 12, lvXpF: 10, lvHp: 6, lvAtk: 1, lvDefEvery: 3,
   potionPct: 0.3, prayPct: 0.45, descendPct: 0.05,
   trapBase: 5, trapF: 2.8,
   aggroMul: 0.25,
@@ -343,14 +405,15 @@ function makeMob(s, f, d, type) {
   const P = d.power;
   const p = s.player;
   const B = BAL;
-  const def = Math.floor(f / 2) + b.def;
+  const depth = depthOf(f);
+  const def = Math.floor(depth / 2) + b.def;
   const mix = (fixed, ref) => fixed * (1 - B.adapt) + ref * B.adapt;
   const deal = hitDamage(p.atk, def);
   // 自适应血量必须按 forecast 的同一份公式反推，否则反震省下的回合会被生成器原样加回去
-  const hpRef = (deal + p.thorns) * (B.refRounds + B.refRoundsF * f);
-  const atkRef = p.def + p.maxHp * (B.refBurn + B.refBurnF * f);
-  let hp = Math.round(mix(B.mobHp + B.mobHpF * f, hpRef) * b.hp * P);
-  let atk = Math.round(mix(B.mobAtk + B.mobAtkF * f, atkRef) * b.atk * P);
+  const hpRef = (deal + p.thorns) * (B.refRounds + B.refRoundsF * depth);
+  const atkRef = p.def + p.maxHp * (B.refBurn + B.refBurnF * depth);
+  let hp = Math.round(mix(B.mobHp + B.mobHpF * depth, hpRef) * b.hp * P);
+  let atk = Math.round(mix(B.mobAtk + B.mobAtkF * depth, atkRef) * b.atk * P);
   let xp = Math.round((2 + 1.2 * f) * (b.hp + b.atk) / 2);
   let gold = Math.round((BAL.mobGold + BAL.mobGoldF * f) * d.loot);
   if (type === 'elite') { hp = Math.round(hp * 1.9); atk = Math.round(atk * 1.3); xp *= 3; gold = Math.round(gold * 3.2); }
@@ -465,6 +528,7 @@ function revealSolved(s, out) {
   // 识破结算。棋盘此刻已经全亮，「插对了几面旗」不再是泄密信息，可以放心按它发奖。
   // 完美识破＝剩下的每一处威胁都被你插了旗，而不是漏标后被系统掀开。
   const correct = flagged.length;
+  const trapFlags = hasRelic(s, 'trapSalvage') ? flagged.filter((i) => s.tiles[i].kind === 'trap').length : 0;
   const perfect = correct === hidden.length;
   let cutDef = SOLVE_DEF_CUT, cutAtk = 0;
   if (hasRelic(s, 'siegeBreak')) cutDef += Math.min(RELIC_SIEGE_CAP, correct);
@@ -478,10 +542,15 @@ function revealSolved(s, out) {
     m.def -= d; m.atk -= a;
     m.cut = { def: d, atk: a };
   }
-  const gold = correct ? addGold(s, correct * SOLVE_FLAG_GOLD, out) : 0;
+  const gold = correct || trapFlags ? addGold(s, correct * SOLVE_FLAG_GOLD + trapFlags * RELIC_TRAP_FLAG_GOLD, out) : 0;
   let xp = perfect ? SOLVE_PERFECT_XP : 0;
   if (perfect && hasRelic(s, 'perfectMind')) xp += RELIC_MIND_XP;
+  if (correct && hasRelic(s, 'tally')) xp += correct * RELIC_TALLY_XP;
   if (xp) gainXp(s, xp, out);
+  if (perfect && hasRelic(s, 'chronicle')) {
+    const h = heal(s, Math.ceil(s.player.maxHp * RELIC_CHRONICLE_HEAL), out);
+    say(s, 'log.chronicle', { hp: h }, 'good');
+  }
   const gain = [];
   if (cutDef) gain.push(ref('log.solve.part.def', { n: cutDef }));
   if (cutAtk) gain.push(ref('log.solve.part.atk', { n: cutAtk }));
@@ -494,7 +563,10 @@ function revealSolved(s, out) {
 export function shopPrice(s, id) {
   const item = SHOP.find((x) => x.id === id);
   const base = item.base + item.step * (s.bought[id] || 0);
-  return Math.max(1, Math.round(base * (hasRelic(s, 'deepPockets') ? 0.75 : 1)));
+  const mult = (hasRelic(s, 'deepPockets') ? 0.75 : 1)
+    * (hasRelic(s, 'greedyHeart') ? GREEDY_HEART_SHOP : 1)
+    * (id === 'bomb' && hasRelic(s, 'torch') ? RELIC_TORCH_SHOP : 1);
+  return Math.max(1, Math.round(base * mult));
 }
 
 function gainXp(s, amount, out) {
@@ -555,8 +627,7 @@ function lootChest(s, i, out) {
   let type = t.chest.type, amount = t.chest.amount;
   t.used = true;
   if (hasRelic(s, 'greedyHeart')) {
-    if (type === 'potion') { type = 'gold'; amount = 25; }
-    else if (type === 'gold') amount *= 2;
+    if (type === 'gold') amount *= 2;
   }
   if (type === 'gold') { const got = addGold(s, amount, out); say(s, 'log.chest.gold', { n: got }, 'good'); }
   else if (type === 'potion') { p.potions++; say(s, 'log.chest.potion', 'good'); ev(out, 'item', { item: 'potion' }); }
@@ -598,7 +669,7 @@ function openTile(s, i, out, opts = {}) {
       ev(out, 'disarm', { i });
     } else {
       t.used = true;
-      let dmg = Math.max(2, Math.round(BAL.trapBase + BAL.trapF * s.floor - Math.floor(p.def / 2)));
+      let dmg = Math.max(2, Math.round(BAL.trapBase + BAL.trapF * depthOf(s.floor) - Math.floor(p.def / 2)));
       if (hasRelic(s, 'spikeSoles')) dmg = Math.max(1, Math.round(dmg * 0.7));
       if (s.relicState.trapWard > 0) {
         s.relicState.trapWard--;
@@ -608,7 +679,6 @@ function openTile(s, i, out, opts = {}) {
         say(s, 'log.trap.hit', { dmg }, 'bad');
         hurt(s, dmg, out, 'trap', i);
       }
-      if (hasRelic(s, 'trapSalvage')) addGold(s, 10, out);
     }
     return;
   }
@@ -638,7 +708,8 @@ function openTile(s, i, out, opts = {}) {
   }
   if (t.kind === 'stairs') {
     s.stairsFound = true;
-    say(s, s.floor === 1 ? 'log.discover.stairs' : 'log.discover.stairs.locked', 'magic');
+    const key = isBossFloor(s.floor) ? 'log.discover.stairs.boss' : s.floor === 1 ? 'log.discover.stairs' : 'log.discover.stairs.locked';
+    say(s, key, 'magic');
     ev(out, 'stairs', { i });
     return;
   }
@@ -718,6 +789,10 @@ function tapInner(s, i) {
     if (t.mob) t.mob.hp = 0;
     ev(out, 'bomb', { i });
     say(s, 'log.bomb.hit', { target: wasMob ? ref('mob.' + t.mob.id + '.name') : ref('tile.trap') }, 'magic');
+    if (hasRelic(s, 'torch')) {
+      const got = addGold(s, RELIC_TORCH_GOLD, out);
+      say(s, 'log.torch', { gold: got }, 'good');
+    }
     if (hasRelic(s, 'blastWave')) {
       let swept = 0;
       for (const j of neighbors(i)) {
@@ -729,8 +804,13 @@ function tapInner(s, i) {
       }
       if (swept) say(s, 'log.bomb.wave', { n: swept }, 'magic');
     }
-    if (t.kind === 'elite') { s.hasKey = true; say(s, 'log.bomb.key', 'good'); ev(out, 'key', { i }); offerRelics(s, out); }
-    if (t.kind === 'boss') return { out: out.concat(winRun(s)), spent: false };
+    if (t.kind === 'elite') {
+      s.hasKey = true;
+      say(s, 'log.bomb.key', 'good');
+      ev(out, 'key', { i });
+      if (isRelicFloor(s.floor)) offerRelics(s, out);
+    }
+    if (t.kind === 'boss') return { out: defeatBoss(s, out), spent: false };
     return { out, spent: true };
   }
 
@@ -829,6 +909,13 @@ export function attack(s, i) {
   gainXp(s, t.mob.xp, out);
   if (hasRelic(s, 'momentum') && !s.relicState.firstKill) { s.relicState.firstKill = true; syncRelicMods(s); }
   if (hasRelic(s, 'vampiricEdge')) heal(s, 4, out);
+  if (hasRelic(s, 'heartEater') && s.relicState.heart < RELIC_HEART_CAP) {
+    s.relicState.heart++;
+    p.maxHp += RELIC_HEART_GAIN;
+    p.hp = Math.min(p.maxHp, p.hp + RELIC_HEART_GAIN);
+    syncRelicMods(s);
+    say(s, 'log.hearteater', { gain: RELIC_HEART_GAIN, have: s.relicState.heart, cap: RELIC_HEART_CAP }, 'magic');
+  }
   if (hasRelic(s, 'whetSoul') && s.relicState.whet < RELIC_WHET_CAP) {
     s.relicState.whet++;
     p.atk += 1;
@@ -838,9 +925,14 @@ export function attack(s, i) {
     s.hasKey = true;
     say(s, 'log.key', 'magic');
     ev(out, 'key', { i });
-    offerRelics(s, out);
+    if (isRelicFloor(s.floor)) offerRelics(s, out);
   }
-  if (t.kind === 'boss') return out.concat(winRun(s));
+  if (t.kind === 'boss') {
+    const beaten = defeatBoss(s, out);
+    if (s.status !== 'playing') return beaten;
+    tickAggro(s, beaten);
+    return finish(s, beaten);
+  }
   tickAggro(s, out);
   return finish(s, out);
 }
@@ -858,7 +950,8 @@ export function usePotion(s) {
   if (p.potions <= 0) { say(s, 'log.no.potion', 'warn'); return out; }
   if (p.hp >= p.maxHp) { say(s, 'log.hp.full', 'warn'); return out; }
   p.potions--;
-  const amount = heal(s, Math.ceil(p.maxHp * (hasRelic(s, 'ironStomach') ? 0.38 : BAL.potionPct)), out);
+  const pct = hasRelic(s, 'ironStomach') ? 0.38 : BAL.potionPct;
+  const amount = heal(s, Math.ceil(p.maxHp * pct), out);
   say(s, 'log.potion', { n: amount }, 'good');
   return out;
 }
@@ -918,7 +1011,8 @@ export function altarChoose(s, i, choice) {
     p.atk += BAL.bloodAtk;
     say(s, 'log.altar.blood', { n: BAL.bloodAtk }, 'magic');
   } else if (choice === 'pray') {
-    const h = heal(s, Math.ceil(p.maxHp * (hasRelic(s, 'altarGrace') ? 0.75 : BAL.prayPct)), out);
+    const pct = hasRelic(s, 'altarGrace') ? 0.75 : BAL.prayPct;
+    const h = heal(s, Math.ceil(p.maxHp * pct), out);
     say(s, 'log.altar.pray', { n: h }, 'good');
   } else if (choice === 'banner') {
     s.flagBonus += ALTAR_FLAG_BONUS;
@@ -934,16 +1028,24 @@ export function altarChoose(s, i, choice) {
 }
 
 export function canDescend(s) {
-  return s.status === 'playing' && s.stairsFound && (s.floor === 1 || s.hasKey);
+  if (s.status !== 'playing' || !s.stairsFound) return false;
+  // Boss 层的封印由龙王本尊镇着，不需要钥匙；其余层照旧要钥匙守卫的锈蚀钥匙
+  if (isBossFloor(s.floor)) return s.bossDown;
+  return s.floor === 1 || s.hasKey;
 }
 
 export function tryDescend(s) {
   const out = [];
   if (s.status !== 'playing') return out;
   if (!s.stairsFound) { say(s, 'log.no.stairs', 'warn'); return out; }
-  if (s.floor > 1 && !s.hasKey) { say(s, 'log.stairs.locked', 'warn'); ev(out, 'locked'); return out; }
+  if (isBossFloor(s.floor) && !s.bossDown) { say(s, 'log.stairs.boss', 'warn'); ev(out, 'locked', { boss: true }); return out; }
+  if (!isBossFloor(s.floor) && s.floor > 1 && !s.hasKey) { say(s, 'log.stairs.locked', 'warn'); ev(out, 'locked'); return out; }
   const bonus = addGold(s, (10 + s.floor * 3) * (hasRelic(s, 'prospector') ? 2 : 1), out);
   heal(s, Math.ceil(s.player.maxHp * BAL.descendPct), out);
+  if (hasRelic(s, 'rations')) {
+    const h = heal(s, Math.ceil(s.player.maxHp * RELIC_RATION_HEAL), out);
+    say(s, 'log.rations', { hp: h }, 'good');
+  }
   if (hasRelic(s, 'bannerLord')) {
     const correct = s.solvedFlags + s.tiles.filter((t) => t.flagged && !t.revealed && isThreat(t)).length;
     if (correct) {
@@ -956,12 +1058,22 @@ export function tryDescend(s) {
     s.player.def += STRATA_DEF;
     s.player.maxHp += STRATA_HP;
     heal(s, STRATA_HP, out);
+    syncRelicMods(s);
     say(s, 'log.strata', { def: STRATA_DEF, hp: STRATA_HP }, 'magic');
   }
   s.floor++;
   buildFloor(s);
   say(s, 'log.descend', { n: s.floor, name: ref('floor.' + s.floor), gold: bonus }, 'magic');
   ev(out, 'descend', { floor: s.floor });
+  return out;
+}
+
+function defeatBoss(s, out) {
+  if (isFinalFloor(s.floor)) return out.concat(winRun(s));
+  s.bossDown = true;
+  say(s, 'log.boss.down', { mob: ref('mob.dragon.name') }, 'good');
+  ev(out, 'bossDown', { floor: s.floor });
+  offerRelics(s, out);
   return out;
 }
 
@@ -979,7 +1091,8 @@ export const hasRelic = (s, id) => s.relics.includes(id);
 function syncRelicMods(s) {
   const p = s.player;
   p.takeMul = (hasRelic(s, 'dragonWard') ? 0.75 : 1) * (hasRelic(s, 'glassCannon') ? 1.35 : 1);
-  p.takeFlat = hasRelic(s, 'thornMail') ? 2 : 0;
+  p.takeFlat = (hasRelic(s, 'thornMail') ? 2 : 0)
+    + (hasRelic(s, 'bonePlate') ? Math.min(RELIC_PLATE_CAP, Math.floor(p.maxHp / RELIC_PLATE_STEP)) : 0);
   p.eliteTakeMul = hasRelic(s, 'guardianBane') ? 0.6 : 1;
   p.freeKill = hasRelic(s, 'momentum') && !s.relicState.firstKill;
   p.thorns = hasRelic(s, 'recoilMail') ? RELIC_RECOIL : 0;
@@ -989,15 +1102,18 @@ function syncRelicMods(s) {
   p.atkBonus = want;
 }
 
+function takeWeighted(s, pool, weights) {
+  const total = pool.reduce((a, r) => a + weights[r.rarity], 0);
+  let x = rand(s) * total, k = 0;
+  while (k < pool.length - 1 && x >= weights[pool[k].rarity]) { x -= weights[pool[k].rarity]; k++; }
+  return pool.splice(k, 1)[0];
+}
+
 function rollRelicChoices(s) {
   const pool = RELICS.filter((r) => !hasRelic(s, r.id));
+  const weights = relicRarityWeights(s.floor);
   const out = [];
-  while (out.length < RELIC_DRAW_COUNT && pool.length) {
-    const total = pool.reduce((a, r) => a + RELIC_RARITY[r.rarity].weight, 0);
-    let x = rand(s) * total, k = 0;
-    while (k < pool.length - 1 && x >= RELIC_RARITY[pool[k].rarity].weight) { x -= RELIC_RARITY[pool[k].rarity].weight; k++; }
-    out.push(pool.splice(k, 1)[0].id);
-  }
+  while (out.length < RELIC_DRAW_COUNT && pool.length) out.push(takeWeighted(s, pool, weights).id);
   return out;
 }
 
@@ -1017,6 +1133,13 @@ export function chooseRelic(s, id) {
   s.relics.push(id);
   if (id === 'bloodPact') { p.atk += 4; p.maxHp = Math.max(8, p.maxHp - 8); p.hp = Math.min(p.hp, p.maxHp); }
   if (id === 'glassCannon') p.atk += 6;
+  if (id === 'warPaint') { p.atk += RELIC_PAINT_ATK; p.def = Math.max(0, p.def - RELIC_PAINT_DEF); }
+  if (id === 'vow') {
+    p.maxHp += RELIC_VOW_HP;
+    p.hp = Math.min(p.maxHp, p.hp + RELIC_VOW_HP);
+    p.def += RELIC_VOW_DEF;
+    p.atk = Math.max(1, p.atk - RELIC_VOW_ATK);
+  }
   if (id === 'carefulStep') s.relicState.trapWard = RELIC_WARD_CHARGES;
   if (id === 'bannerBearer') s.flagBonus += RELIC_FLAG_BONUS;
   syncRelicMods(s);

@@ -136,7 +136,7 @@ function tileView(t) {
   if (t.kind === 'stairs') {
     cls += ' tile-stairs';
     inner = svg('stairs');
-    const locked = S.floor > 1 && !S.hasKey;
+    const locked = !G.canDescend(S);
     if (locked) { inner += `<span class="tile-lock">${svg('lock')}</span>`; label += tr('ui.board.locked'); }
     return { cls, inner, n, label };
   }
@@ -318,10 +318,13 @@ function renderHud() {
   for (const b of el.actionbar.querySelectorAll('[data-mode]')) b.classList.toggle('is-on', b.dataset.mode === S.mode);
   const can = G.canDescend(S);
   const locked = S.stairsFound && !can;
+  const bossLocked = locked && G.isBossFloor(S.floor);
   el.descend.disabled = !S.stairsFound;
   el.descend.classList.toggle('locked', locked);
   el.descend.querySelector('use').setAttribute('href', locked ? '#i-lock' : '#i-down');
-  el.descend.querySelector('span').textContent = locked ? tr('ui.descend.locked') : tr('ui.descend.next');
+  el.descend.querySelector('span').textContent = locked
+    ? tr(bossLocked ? 'ui.descend.boss' : 'ui.descend.locked')
+    : tr('ui.descend.next');
 
   const last = S.log[S.log.length - 1];
   if (last && el.log.dataset.id !== String(last.id)) {
@@ -344,6 +347,7 @@ function relicNote(s, r) {
   if (r.id === 'momentum') return s.relicState.firstKill ? tr('ui.relic.note.used') : tr('ui.relic.note.ready');
   if (r.id === 'cartographer') return `${s.relicState.survey}/${G.RELIC_SURVEY_CAP}`;
   if (r.id === 'vigor') return `+${s.player.atkBonus}`;
+  if (r.id === 'heartEater') return `${s.relicState.heart}/${G.RELIC_HEART_CAP}`;
   return '';
 }
 
@@ -401,11 +405,15 @@ function openCodex() {
     return `<div class="help-sec"><h3 class="help-h">${G.catName(cat)}<i class="cx-count">${n}/${total}</i></h3>${rows}</div>`;
   }).join('');
   const rarityIds = Object.keys(G.RELIC_RARITY);
-  const wsum = rarityIds.reduce((a, id) => a + G.RELIC_RARITY[id].weight, 0);
-  const odds = rarityIds.map((id) => {
-    const r = G.RELIC_RARITY[id];
-    return `<span style="color:${r.color}">${G.rarityName(id)} ${Math.round(r.weight / wsum * 100)}%</span>`;
-  }).join(tr('list.sep'));
+  const oddsAt = (f) => {
+    const w = G.relicRarityWeights(f);
+    const sum = rarityIds.reduce((a, id) => a + w[id], 0);
+    return rarityIds.map((id) => {
+      const r = G.RELIC_RARITY[id];
+      return `<span style="color:${r.color}">${G.rarityName(id)} ${Math.round(w[id] / sum * 100)}%</span>`;
+    }).join(tr('list.sep'));
+  };
+  const floorNow = S ? S.floor : 1;
   openSheet('codex', `
     <div class="sheet-head">
       <div><h2 class="sheet-title">${tr('ui.codex.title')}</h2><p class="sheet-sub">${tr('ui.codex.sub', { total: G.RELICS.length, own: owned.length })}</p></div>
@@ -413,7 +421,7 @@ function openCodex() {
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.codex.how')}</h3>
-      <p class="help-p">${tr('ui.codex.how.body', { draw: G.RELIC_DRAW_COUNT, max: G.MAX_FLOOR - 2, odds })}</p>
+      <p class="help-p">${tr('ui.codex.how.body', { draw: G.RELIC_DRAW_COUNT, max: G.RELIC_MAX_DRAWS, total: G.RELICS.length, floor: floorNow, odds: oddsAt(floorNow), maxFloor: G.MAX_FLOOR, deepOdds: oddsAt(G.MAX_FLOOR) })}</p>
     </div>
     ${groups}
     <div class="sheet-actions"><button class="btn btn-primary btn-lg" data-sheet="${back}">${S && S.relicChoices ? tr('ui.codex.back') : tr('ui.codex.close')}</button></div>`, !!(S && S.relicChoices));
@@ -555,8 +563,14 @@ function consume(events) {
         audio.play('levelup'); fx.haptic('heavy'); toast(tr('ui.toast.relic', { name: G.relicName(r) }), 'magic');
         break;
       }
+      case 'bossDown': {
+        // 龙王倒下只是这一层的封印松开，血条留一口气再退场，避免玩家以为本局结束了
+        toast(tr('ui.toast.boss.down'), 'magic');
+        later(() => { bossDying = false; updateBossBar(); }, 1200);
+        break;
+      }
       case 'deny': audio.play('deny'); break;
-      case 'locked': audio.play('locked'); toast(tr('ui.toast.locked'), 'bad'); break;
+      case 'locked': audio.play('locked'); toast(tr(e.boss ? 'ui.toast.locked.boss' : 'ui.toast.locked'), 'bad'); break;
       case 'blocked': audio.play('deny'); fx.shake(el.board); fx.haptic('light'); toast(tr('ui.toast.lethal'), 'bad'); break;
       case 'chord': audio.play('open'); fx.haptic('medium'); break;
       case 'chordHint': {
@@ -804,7 +818,7 @@ function openHelp() {
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.relic.h')}</h3>
-      <p class="help-p">${tr('ui.help.relic.p')}</p>
+      <p class="help-p">${tr('ui.help.relic.p', { every: G.RELIC_EVERY, draws: G.RELIC_MAX_DRAWS, total: G.RELICS.length })}</p>
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.legend.h')}</h3>
@@ -874,6 +888,7 @@ function endSequence(win) {
 
 function descendSequence() {
   clearSolve();
+  resetBossUi();
   busy = true;
   audio.play('descend');
   el.fcDepth.textContent = tr('ui.hud.depth.short', { n: S.floor });
