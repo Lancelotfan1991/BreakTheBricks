@@ -1,15 +1,21 @@
 // 破砖深渊 — 纯逻辑层（无 DOM，可在 Node 中直接测试）
+// 文案一律走 i18n：本文件只产出 key 与参数，不产出任何面向玩家的字串。
+import { t as tr, ref } from './i18n.js';
+
 export const COLS = 7;
 export const ROWS = 9;
 export const SIZE = COLS * ROWS;
 export const MAX_FLOOR = 8;
-export const SAVE_VERSION = 9;
+export const SAVE_VERSION = 10;
 
 export const DIFFICULTIES = {
-  easy: { id: 'easy', name: '地窖', tag: '轻松', desc: '怪物孱弱 · 补给充裕', threat: 0.78, power: 0.82, loot: 1.35, hp: 38, gold: 25, potions: 2, flags: 4 },
-  normal: { id: 'normal', name: '深渊', tag: '标准', desc: '标准的地牢体验', threat: 1, power: 1, loot: 1, hp: 32, gold: 10, potions: 2, flags: 3 },
-  hard: { id: 'hard', name: '炼狱', tag: '噩梦', desc: '寸步难行 · 精英横行', threat: 1.22, power: 1.1, loot: 0.8, hp: 28, gold: 0, potions: 2, flags: 2 },
+  easy: { id: 'easy', threat: 0.78, power: 0.82, loot: 1.35, hp: 38, gold: 25, potions: 2, flags: 4 },
+  normal: { id: 'normal', threat: 1, power: 1, loot: 1, hp: 32, gold: 10, potions: 2, flags: 3 },
+  hard: { id: 'hard', threat: 1.22, power: 1.1, loot: 0.8, hp: 28, gold: 0, potions: 2, flags: 2 },
 };
+export const difficultyName = (d) => tr('difficulty.' + d.id + '.name');
+export const difficultyTag = (d) => tr('difficulty.' + d.id + '.tag');
+export const difficultyDesc = (d) => tr('difficulty.' + d.id + '.desc');
 
 // 两条构筑轴：推理流把「插对的旗」换成战力，体魄流把「生命上限」换成战力。
 // 所有加成都是确定性的加减，预演数字仍然等于实际结算。
@@ -28,39 +34,46 @@ export const STRATA_DEF = 1;           // 层岩誓约：每下行一层的防�
 export const STRATA_HP = 3;            // 层岩誓约：每下行一层的生命上限成长
 
 export const SHOP = [
-  { id: 'potion', name: '治疗药水', icon: 'potion', desc: '恢复 30% 最大生命', base: 30, step: 12 },
-  { id: 'whet', name: '磨刀石', icon: 'sword', desc: '永久 +1 攻击', base: 30, step: 14 },
-  { id: 'plate', name: '铁甲片', icon: 'shield', desc: '永久 +1 防御', base: 30, step: 16 },
-  { id: 'elixir', name: '生命精粹', icon: 'flask', desc: `永久 +${SHOP_ELIXIR_HP} 生命上限并立即恢复`, base: 45, step: 18 },
-  { id: 'pouch', name: '旗囊', icon: 'flag', desc: '永久 +1 旗子上限', base: 25, step: 10 },
-  { id: 'scroll', name: '侦查卷轴', icon: 'scroll', desc: '安全探明 3×3 区域', base: 22, step: 6 },
-  { id: 'bomb', name: '裂石炸弹', icon: 'bomb', desc: '无伤摧毁一个威胁', base: 40, step: 10 },
+  { id: 'potion', icon: 'potion', base: 30, step: 12 },
+  { id: 'whet', icon: 'sword', base: 30, step: 14 },
+  { id: 'plate', icon: 'shield', base: 30, step: 16 },
+  { id: 'elixir', icon: 'flask', base: 45, step: 18 },
+  { id: 'pouch', icon: 'flag', base: 25, step: 10 },
+  { id: 'scroll', icon: 'scroll', base: 22, step: 6 },
+  { id: 'bomb', icon: 'bomb', base: 40, step: 10 },
 ];
+const SHOP_PARAMS = { elixir: { hp: SHOP_ELIXIR_HP } };
+export const shopName = (it) => tr('shop.' + it.id + '.name');
+export const shopDesc = (it) => tr('shop.' + it.id + '.desc', SHOP_PARAMS[it.id]);
 
 // period＝这只怪自己的骚扰间隔（按操作回合数）。快而弱的咬得勤，慢而重的憋得久，
 // 于是「先杀谁」不再只是比伤害大小，而是比谁的节奏更迫近。
 // 间隔取 38～58 而非个位数：每只怪各自出手，总压力随惊扰数量叠加，调短会让胜率崩掉。
 const BESTIARY = [
-  { id: 'bat', name: '洞穴蝠', icon: 'bat', hp: 0.7, atk: 1.15, def: 0, min: 1, max: 3, period: 38, flavor: '尖啸着俯冲，脆弱却迅捷。' },
-  { id: 'slime', name: '腐黏怪', icon: 'slime', hp: 1.35, atk: 0.78, def: 0, min: 1, max: 4, period: 52, flavor: '吞下了太多冒险者的铁器。' },
-  { id: 'skeleton', name: '骸骨兵', icon: 'skeleton', hp: 1, atk: 1, def: 1, min: 2, max: 6, period: 45, flavor: '锈剑仍在执行千年前的军令。' },
-  { id: 'spider', name: '织网蛛', icon: 'spider', hp: 0.85, atk: 1.28, def: 0, min: 3, max: 7, period: 40, flavor: '毒牙比石壁上的裂缝更细。' },
-  { id: 'orc', name: '穴居兽人', icon: 'orc', hp: 1.12, atk: 1.18, def: 1, min: 4, max: 8, period: 48, flavor: '它把守这条路，只是为了晚饭。' },
-  { id: 'golem', name: '石像鬼', icon: 'golem', hp: 1.55, atk: 0.9, def: 3, min: 5, max: 8, period: 58, flavor: '砖石本身站了起来。' },
-  { id: 'wraith', name: '深渊怨灵', icon: 'wraith', hp: 0.92, atk: 1.12, def: 4, min: 6, max: 8, period: 42, flavor: '寒气穿过甲胄，直接啃咬骨头。' },
+  { id: 'bat', icon: 'bat', hp: 0.7, atk: 1.15, def: 0, min: 1, max: 3, period: 38 },
+  { id: 'slime', icon: 'slime', hp: 1.35, atk: 0.78, def: 0, min: 1, max: 4, period: 52 },
+  { id: 'skeleton', icon: 'skeleton', hp: 1, atk: 1, def: 1, min: 2, max: 6, period: 45 },
+  { id: 'spider', icon: 'spider', hp: 0.85, atk: 1.28, def: 0, min: 3, max: 7, period: 40 },
+  { id: 'orc', icon: 'orc', hp: 1.12, atk: 1.18, def: 1, min: 4, max: 8, period: 48 },
+  { id: 'golem', icon: 'golem', hp: 1.55, atk: 0.9, def: 3, min: 5, max: 8, period: 58 },
+  { id: 'wraith', icon: 'wraith', hp: 0.92, atk: 1.12, def: 4, min: 6, max: 8, period: 42 },
 ];
 
-export const FLOOR_NAMES = ['', '苔痕门厅', '锈铁回廊', '蛛丝墓室', '兽骨仓窖', '熔渣锻层', '石像长廊', '哀嚎深井', '深渊王座'];
+export const floorName = (f) => tr('floor.' + f);
+export const mobName = (m) => tr('mob.' + m.id + '.name');
+export const mobFlavor = (m) => tr('mob.' + m.id + '.flavor');
 
 // ---------- 遗物 ----------
 // 设计红线：遗物只改变「代价与收益」，不改变「信息量」——不自动标雷、不透视威胁，
 // 战斗全程保持确定性（无命中 / 暴击 / 浮动），预演数字永远等于实际结算。
 export const RELIC_RARITY = {
-  common: { name: '普通', weight: 60, color: '#8fd8ff' },
-  rare: { name: '稀有', weight: 30, color: '#c9a3ff' },
-  epic: { name: '史诗', weight: 10, color: '#ffd54a' },
+  common: { weight: 60, color: '#8fd8ff' },
+  rare: { weight: 30, color: '#c9a3ff' },
+  epic: { weight: 10, color: '#ffd54a' },
 };
-export const RELIC_CATS = { explore: '探索', combat: '战斗', supply: '补给', pact: '契约' };
+export const RELIC_CATS = ['explore', 'combat', 'supply', 'pact'];
+export const rarityName = (id) => tr('rarity.' + id);
+export const catName = (id) => tr('cat.' + id);
 export const RELIC_DRAW_COUNT = 3;
 export const RELIC_WHET_CAP = 6;
 export const RELIC_BANNER_CAP = 12;
@@ -69,38 +82,54 @@ export const RELIC_FLAG_BONUS = 3;
 export const ALTAR_FLAG_BONUS = 2;
 
 export const RELICS = [
-  { id: 'spikeSoles', name: '钉底靴', icon: 'boot', cat: 'explore', rarity: 'common', desc: '陷阱伤害降低 30%。', flavor: '靴底钉着前人的碎骨，踩下去反而稳。' },
-  { id: 'carefulStep', name: '猫步', icon: 'hand', cat: 'explore', rarity: 'rare', desc: '获得后的 3 次踩中陷阱完全免伤。', flavor: '你听见了石板下那声极轻的咔哒。' },
-  { id: 'trapSalvage', name: '拾荒爪', icon: 'coin', cat: 'explore', rarity: 'common', desc: '每次踩中陷阱额外捡到 10 金币。', flavor: '尖刺上总挂着几个没能走完的人的钱袋。' },
-  { id: 'blastWave', name: '冲击波', icon: 'bomb', cat: 'explore', rarity: 'rare', desc: '炸弹同时摧毁目标周围 8 格的所有陷阱。', flavor: '砖石记得每一次爆炸的形状。' },
-  { id: 'bannerLord', name: '旗帜领主', icon: 'flag', cat: 'explore', rarity: 'rare', desc: '下行时，每面插对的旗回复 2 生命（最多 12）。', flavor: '它只奖赏那些真正读懂了数字的人。' },
-  { id: 'bannerBearer', name: '旗手纹章', icon: 'flag', cat: 'explore', rarity: 'rare', desc: `旗子上限永久 +${RELIC_FLAG_BONUS}。`, flavor: '纹章上的旗面比你的手臂还长，插下去就没人敢拔。' },
-  { id: 'cartographer', name: '测绘师', icon: 'scroll', cat: 'explore', rarity: 'rare', desc: `卷轴每探明一处威胁，永久 +1 攻击（最多 +${RELIC_SURVEY_CAP}）。`, flavor: '把危险画进图里的人，刀也知道该往哪儿落。' },
-  { id: 'perfectMind', name: '全识', icon: 'eye', cat: 'explore', rarity: 'epic', desc: `完美识破额外 +${RELIC_MIND_XP} 经验，怪物防御再 −${RELIC_MIND_DEF}。`, flavor: '一个格子都没猜错的时候，深渊会先眨眼睛。' },
+  { id: 'spikeSoles', icon: 'boot', cat: 'explore', rarity: 'common' },
+  { id: 'carefulStep', icon: 'hand', cat: 'explore', rarity: 'rare' },
+  { id: 'trapSalvage', icon: 'coin', cat: 'explore', rarity: 'common' },
+  { id: 'blastWave', icon: 'bomb', cat: 'explore', rarity: 'rare' },
+  { id: 'bannerLord', icon: 'flag', cat: 'explore', rarity: 'rare' },
+  { id: 'bannerBearer', icon: 'flag', cat: 'explore', rarity: 'rare' },
+  { id: 'cartographer', icon: 'scroll', cat: 'explore', rarity: 'rare' },
+  { id: 'perfectMind', icon: 'eye', cat: 'explore', rarity: 'epic' },
 
-  { id: 'thornMail', name: '荆棘甲', icon: 'shield', cat: 'combat', rarity: 'common', desc: '战斗承伤固定减少 2 点。', flavor: '甲片缝隙里长出了倒刺，先扎到的是敌人。' },
-  { id: 'dragonWard', name: '龙鳞护符', icon: 'dragon', cat: 'combat', rarity: 'rare', desc: '战斗承伤减少 25%。', flavor: '一片幼龙的鳞，还留着体温。' },
-  { id: 'guardianBane', name: '破守者', icon: 'key', cat: 'combat', rarity: 'rare', desc: '对钥匙守卫与龙王的承伤减少 40%。', flavor: '守门者的武艺，早被人拆解成了册子。' },
-  { id: 'vampiricEdge', name: '吸血刃', icon: 'fang', cat: 'combat', rarity: 'common', desc: '每次击杀回复 4 生命。', flavor: '刃口有一道永不干涸的暗红细线。' },
-  { id: 'momentum', name: '势如破竹', icon: 'sparkle', cat: 'combat', rarity: 'epic', desc: '每层第一次击杀不承受任何伤害。', flavor: '第一击总是最干净的，之后才轮到代价。' },
-  { id: 'whetSoul', name: '磨刀之魂', icon: 'sword', cat: 'combat', rarity: 'rare', desc: `每次击杀永久 +1 攻击，最多叠加 ${RELIC_WHET_CAP} 次。`, flavor: '每一次挥砍都在替下一次开刃。' },
-  { id: 'siegeBreak', name: '破阵', icon: 'sword', cat: 'combat', rarity: 'rare', desc: `识破时，每面插对的旗使本层怪物防御额外 −1（最多 −${RELIC_SIEGE_CAP}）。`, flavor: '旗插在哪里，阵就在哪里裂开。' },
-  { id: 'moraleBreak', name: '夺气', icon: 'fang', cat: 'combat', rarity: 'rare', desc: `识破时，每面插对的旗使本层怪物攻击 −1（最多 −${RELIC_MORALE_CAP}）。`, flavor: '被看穿的怪物，连嘶吼都短了半截。' },
-  { id: 'recoilMail', name: '反震甲', icon: 'shield', cat: 'combat', rarity: 'rare', desc: `战斗中每次被反击，反弹 ${RELIC_RECOIL} 点伤害。`, flavor: '它咬你一口，崩掉的是它自己的牙。' },
-  { id: 'vigor', name: '血气方刚', icon: 'heart', cat: 'combat', rarity: 'rare', desc: `生命上限每 ${RELIC_VIGOR_STEP} 点，攻击 +1。`, flavor: '血越厚，拳越沉。' },
+  { id: 'thornMail', icon: 'shield', cat: 'combat', rarity: 'common' },
+  { id: 'dragonWard', icon: 'dragon', cat: 'combat', rarity: 'rare' },
+  { id: 'guardianBane', icon: 'key', cat: 'combat', rarity: 'rare' },
+  { id: 'vampiricEdge', icon: 'fang', cat: 'combat', rarity: 'common' },
+  { id: 'momentum', icon: 'sparkle', cat: 'combat', rarity: 'epic' },
+  { id: 'whetSoul', icon: 'sword', cat: 'combat', rarity: 'rare' },
+  { id: 'siegeBreak', icon: 'sword', cat: 'combat', rarity: 'rare' },
+  { id: 'moraleBreak', icon: 'fang', cat: 'combat', rarity: 'rare' },
+  { id: 'recoilMail', icon: 'shield', cat: 'combat', rarity: 'rare' },
+  { id: 'vigor', icon: 'heart', cat: 'combat', rarity: 'rare' },
 
-  { id: 'ironStomach', name: '铁胃', icon: 'flask', cat: 'supply', rarity: 'common', desc: '药水恢复量从 30% 提升到 38% 最大生命。', flavor: '连瓶塞一起嚼碎，药效才算完整。' },
-  { id: 'alchemist', name: '炼金壶', icon: 'potion', cat: 'supply', rarity: 'rare', desc: '每下行两层额外获得 1 瓶药水。', flavor: '壶底永远剩着一口，摇一摇又满了。' },
-  { id: 'mint', name: '铸币印', icon: 'coin', cat: 'supply', rarity: 'common', desc: '所有金币收入 +50%。', flavor: '凡经你手的金子，都会多出一枚影子。' },
-  { id: 'deepPockets', name: '深口袋', icon: 'chest', cat: 'supply', rarity: 'common', desc: '商店价格降低 25%。', flavor: '商人数不清你掏出了多少，只好少收点。' },
-  { id: 'altarGrace', name: '神恩', icon: 'altar', cat: 'supply', rarity: 'rare', desc: '祭坛「静默祈祷」恢复量从 45% 提升到 75%。', flavor: '石台上的紫火为你矮了一寸。' },
-  { id: 'prospector', name: '探矿罗盘', icon: 'eye', cat: 'supply', rarity: 'common', desc: '下行的金币奖励翻倍。', flavor: '指针不指北，只指向还没被捡走的东西。' },
+  { id: 'ironStomach', icon: 'flask', cat: 'supply', rarity: 'common' },
+  { id: 'alchemist', icon: 'potion', cat: 'supply', rarity: 'rare' },
+  { id: 'mint', icon: 'coin', cat: 'supply', rarity: 'common' },
+  { id: 'deepPockets', icon: 'chest', cat: 'supply', rarity: 'common' },
+  { id: 'altarGrace', icon: 'altar', cat: 'supply', rarity: 'rare' },
+  { id: 'prospector', icon: 'eye', cat: 'supply', rarity: 'common' },
 
-  { id: 'bloodPact', name: '血之契', icon: 'heart', cat: 'pact', rarity: 'epic', desc: '攻击 +4，但生命上限 −8。', flavor: '契约用你的血写成，也用你的血偿还。' },
-  { id: 'glassCannon', name: '玻璃炮', icon: 'crown', cat: 'pact', rarity: 'epic', desc: '攻击 +6，但战斗承伤 +35%。', flavor: '通透、锋利、一碰就碎。' },
-  { id: 'greedyHeart', name: '贪婪之心', icon: 'skull', cat: 'pact', rarity: 'rare', desc: '宝箱金币翻倍，但宝箱开出的药水变成 25 金币。', flavor: '它把一切能救命的东西都换算成了价钱。' },
-  { id: 'strataOath', name: '层岩誓约', icon: 'altar', cat: 'pact', rarity: 'epic', desc: `每下行一层，永久 +${STRATA_DEF} 防御与 +${STRATA_HP} 生命上限。`, flavor: '石头记得每一个肯往下走的人。' },
+  { id: 'bloodPact', icon: 'heart', cat: 'pact', rarity: 'epic' },
+  { id: 'glassCannon', icon: 'crown', cat: 'pact', rarity: 'epic' },
+  { id: 'greedyHeart', icon: 'skull', cat: 'pact', rarity: 'rare' },
+  { id: 'strataOath', icon: 'altar', cat: 'pact', rarity: 'epic' },
 ];
+
+// 描述里出现的平衡数字由这里注入，改数值不必改译文，翻译不必碰数字
+const RELIC_PARAMS = {
+  bannerBearer: { n: RELIC_FLAG_BONUS },
+  cartographer: { cap: RELIC_SURVEY_CAP },
+  perfectMind: { xp: RELIC_MIND_XP, def: RELIC_MIND_DEF },
+  whetSoul: { cap: RELIC_WHET_CAP },
+  siegeBreak: { cap: RELIC_SIEGE_CAP },
+  moraleBreak: { cap: RELIC_MORALE_CAP },
+  recoilMail: { n: RELIC_RECOIL },
+  vigor: { step: RELIC_VIGOR_STEP },
+  strataOath: { def: STRATA_DEF, hp: STRATA_HP },
+};
+export const relicName = (r) => tr('relic.' + r.id + '.name');
+export const relicDesc = (r) => tr('relic.' + r.id + '.desc', RELIC_PARAMS[r.id]);
+export const relicFlavor = (r) => tr('relic.' + r.id + '.flavor');
 
 export const relicById = (id) => RELICS.find((r) => r.id === id);
 
@@ -206,9 +235,9 @@ function tickAggro(s, out) {
     if (--m.cd > 0) continue;
     m.cd = m.period;
     const dmg = aggroDamage(s.player, m);
-    say(s, `${m.name}趁隙扑来，撕掉你 ${dmg} 点生命。`, 'bad');
+    say(s, 'log.aggro.hit', { mob: ref('mob.' + m.id + '.name'), dmg }, 'bad');
     ev(out, 'aggro', { i: t.i, amount: dmg });
-    hurt(s, dmg, out, m.name, t.i);
+    hurt(s, dmg, out, 'mob', t.i, m.id);
     if (s.status !== 'playing') return;
   }
 }
@@ -247,7 +276,7 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
     logId: 0,
   };
   buildFloor(s);
-  say(s, `踏入第 1 层 · ${FLOOR_NAMES[1]}。点击任意砖块开始探索。`, 'info');
+  say(s, 'log.enter', { n: 1, name: ref('floor.1') }, 'info');
   return s;
 }
 
@@ -275,7 +304,7 @@ export function buildFloor(s) {
   // 祭坛「贪婪低语」借走的防御只借一层，下楼就还——代价是周转的，不是永久的
   if (s.defDebt > 0) {
     s.player.def += s.defDebt;
-    say(s, `祭坛借走的甲胄回来了：防御 +${s.defDebt}。`, 'good');
+    say(s, 'log.debt.repay', { n: s.defDebt }, 'good');
     s.defDebt = 0;
   }
   syncRelicMods(s);
@@ -308,8 +337,8 @@ export const BAL = {
 
 function makeMob(s, f, d, type) {
   const pool = BESTIARY.filter((b) => f >= b.min && f <= b.max);
-  const b = type === 'elite' ? { id: 'guardian', name: '钥匙守卫', icon: 'guardian', hp: 1, atk: 1, def: 0, period: 52, flavor: '它吞下了这一层的钥匙。' }
-    : type === 'boss' ? { id: 'dragon', name: '深渊龙王', icon: 'dragon', hp: 1, atk: 1, def: 0, period: 48, flavor: '砖石深渊的心脏，正在缓慢跳动。' }
+  const b = type === 'elite' ? { id: 'guardian', icon: 'guardian', hp: 1, atk: 1, def: 0, period: 52 }
+    : type === 'boss' ? { id: 'dragon', icon: 'dragon', hp: 1, atk: 1, def: 0, period: 48 }
       : pick(s, pool.length ? pool : BESTIARY);
   const P = d.power;
   const p = s.player;
@@ -326,7 +355,7 @@ function makeMob(s, f, d, type) {
   let gold = Math.round((BAL.mobGold + BAL.mobGoldF * f) * d.loot);
   if (type === 'elite') { hp = Math.round(hp * 1.9); atk = Math.round(atk * 1.3); xp *= 3; gold = Math.round(gold * 3.2); }
   if (type === 'boss') { hp = Math.round(hp * 3.4); atk = Math.round(atk * 1.45); xp = 120; gold = 260; }
-  const mob = { id: b.id, name: b.name, icon: b.icon, flavor: b.flavor, hp, maxHp: hp, atk, def, xp, gold, elite: type === 'elite', boss: type === 'boss', period: b.period, cd: null, awake: false };
+  const mob = { id: b.id, icon: b.icon, hp, maxHp: hp, atk, def, xp, gold, elite: type === 'elite', boss: type === 'boss', period: b.period, cd: null, awake: false };
   // 反锁死：钥匙守卫 / 龙王在生成时必须是「满血可胜」的。
   // 这里刻意忽略 freeKill——否则「势如破竹」会让守卫绕过上限生成，一旦首杀被小怪用掉就无解。
   if (type === 'elite' || type === 'boss') {
@@ -383,8 +412,10 @@ function rollChest(s, f, d) {
 }
 
 // ---------- helpers ----------
-function say(s, text, tone = 'info') {
-  s.log.push({ id: ++s.logId, text, tone });
+// 日志存 key + 参数，不存译文：换语言、调数值都不必重新生成历史文本。
+function say(s, key, params, tone = 'info') {
+  if (typeof params === 'string') { tone = params; params = null; }
+  s.log.push({ id: ++s.logId, k: key, p: params, tone });
   if (s.log.length > 40) s.log.shift();
 }
 const ev = (list, type, data = {}) => { list.push({ type, ...data }); return list; };
@@ -419,7 +450,7 @@ function revealSolved(s, out) {
     else ev(out, 'reveal', { i: t.i, kind: t.kind });
   }
   for (const t of s.tiles) if (t.mob) { t.mob.awake = false; t.mob.cd = null; }
-  say(s, `本层解谜完成：${hidden.length} 处威胁全部揭示，旗帜已收回，它们不再骚扰你。`, 'magic');
+  say(s, 'log.solved', { n: hidden.length }, 'magic');
 
   // 识破结算。棋盘此刻已经全亮，「插对了几面旗」不再是泄密信息，可以放心按它发奖。
   // 完美识破＝剩下的每一处威胁都被你插了旗，而不是漏标后被系统掀开。
@@ -442,11 +473,11 @@ function revealSolved(s, out) {
   if (perfect && hasRelic(s, 'perfectMind')) xp += RELIC_MIND_XP;
   if (xp) gainXp(s, xp, out);
   const gain = [];
-  if (cutDef) gain.push(`怪物防御 −${cutDef}`);
-  if (cutAtk) gain.push(`怪物攻击 −${cutAtk}`);
-  if (gold) gain.push(`+${gold} 金币`);
-  if (xp) gain.push(`+${xp} 经验`);
-  say(s, `识破奖励${perfect ? '（完美识破）' : ''}：${gain.join(' · ')}。`, 'good');
+  if (cutDef) gain.push(ref('log.solve.part.def', { n: cutDef }));
+  if (cutAtk) gain.push(ref('log.solve.part.atk', { n: cutAtk }));
+  if (gold) gain.push(ref('log.solve.part.gold', { n: gold }));
+  if (xp) gain.push(ref('log.solve.part.xp', { n: xp }));
+  say(s, perfect ? 'log.solve.reward.perfect' : 'log.solve.reward', { parts: gain }, 'good');
   // tiles/flagged 供 UI 逐格掀砖：状态已经一次性改完，动画只能靠这份名单回放
   ev(out, 'solved', { count: hidden.length, tiles: hidden.map((t) => t.i), flagged, perfect, cutDef, cutAtk, gold, xp });
 }
@@ -468,14 +499,16 @@ function gainXp(s, amount, out) {
     p.hp = Math.min(p.maxHp, p.hp + BAL.lvHp);
     p.atk += BAL.lvAtk;
     if (p.lv % BAL.lvDefEvery === 0) p.def += 1;
-    say(s, `等级提升！Lv.${p.lv} 攻击+1 生命上限+4${p.lv % BAL.lvDefEvery === 0 ? ' 防御+1' : ''}`, 'good');
+    const defUp = p.lv % BAL.lvDefEvery === 0;
+    say(s, defUp ? 'log.levelup.def' : 'log.levelup', { lv: p.lv, atk: BAL.lvAtk, hp: BAL.lvHp, def: 1 }, 'good');
     ev(out, 'levelup', { lv: p.lv });
   }
   // 生命上限长了，血气方刚的派生攻击要跟着长
   if (p.lv > lv0) syncRelicMods(s);
 }
 
-function hurt(s, amount, out, source, at = -1) {
+// source 用稳定枚举（mob / trap / blood）：UI 据它选音效，译文只在渲染时解析
+function hurt(s, amount, out, source, at = -1, mobId = null) {
   const p = s.player;
   p.hp = Math.max(0, p.hp - amount);
   s.stats.damage += amount;
@@ -483,7 +516,8 @@ function hurt(s, amount, out, source, at = -1) {
   if (p.hp <= 0) {
     s.status = 'dead';
     s.mode = 'explore';
-    say(s, `你倒在了第 ${s.floor} 层……${source || ''}`, 'bad');
+    const cause = source === 'mob' && mobId ? ref('mob.' + mobId + '.name') : ref('source.' + source);
+    say(s, 'log.death', { floor: s.floor, cause }, 'bad');
     ev(out, 'death', { floor: s.floor });
   }
   return amount;
@@ -514,19 +548,19 @@ function lootChest(s, i, out) {
     if (type === 'potion') { type = 'gold'; amount = 25; }
     else if (type === 'gold') amount *= 2;
   }
-  if (type === 'gold') { const got = addGold(s, amount, out); say(s, `宝箱开启：${got} 金币。`, 'good'); }
-  else if (type === 'potion') { p.potions++; say(s, '宝箱开启：治疗药水 ×1。', 'good'); ev(out, 'item', { item: 'potion' }); }
-  else if (type === 'weapon') { p.atk += amount; say(s, `宝箱开启：附魔刃片，攻击 +${amount}！`, 'good'); ev(out, 'item', { item: 'weapon' }); }
-  else if (type === 'armor') { p.def += amount; say(s, `宝箱开启：龙鳞甲片，防御 +${amount}！`, 'good'); ev(out, 'item', { item: 'armor' }); }
-  else if (type === 'scroll') { p.scrolls++; say(s, '宝箱开启：侦查卷轴 ×1。', 'good'); ev(out, 'item', { item: 'scroll' }); }
-  else { p.bombs++; say(s, '宝箱开启：裂石炸弹 ×1。', 'good'); ev(out, 'item', { item: 'bomb' }); }
+  if (type === 'gold') { const got = addGold(s, amount, out); say(s, 'log.chest.gold', { n: got }, 'good'); }
+  else if (type === 'potion') { p.potions++; say(s, 'log.chest.potion', 'good'); ev(out, 'item', { item: 'potion' }); }
+  else if (type === 'weapon') { p.atk += amount; say(s, 'log.chest.weapon', { n: amount }, 'good'); ev(out, 'item', { item: 'weapon' }); }
+  else if (type === 'armor') { p.def += amount; say(s, 'log.chest.armor', { n: amount }, 'good'); ev(out, 'item', { item: 'armor' }); }
+  else if (type === 'scroll') { p.scrolls++; say(s, 'log.chest.scroll', 'good'); ev(out, 'item', { item: 'scroll' }); }
+  else { p.bombs++; say(s, 'log.chest.bomb', 'good'); ev(out, 'item', { item: 'bomb' }); }
   ev(out, 'loot', { i });
 }
 
 function pickPotion(s, i, out) {
   s.tiles[i].used = true;
   s.player.potions++;
-  say(s, '拾取治疗药水 ×1。', 'good');
+  say(s, 'log.pickup.potion', 'good');
   ev(out, 'item', { item: 'potion' });
   ev(out, 'loot', { i });
 }
@@ -542,7 +576,7 @@ function openTile(s, i, out, opts = {}) {
   const p = s.player;
 
   if (t.kind === 'monster' || t.kind === 'elite' || t.kind === 'boss') {
-    say(s, `遭遇 ${t.mob.name}！生命 ${t.mob.hp} · 攻击 ${t.mob.atk}`, t.kind === 'monster' ? 'warn' : 'bad');
+    say(s, 'log.encounter', { mob: ref('mob.' + t.mob.id + '.name'), hp: t.mob.hp, atk: t.mob.atk }, t.kind === 'monster' ? 'warn' : 'bad');
     ev(out, 'encounter', { i });
     if (!opts.silent) s.pendingCombat = i;
     return;
@@ -550,7 +584,7 @@ function openTile(s, i, out, opts = {}) {
   if (t.kind === 'trap') {
     if (opts.safe) {
       t.used = true;
-      say(s, '卷轴的微光提前引爆了陷坑，你安然无恙。', 'good');
+      say(s, 'log.trap.disarm', 'good');
       ev(out, 'disarm', { i });
     } else {
       t.used = true;
@@ -558,11 +592,11 @@ function openTile(s, i, out, opts = {}) {
       if (hasRelic(s, 'spikeSoles')) dmg = Math.max(1, Math.round(dmg * 0.7));
       if (s.relicState.trapWard > 0) {
         s.relicState.trapWard--;
-        say(s, `猫步让你在尖刺合拢前抽回了脚——毫发无伤。（剩 ${s.relicState.trapWard} 次）`, 'good');
+        say(s, 'log.trap.ward', { n: s.relicState.trapWard }, 'good');
         ev(out, 'disarm', { i });
       } else {
-        say(s, `地板塌陷！尖刺造成 ${dmg} 点伤害。`, 'bad');
-        hurt(s, dmg, out, '尖刺陷阱', i);
+        say(s, 'log.trap.hit', { dmg }, 'bad');
+        hurt(s, dmg, out, 'trap', i);
       }
       if (hasRelic(s, 'trapSalvage')) addGold(s, 10, out);
     }
@@ -570,7 +604,7 @@ function openTile(s, i, out, opts = {}) {
   }
   if (t.kind === 'chest') {
     if (opts.silent) {
-      say(s, '碎石间露出一只宝箱——点击它才能开启。', 'good');
+      say(s, 'log.discover.chest', 'good');
       ev(out, 'discover', { i, kind: 'chest' });
       return;
     }
@@ -579,7 +613,7 @@ function openTile(s, i, out, opts = {}) {
   }
   if (t.kind === 'potion') {
     if (opts.silent) {
-      say(s, '地上有一瓶治疗药水——点击拾取。', 'good');
+      say(s, 'log.discover.potion', 'good');
       ev(out, 'discover', { i, kind: 'potion' });
       return;
     }
@@ -587,14 +621,14 @@ function openTile(s, i, out, opts = {}) {
     return;
   }
   if (t.kind === 'altar') {
-    say(s, '发现古老祭坛，它索取献祭，也赐予力量。', 'magic');
+    say(s, 'log.discover.altar', 'magic');
     if (!opts.silent) s.pendingAltar = i;
     ev(out, 'altar', { i });
     return;
   }
   if (t.kind === 'stairs') {
     s.stairsFound = true;
-    say(s, s.floor === 1 ? '发现下行阶梯！随时可以进入下一层。' : '发现下行阶梯，但被符文锁封住了——找到钥匙守卫。', 'magic');
+    say(s, s.floor === 1 ? 'log.discover.stairs' : 'log.discover.stairs.locked', 'magic');
     ev(out, 'stairs', { i });
     return;
   }
@@ -620,8 +654,8 @@ function flood(s, start, out, opts) {
 export function setMode(s, mode) {
   const out = [];
   if (s.status !== 'playing') return out;
-  if (mode === 'bomb' && s.player.bombs <= 0) { say(s, '没有裂石炸弹了。', 'warn'); return out; }
-  if (mode === 'scroll' && s.player.scrolls <= 0) { say(s, '没有侦查卷轴了。', 'warn'); return out; }
+  if (mode === 'bomb' && s.player.bombs <= 0) { say(s, 'log.no.bomb', 'warn'); return out; }
+  if (mode === 'scroll' && s.player.scrolls <= 0) { say(s, 'log.no.scroll', 'warn'); return out; }
   s.mode = s.mode === mode && mode !== 'explore' ? 'explore' : mode;
   ev(out, 'mode', { mode: s.mode });
   return out;
@@ -635,7 +669,7 @@ export function toggleFlag(s, i) {
   // 上限是稀缺资源，拒绝时直接指出三条抬高上限的路，否则玩家只会觉得被卡住
   const cap = flagCap(s);
   if (!t.flagged && s.flags >= cap) {
-    say(s, `旗子用完（上限 ${cap}）：旗囊/旗帜祝福/旗手纹章可提升`, 'warn');
+    say(s, 'log.flag.limit', { cap }, 'warn');
     ev(out, 'flagLimit', { cap });
     return out;
   }
@@ -666,14 +700,14 @@ function tapInner(s, i) {
   if (s.mode === 'flag') return { out: toggleFlag(s, i), spent: false };
 
   if (s.mode === 'bomb') {
-    if (!t.revealed || !isThreat(t) || t.used) { say(s, '炸弹只能摧毁已探明的威胁。', 'warn'); return free; }
+    if (!t.revealed || !isThreat(t) || t.used) { say(s, 'log.bomb.invalid', 'warn'); return free; }
     s.player.bombs--;
     s.mode = 'explore';
     t.used = true;
     const wasMob = !!t.mob && t.mob.hp > 0;
     if (t.mob) t.mob.hp = 0;
     ev(out, 'bomb', { i });
-    say(s, `轰！${wasMob ? t.mob.name : '陷阱'}被炸成了碎砖。`, 'magic');
+    say(s, 'log.bomb.hit', { target: wasMob ? ref('mob.' + t.mob.id + '.name') : ref('tile.trap') }, 'magic');
     if (hasRelic(s, 'blastWave')) {
       let swept = 0;
       for (const j of neighbors(i)) {
@@ -683,9 +717,9 @@ function tapInner(s, i) {
         nt.used = true; nt.revealed = true; swept++;
         ev(out, 'disarm', { i: j });
       }
-      if (swept) say(s, `冲击波顺着砖缝荡开，连带掀掉了 ${swept} 处陷坑。`, 'magic');
+      if (swept) say(s, 'log.bomb.wave', { n: swept }, 'magic');
     }
-    if (t.kind === 'elite') { s.hasKey = true; say(s, '钥匙从碎石中滚了出来。', 'good'); ev(out, 'key', { i }); offerRelics(s, out); }
+    if (t.kind === 'elite') { s.hasKey = true; say(s, 'log.bomb.key', 'good'); ev(out, 'key', { i }); offerRelics(s, out); }
     if (t.kind === 'boss') return { out: out.concat(winRun(s)), spent: false };
     return { out, spent: true };
   }
@@ -698,13 +732,13 @@ function tapInner(s, i) {
     const area = [i, ...neighbors(i)];
     const surveyed = area.filter((j) => !s.tiles[j].revealed && isThreat(s.tiles[j])).length;
     for (const j of area) openTile(s, j, out, { safe: true, silent: true, noFlood: true });
-    say(s, '卷轴展开，周围的砖石变得透明。', 'magic');
+    say(s, 'log.scroll', 'magic');
     if (hasRelic(s, 'cartographer') && surveyed) {
       const add = Math.min(RELIC_SURVEY_CAP - s.relicState.survey, surveyed);
       if (add > 0) {
         s.relicState.survey += add;
         s.player.atk += add;
-        say(s, `测绘师把 ${surveyed} 处危险记进了图里：攻击 +${add}（${s.relicState.survey}/${RELIC_SURVEY_CAP}）。`, 'magic');
+        say(s, 'log.survey', { n: surveyed, add, have: s.relicState.survey, cap: RELIC_SURVEY_CAP }, 'magic');
       }
     }
     return { out, spent: true };
@@ -751,7 +785,7 @@ export function chord(s, i) {
   const hidden = nb.filter((j) => !s.tiles[j].revealed && !s.tiles[j].flagged);
   if (!hidden.length) return out;
   if (flagged !== t.n) {
-    say(s, `数字 ${t.n}：周围已标记 ${flagged} 个威胁，标记数不符，无法快速展开。`, 'warn');
+    say(s, 'log.chord.mismatch', { n: t.n, flagged }, 'warn');
     ev(out, 'chordHint', { i, need: t.n, flagged });
     return out;
   }
@@ -771,15 +805,15 @@ export function attack(s, i) {
   const p = s.player;
   const f = forecast(p, t.mob);
   s.pendingCombat = -1;
-  if (f.lethal) { say(s, '这一击会要了你的命，先变强或绕开它。', 'bad'); ev(out, 'blocked', { i }); return out; }
+  if (f.lethal) { say(s, 'log.attack.lethal', 'bad'); ev(out, 'blocked', { i }); return out; }
   s.stats.turns++;
   ev(out, 'combat', { i, rounds: f.rounds, take: f.take, deal: f.deal });
-  if (f.take > 0) hurt(s, f.take, out, t.mob.name, i);
+  if (f.take > 0) hurt(s, f.take, out, 'mob', i, t.mob.id);
   if (s.status !== 'playing') return out;
   t.mob.hp = 0;
   t.used = true;
   s.stats.kills++;
-  say(s, `${t.mob.name}倒下了！${f.rounds} 回合，承受 ${f.take} 伤害，+${t.mob.xp} 经验。`, 'good');
+  say(s, 'log.kill', { mob: ref('mob.' + t.mob.id + '.name'), rounds: f.rounds, take: f.take, xp: t.mob.xp }, 'good');
   ev(out, 'kill', { i, mob: t.mob });
   addGold(s, t.mob.gold, out);
   gainXp(s, t.mob.xp, out);
@@ -788,11 +822,11 @@ export function attack(s, i) {
   if (hasRelic(s, 'whetSoul') && s.relicState.whet < RELIC_WHET_CAP) {
     s.relicState.whet++;
     p.atk += 1;
-    say(s, `磨刀之魂饮下了这一战：攻击 +1（${s.relicState.whet}/${RELIC_WHET_CAP}）。`, 'magic');
+    say(s, 'log.whet', { have: s.relicState.whet, cap: RELIC_WHET_CAP }, 'magic');
   }
   if (t.kind === 'elite') {
     s.hasKey = true;
-    say(s, '获得锈蚀钥匙！下行阶梯的封印解开了。', 'magic');
+    say(s, 'log.key', 'magic');
     ev(out, 'key', { i });
     offerRelics(s, out);
   }
@@ -811,11 +845,11 @@ export function usePotion(s) {
   const out = [];
   if (s.status !== 'playing') return out;
   const p = s.player;
-  if (p.potions <= 0) { say(s, '背包里没有药水了。', 'warn'); return out; }
-  if (p.hp >= p.maxHp) { say(s, '生命已满，别浪费药水。', 'warn'); return out; }
+  if (p.potions <= 0) { say(s, 'log.no.potion', 'warn'); return out; }
+  if (p.hp >= p.maxHp) { say(s, 'log.hp.full', 'warn'); return out; }
   p.potions--;
   const amount = heal(s, Math.ceil(p.maxHp * (hasRelic(s, 'ironStomach') ? 0.38 : BAL.potionPct)), out);
-  say(s, `饮下药水，恢复 ${amount} 点生命。`, 'good');
+  say(s, 'log.potion', { n: amount }, 'good');
   return out;
 }
 
@@ -825,7 +859,7 @@ export function buy(s, id) {
   const item = SHOP.find((x) => x.id === id);
   if (!item) return out;
   const price = shopPrice(s, id);
-  if (s.player.gold < price) { say(s, '金币不够。', 'warn'); ev(out, 'deny'); return out; }
+  if (s.player.gold < price) { say(s, 'log.no.gold', 'warn'); ev(out, 'deny'); return out; }
   s.player.gold -= price;
   s.bought[id] = (s.bought[id] || 0) + 1;
   const p = s.player;
@@ -836,17 +870,27 @@ export function buy(s, id) {
   if (id === 'pouch') s.flagBonus += 1;
   if (id === 'scroll') p.scrolls++;
   if (id === 'bomb') p.bombs++;
-  say(s, `购入 ${item.name}（-${price} 金币）。`, 'good');
+  say(s, 'log.buy', { item: ref('shop.' + item.id + '.name'), price }, 'good');
   ev(out, 'buy', { id, price });
   return out;
 }
 
+export const ALTAR_GREED_GOLD = 45;
 export const ALTAR_OPTIONS = [
-  { id: 'blood', name: '血之契约', icon: 'sword', desc: '献祭 10 点生命，永久 +2 攻击' },
-  { id: 'pray', name: '静默祈祷', icon: 'heart', desc: '恢复 45% 最大生命' },
-  { id: 'greed', name: '贪婪低语', icon: 'coin', desc: '立刻获得 45 金币，本层防御 −1（下行时恢复）' },
-  { id: 'banner', name: '旗帜祝福', icon: 'flag', desc: `永久 +${ALTAR_FLAG_BONUS} 旗子上限` },
+  { id: 'blood', icon: 'sword' },
+  { id: 'pray', icon: 'heart' },
+  { id: 'greed', icon: 'coin' },
+  { id: 'banner', icon: 'flag' },
 ];
+const ALTAR_PARAMS = {
+  blood: { hp: BAL.bloodCost, atk: BAL.bloodAtk },
+  pray: { pct: Math.round(BAL.prayPct * 100) },
+  greed: { gold: ALTAR_GREED_GOLD },
+  banner: { n: ALTAR_FLAG_BONUS },
+};
+export const altarName = (o) => tr('altar.' + o.id + '.name');
+export const altarDesc = (o) => tr('altar.' + o.id + '.desc', ALTAR_PARAMS[o.id]);
+export const altarWhy = (id) => tr('altar.why.' + id);
 
 export function altarChoose(s, i, choice) {
   const out = [];
@@ -854,26 +898,26 @@ export function altarChoose(s, i, choice) {
   const t = s.tiles[i];
   if (!t || t.kind !== 'altar' || t.used) return out;
   const p = s.player;
-  if (choice === 'blood' && p.hp <= BAL.bloodCost) { say(s, '你的血不够献祭了。', 'warn'); return out; }
-  if (choice === 'greed' && p.def <= 0) { say(s, '你的甲胄已经薄无可薄。', 'warn'); return out; }
+  if (choice === 'blood' && p.hp <= BAL.bloodCost) { say(s, 'log.altar.no.blood', 'warn'); return out; }
+  if (choice === 'greed' && p.def <= 0) { say(s, 'log.altar.no.def', 'warn'); return out; }
   t.used = true;
   s.pendingAltar = -1;
   if (choice === 'blood') {
-    hurt(s, BAL.bloodCost, out, '血之契约');
+    hurt(s, BAL.bloodCost, out, 'blood');
     if (s.status !== 'playing') return out;
     p.atk += BAL.bloodAtk;
-    say(s, `祭坛饮下你的血，刀刃变得饥渴。攻击 +${BAL.bloodAtk}。`, 'magic');
+    say(s, 'log.altar.blood', { n: BAL.bloodAtk }, 'magic');
   } else if (choice === 'pray') {
     const h = heal(s, Math.ceil(p.maxHp * (hasRelic(s, 'altarGrace') ? 0.75 : BAL.prayPct)), out);
-    say(s, `温暖的光包裹了你，恢复 ${h} 点生命。`, 'good');
+    say(s, 'log.altar.pray', { n: h }, 'good');
   } else if (choice === 'banner') {
     s.flagBonus += ALTAR_FLAG_BONUS;
-    say(s, `紫火卷成一面旗落进你手里：旗子上限提升到 ${flagCap(s)}。`, 'magic');
+    say(s, 'log.altar.banner', { cap: flagCap(s) }, 'magic');
   } else {
-    const got = addGold(s, 45, out);
+    const got = addGold(s, ALTAR_GREED_GOLD, out);
     p.def -= 1;
     s.defDebt += 1;
-    say(s, `金币从石缝涌出（+${got}）。甲胄薄了一分：本层防御 −1，下行时恢复。`, 'magic');
+    say(s, 'log.altar.greed', { gold: got }, 'magic');
   }
   ev(out, 'altarUsed', { i, choice });
   return out;
@@ -886,34 +930,34 @@ export function canDescend(s) {
 export function tryDescend(s) {
   const out = [];
   if (s.status !== 'playing') return out;
-  if (!s.stairsFound) { say(s, '还没找到下行阶梯。', 'warn'); return out; }
-  if (s.floor > 1 && !s.hasKey) { say(s, '阶梯被符文锁封住。钥匙守卫也算一格「雷」，就藏在未探明的砖格里——击败它或炸掉它才能夺钥。', 'warn'); ev(out, 'locked'); return out; }
+  if (!s.stairsFound) { say(s, 'log.no.stairs', 'warn'); return out; }
+  if (s.floor > 1 && !s.hasKey) { say(s, 'log.stairs.locked', 'warn'); ev(out, 'locked'); return out; }
   const bonus = addGold(s, (10 + s.floor * 3) * (hasRelic(s, 'prospector') ? 2 : 1), out);
   heal(s, Math.ceil(s.player.maxHp * BAL.descendPct), out);
   if (hasRelic(s, 'bannerLord')) {
     const correct = s.solvedFlags + s.tiles.filter((t) => t.flagged && !t.revealed && isThreat(t)).length;
     if (correct) {
       const h = heal(s, Math.min(RELIC_BANNER_CAP, correct * 2), out);
-      say(s, `旗帜领主认出了 ${correct} 面插对的旗，回复 ${h} 生命。`, 'good');
+      say(s, 'log.bannerlord', { n: correct, hp: h }, 'good');
     }
   }
-  if (hasRelic(s, 'alchemist') && s.floor % 2 === 0) { s.player.potions++; say(s, '炼金壶在行囊里凝出了一瓶药水。', 'good'); ev(out, 'item', { item: 'potion' }); }
+  if (hasRelic(s, 'alchemist') && s.floor % 2 === 0) { s.player.potions++; say(s, 'log.alchemist', 'good'); ev(out, 'item', { item: 'potion' }); }
   if (hasRelic(s, 'strataOath')) {
     s.player.def += STRATA_DEF;
     s.player.maxHp += STRATA_HP;
     heal(s, STRATA_HP, out);
-    say(s, `层岩誓约又刻下一道：防御 +${STRATA_DEF}，生命上限 +${STRATA_HP}。`, 'magic');
+    say(s, 'log.strata', { def: STRATA_DEF, hp: STRATA_HP }, 'magic');
   }
   s.floor++;
   buildFloor(s);
-  say(s, `沿阶梯而下——第 ${s.floor} 层 · ${FLOOR_NAMES[s.floor]}。通关奖励 ${bonus} 金币。`, 'magic');
+  say(s, 'log.descend', { n: s.floor, name: ref('floor.' + s.floor), gold: bonus }, 'magic');
   ev(out, 'descend', { floor: s.floor });
   return out;
 }
 
 function winRun(s) {
   s.status = 'won';
-  say(s, '深渊龙王轰然崩塌，砖石之上重见天光。你通关了！', 'good');
+  say(s, 'log.win', 'good');
   return ev([], 'win', { floor: s.floor });
 }
 
@@ -951,7 +995,7 @@ export function offerRelics(s, out) {
   const ids = rollRelicChoices(s);
   if (!ids.length) return out;
   s.relicChoices = ids;
-  say(s, '守卫的残骸中浮起三件遗物——只能带走一件。', 'magic');
+  say(s, 'log.relic.offer', 'magic');
   return ev(out, 'relicOffer', { ids });
 }
 
@@ -967,7 +1011,7 @@ export function chooseRelic(s, id) {
   if (id === 'bannerBearer') s.flagBonus += RELIC_FLAG_BONUS;
   syncRelicMods(s);
   const r = relicById(id);
-  say(s, `获得遗物「${r.name}」：${r.desc}`, 'magic');
+  say(s, 'log.relic.gain', { name: ref('relic.' + r.id + '.name'), desc: ref('relic.' + r.id + '.desc', RELIC_PARAMS[r.id]) }, 'magic');
   return ev(out, 'relicGain', { id });
 }
 
@@ -983,16 +1027,19 @@ export function deserialize(text) {
 }
 
 export function tileLabel(t) {
-  if (!t.revealed) return t.flagged ? '已标记' : '未探索';
-  if (t.mob && t.mob.hp > 0) return t.mob.name + (t.mob.awake && t.mob.cd != null ? `，${t.mob.cd} 回合后骚扰` : '');
-  if (t.kind === 'stairs') return '下行阶梯';
-  const name = t.mob ? t.mob.name + '（已清除）'
-    : t.kind === 'trap' ? (t.used ? '已触发陷阱' : '陷阱')
-    : t.kind === 'altar' ? (t.used ? '黯淡的祭坛' : '古老祭坛')
-    : t.kind === 'chest' ? (t.used ? '空宝箱' : '未开启的宝箱')
-    : t.kind === 'potion' ? (t.used ? '空地' : '治疗药水')
+  if (!t.revealed) return tr(t.flagged ? 'tile.flagged' : 'tile.hidden');
+  if (t.mob && t.mob.hp > 0) {
+    const name = ref('mob.' + t.mob.id + '.name');
+    return t.mob.awake && t.mob.cd != null ? tr('tile.mob.aggro', { name, cd: t.mob.cd }) : tr('tile.mob', { name });
+  }
+  if (t.kind === 'stairs') return tr('tile.stairs');
+  const name = t.mob ? tr('tile.mob.cleared', { name: ref('mob.' + t.mob.id + '.name') })
+    : t.kind === 'trap' ? tr(t.used ? 'tile.trap.used' : 'tile.trap')
+    : t.kind === 'altar' ? tr(t.used ? 'tile.altar.used' : 'tile.altar')
+    : t.kind === 'chest' ? tr(t.used ? 'tile.chest.used' : 'tile.chest')
+    : t.kind === 'potion' ? tr(t.used ? 'tile.potion.used' : 'tile.potion')
     : null;
-  if (name == null) return t.n ? `危险 ${t.n}` : '安全空地';
+  if (name == null) return t.n ? tr('tile.danger', { n: t.n }) : tr('tile.empty');
   const spent = t.mob ? t.mob.hp <= 0 : t.used;
-  return spent && t.n ? `${name}，危险 ${t.n}` : name;
+  return spent && t.n ? tr('tile.spent.danger', { name, n: t.n }) : name;
 }

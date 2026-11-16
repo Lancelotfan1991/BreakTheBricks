@@ -1,4 +1,5 @@
 import * as G from './game.js';
+import { t as tr } from './i18n.js';
 import { audio } from './audio.js';
 import { fx } from './fx.js';
 
@@ -107,7 +108,7 @@ function tileView(t) {
   if (!rev) {
     cls += t.flagged ? ' tile-hidden tile-flag' : ' tile-hidden';
     if (t.flagged) inner = svg('flag');
-    label = `第${Math.floor(t.i / G.COLS) + 1}行第${(t.i % G.COLS) + 1}列 ${label}`;
+    label = tr('ui.board.pos', { row: Math.floor(t.i / G.COLS) + 1, col: (t.i % G.COLS) + 1, label });
     return { cls, inner, n, label };
   }
   cls += ' tile-rev';
@@ -127,14 +128,14 @@ function tileView(t) {
       // 每只怪有自己的节奏，倒计时因此挂在每一只头上：数字最小的那只最先扑你
       inner += `<span class="tile-aggro"><b>!</b><i>${m.cd}</i></span>`;
     }
-    label += ` 生命${m.hp} 攻击${m.atk} 防御${m.def}`;
+    label += ' ' + tr('ui.board.stats', { hp: m.hp, atk: m.atk, def: m.def });
     return { cls, inner, n, label };
   }
   if (t.kind === 'stairs') {
     cls += ' tile-stairs';
     inner = svg('stairs');
     const locked = S.floor > 1 && !S.hasKey;
-    if (locked) { inner += `<span class="tile-lock">${svg('lock')}</span>`; label += '（上锁）'; }
+    if (locked) { inner += `<span class="tile-lock">${svg('lock')}</span>`; label += tr('ui.board.locked'); }
     return { cls, inner, n, label };
   }
   if (!t.used) {
@@ -194,8 +195,8 @@ function bump(node) { node.classList.remove('bump'); void node.offsetWidth; node
 function renderHud() {
   const p = S.player;
   el.floorNum.textContent = S.floor;
-  el.floorName.textContent = G.FLOOR_NAMES[S.floor];
-  el.floorSub.textContent = `DEPTH ${S.floor} / ${G.MAX_FLOOR}`;
+  el.floorName.textContent = G.floorName(S.floor);
+  el.floorSub.textContent = tr('ui.hud.depth', { n: S.floor, max: G.MAX_FLOOR });
   const pct = Math.max(0, p.hp / p.maxHp);
   el.hpFill.style.transform = `scaleX(${pct})`;
   el.hpText.textContent = `${p.hp} / ${p.maxHp}`;
@@ -204,8 +205,10 @@ function renderHud() {
   // 祭坛借走的防御要让人看见「是借的」，否则玩家会以为永久亏了
   const defChip = el.def.parentElement;
   defChip.classList.toggle('debt', S.defDebt > 0);
-  defChip.title = S.defDebt > 0 ? `祭坛借走 ${S.defDebt} 点防御，下行时恢复` : '';
-  defChip.setAttribute('aria-label', S.defDebt > 0 ? `防御 ${p.def}，祭坛借走 ${S.defDebt} 点，下行时恢复` : `防御 ${p.def}`);
+  defChip.title = S.defDebt > 0 ? tr('ui.hud.def.debt', { n: S.defDebt }) : '';
+  defChip.setAttribute('aria-label', S.defDebt > 0
+    ? tr('ui.hud.def.aria.debt', { def: p.def, n: S.defDebt })
+    : tr('ui.hud.def', { def: p.def }));
   el.lv.textContent = p.lv;
   el.ring.style.strokeDashoffset = String(119.4 * (1 - p.xp / p.xpNext));
   const remain = S.generated ? G.remainingThreats(S) : S.threatTotal;
@@ -213,14 +216,14 @@ function renderHud() {
   const cap = G.flagCap(S);
   el.flagText.textContent = `${S.flags}/${cap}`;
   el.threatChip.classList.toggle('full', S.flags >= cap);
-  el.threatChip.setAttribute('aria-label', `剩余威胁 ${remain}，旗子已用 ${S.flags}，上限 ${cap}`);
+  el.threatChip.setAttribute('aria-label', tr('ui.hud.threat.aria', { remain, used: S.flags, cap }));
   el.keyChip.hidden = !S.hasKey;
   const ag = G.aggroSummary(S);
   el.aggroChip.hidden = !ag;
   if (ag) {
     el.aggroCount.textContent = ag.count;
     el.aggroChip.classList.toggle('soon', ag.next <= 2);
-    el.aggroChip.setAttribute('aria-label', `${ag.count} 只怪物被惊扰`);
+    el.aggroChip.setAttribute('aria-label', tr('ui.hud.aggro.aria', { n: ag.count }));
   }
   el.potion.textContent = p.potions; el.bomb.textContent = p.bombs; el.scroll.textContent = p.scrolls;
   el.potion.parentElement.classList.toggle('empty', p.potions === 0);
@@ -230,7 +233,7 @@ function renderHud() {
   const flagLeft = Math.max(0, cap - S.flags);
   el.flag.textContent = flagLeft;
   el.flag.parentElement.classList.toggle('empty', flagLeft === 0);
-  el.flag.parentElement.setAttribute('aria-label', `标记模式，剩余旗子 ${flagLeft}，上限 ${cap}`);
+  el.flag.parentElement.setAttribute('aria-label', tr('ui.hud.flag.aria', { left: flagLeft, cap }));
   if (prevFlag != null && prevFlag !== flagLeft) bump(el.flag.parentElement);
   prevFlag = flagLeft;
   for (const k of ['atk', 'def', 'gold', 'lv']) if (prev[k] != null && prev[k] !== p[k]) bump(el[k].parentElement.classList.contains('chip') ? el[k].parentElement : el.lv.parentElement);
@@ -242,12 +245,12 @@ function renderHud() {
   el.descend.disabled = !S.stairsFound;
   el.descend.classList.toggle('locked', locked);
   el.descend.querySelector('use').setAttribute('href', locked ? '#i-lock' : '#i-down');
-  el.descend.querySelector('span').textContent = locked ? '需钥匙' : '下一层';
+  el.descend.querySelector('span').textContent = locked ? tr('ui.descend.locked') : tr('ui.descend.next');
 
   const last = S.log[S.log.length - 1];
   if (last && el.log.dataset.id !== String(last.id)) {
     el.log.dataset.id = String(last.id);
-    el.log.textContent = last.text;
+    el.log.textContent = tr(last.k, last.p);
     el.ticker.className = 'ticker t-' + last.tone;
     el.log.classList.remove('in'); void el.log.offsetWidth; el.log.classList.add('in');
   }
@@ -261,7 +264,7 @@ const rarityColor = (r) => G.RELIC_RARITY[r.rarity].color;
 function relicNote(s, r) {
   if (r.id === 'whetSoul') return `${s.relicState.whet}/${G.RELIC_WHET_CAP}`;
   if (r.id === 'carefulStep') return `${s.relicState.trapWard}`;
-  if (r.id === 'momentum') return s.relicState.firstKill ? '已用' : '待发';
+  if (r.id === 'momentum') return s.relicState.firstKill ? tr('ui.relic.note.used') : tr('ui.relic.note.ready');
   if (r.id === 'cartographer') return `${s.relicState.survey}/${G.RELIC_SURVEY_CAP}`;
   if (r.id === 'vigor') return `+${s.player.atkBonus}`;
   return '';
@@ -273,7 +276,7 @@ function renderRelics() {
   if (!list.length) { el.relicSlots.innerHTML = ''; return; }
   const html = list.map((id) => {
     const r = G.relicById(id), note = relicNote(S, r);
-    return `<button class="relic-chip" data-act="codex" style="--rc:${rarityColor(r)}" aria-label="${r.name}：${r.desc}">
+    return `<button class="relic-chip" data-act="codex" style="--rc:${rarityColor(r)}" aria-label="${tr('ui.relic.chip.aria', { name: G.relicName(r), desc: G.relicDesc(r) })}">
       ${svg(r.icon)}${note ? `<em>${note}</em>` : ''}</button>`;
   }).join('');
   if (el.relicSlots.innerHTML !== html) el.relicSlots.innerHTML = html;
@@ -283,60 +286,60 @@ function openRelicDraw() {
   const cards = S.relicChoices.map((id) => {
     const r = G.relicById(id), ra = G.RELIC_RARITY[r.rarity];
     return `<button class="rcard" data-sheet="relic" data-id="${id}" style="--rc:${ra.color}">
-      <span class="rcard-rar">${ra.name}</span>
+      <span class="rcard-rar">${G.rarityName(r.rarity)}</span>
       <span class="rcard-ic">${svg(r.icon)}</span>
-      <b class="rcard-name">${r.name}</b>
-      <span class="rcard-cat">${G.RELIC_CATS[r.cat]}</span>
-      <span class="rcard-desc">${r.desc}</span>
-      <span class="rcard-flavor">${r.flavor}</span>
+      <b class="rcard-name">${G.relicName(r)}</b>
+      <span class="rcard-cat">${G.catName(r.cat)}</span>
+      <span class="rcard-desc">${G.relicDesc(r)}</span>
+      <span class="rcard-flavor">${G.relicFlavor(r)}</span>
     </button>`;
   }).join('');
   openSheet('relic', `
     <div class="sheet-head">
-      <div><h2 class="sheet-title">遗物抉择</h2><p class="sheet-sub">守卫的残骸中浮起三件遗物，只能带走一件。已持有 ${S.relics.length} 件。</p></div>
-      <button class="icon-btn sheet-close" data-sheet="codex" aria-label="查看图鉴">${svg('relic')}</button>
+      <div><h2 class="sheet-title">${tr('ui.relic.draw.title')}</h2><p class="sheet-sub">${tr('ui.relic.draw.sub', { n: S.relics.length })}</p></div>
+      <button class="icon-btn sheet-close" data-sheet="codex" aria-label="${tr('ui.relic.codex.aria')}">${svg('relic')}</button>
     </div>
     <div class="rcards">${cards}</div>
-    <p class="rcard-hint">遗物永久生效，本局不会重复出现。点击卡片带走它。</p>
-    <div class="sheet-actions"><button class="btn btn-ghost" data-sheet="codex">${svg('relic')}<span>查看遗物图鉴</span></button></div>`, true);
+    <p class="rcard-hint">${tr('ui.relic.draw.hint')}</p>
+    <div class="sheet-actions"><button class="btn btn-ghost" data-sheet="codex">${svg('relic')}<span>${tr('ui.relic.codex.btn')}</span></button></div>`, true);
 }
 
 function openCodex() {
   const owned = S ? S.relics : [];
   const back = S && S.relicChoices ? 'relicBack' : 'close';
-  const groups = Object.entries(G.RELIC_CATS).map(([cat, label]) => {
+  const groups = G.RELIC_CATS.map((cat) => {
     const rows = G.RELICS.filter((r) => r.cat === cat).map((r) => {
       const ra = G.RELIC_RARITY[r.rarity], has = owned.includes(r.id);
       return `<div class="cx ${has ? 'has' : ''}" style="--rc:${ra.color}">
         <span class="cx-ic">${svg(r.icon)}</span>
         <span class="cx-tx">
-          <b>${r.name}<i class="cx-rar">${ra.name}</i>${has ? '<i class="cx-own">已持有</i>' : ''}</b>
-          <span class="cx-desc">${r.desc}</span>
-          <span class="cx-fl">${r.flavor}</span>
+          <b>${G.relicName(r)}<i class="cx-rar">${G.rarityName(r.rarity)}</i>${has ? `<i class="cx-own">${tr('ui.codex.own')}</i>` : ''}</b>
+          <span class="cx-desc">${G.relicDesc(r)}</span>
+          <span class="cx-fl">${G.relicFlavor(r)}</span>
         </span>
       </div>`;
     }).join('');
     const n = G.RELICS.filter((r) => r.cat === cat && owned.includes(r.id)).length;
     const total = G.RELICS.filter((r) => r.cat === cat).length;
-    return `<div class="help-sec"><h3 class="help-h">${label}<i class="cx-count">${n}/${total}</i></h3>${rows}</div>`;
+    return `<div class="help-sec"><h3 class="help-h">${G.catName(cat)}<i class="cx-count">${n}/${total}</i></h3>${rows}</div>`;
   }).join('');
-  const rar = Object.values(G.RELIC_RARITY);
-  const wsum = rar.reduce((a, r) => a + r.weight, 0);
-  const odds = rar.map((r) => `<span style="color:${r.color}">${r.name} ${Math.round(r.weight / wsum * 100)}%</span>`).join(' · ');
+  const rarityIds = Object.keys(G.RELIC_RARITY);
+  const wsum = rarityIds.reduce((a, id) => a + G.RELIC_RARITY[id].weight, 0);
+  const odds = rarityIds.map((id) => {
+    const r = G.RELIC_RARITY[id];
+    return `<span style="color:${r.color}">${G.rarityName(id)} ${Math.round(r.weight / wsum * 100)}%</span>`;
+  }).join(tr('list.sep'));
   openSheet('codex', `
     <div class="sheet-head">
-      <div><h2 class="sheet-title">遗物图鉴</h2><p class="sheet-sub">共 ${G.RELICS.length} 件 · 本局已收集 ${owned.length} 件</p></div>
-      <button class="icon-btn sheet-close" data-sheet="${back}" aria-label="关闭">${svg('close')}</button>
+      <div><h2 class="sheet-title">${tr('ui.codex.title')}</h2><p class="sheet-sub">${tr('ui.codex.sub', { total: G.RELICS.length, own: owned.length })}</p></div>
+      <button class="icon-btn sheet-close" data-sheet="${back}" aria-label="${tr('ui.btn.close')}">${svg('close')}</button>
     </div>
     <div class="help-sec">
-      <h3 class="help-h">怎么获得</h3>
-      <p class="help-p">第 2～7 层各有一名<b>钥匙守卫</b>。击败它（或用炸弹炸掉它）就会浮起 <b>${G.RELIC_DRAW_COUNT} 件</b>遗物，<b>三选一</b>，一局最多 ${G.MAX_FLOOR - 2} 件。<br>
-      抽取按稀有度加权：${odds}。已持有的不会再出现，所以越到后期越容易见到史诗。<br>
-      遗物<b>只改变代价与收益，不改变信息量</b>——没有任何遗物会替你标雷或透视威胁，战斗数字也永远等于实际结算。<br>
-      两条构筑轴：<b>推理流</b>把插对的旗与卷轴探明换成战力，<b>体魄流</b>把生命上限换成攻击、防御与反震。详见玩法说明。</p>
+      <h3 class="help-h">${tr('ui.codex.how')}</h3>
+      <p class="help-p">${tr('ui.codex.how.body', { draw: G.RELIC_DRAW_COUNT, max: G.MAX_FLOOR - 2, odds })}</p>
     </div>
     ${groups}
-    <div class="sheet-actions"><button class="btn btn-primary btn-lg" data-sheet="${back}">${S && S.relicChoices ? '回到抉择' : '关闭图鉴'}</button></div>`, !!(S && S.relicChoices));
+    <div class="sheet-actions"><button class="btn btn-primary btn-lg" data-sheet="${back}">${S && S.relicChoices ? tr('ui.codex.back') : tr('ui.codex.close')}</button></div>`, !!(S && S.relicChoices));
 }
 
 /* ─────────── 事件 → 反馈 ─────────── */
@@ -390,7 +393,7 @@ function consume(events) {
       }
       case 'encounter': audio.play('open'); fx.haptic('light'); break;
       case 'flag': audio.play(e.on ? 'flag' : 'unflag'); fx.haptic('tick'); break;
-      case 'flagLimit': audio.play('deny'); toast(`旗子用完（上限 ${e.cap}）：旗囊/旗帜祝福/旗手纹章可提升`, 'bad'); break;
+      case 'flagLimit': audio.play('deny'); toast(tr('log.flag.limit', { cap: e.cap }), 'bad'); break;
       case 'aggro': {
         if (S.tiles[e.i] && S.tiles[e.i].revealed) { const c = tileCenter(e.i); fx.ring(c.x, c.y, '#ff3b5c', 90); }
         break;
@@ -402,7 +405,7 @@ function consume(events) {
         const c = at >= 0 ? tileCenter(at) : fx.center(el.hpFill);
         fx.flash('hurt'); fx.shake(el.board); fx.blood(c.x, c.y);
         fx.float(c.x, c.y - 10, '-' + e.amount, 'dmg');
-        audio.play(e.source === '尖刺陷阱' ? 'trap' : 'hit'); fx.haptic('heavy');
+        audio.play(e.source === 'trap' ? 'trap' : 'hit'); fx.haptic('heavy');
         break;
       }
       case 'heal': {
@@ -433,7 +436,7 @@ function consume(events) {
         const x = r.left + r.width / 2, y = r.top + r.height / 2;
         fx.ring(x, y, '#ffd54a', 120); fx.magic(x, y); fx.flash('gold');
         fx.float(x, y - 26, 'LEVEL ' + e.lv, 'crit');
-        audio.play('levelup'); fx.haptic('heavy'); toast('等级提升！Lv.' + e.lv, 'magic');
+        audio.play('levelup'); fx.haptic('heavy'); toast(tr('ui.toast.levelup', { lv: e.lv }), 'magic');
         break;
       }
       case 'item': audio.play('item'); break;
@@ -452,10 +455,10 @@ function consume(events) {
       case 'key': {
         const c = tileCenter(e.i);
         fx.ring(c.x, c.y, '#ffd54a', 100); fx.coins(c.x, c.y); fx.flash('gold');
-        audio.play('key'); fx.haptic('heavy'); toast('获得钥匙 · 阶梯已解封', 'magic');
+        audio.play('key'); fx.haptic('heavy'); toast(tr('ui.toast.key'), 'magic');
         break;
       }
-      case 'stairs': { const c = tileCenter(e.i); fx.portal(c.x, c.y); audio.play('stairs'); fx.haptic('medium'); toast('发现下行阶梯', 'magic'); break; }
+      case 'stairs': { const c = tileCenter(e.i); fx.portal(c.x, c.y); audio.play('stairs'); fx.haptic('medium'); toast(tr('ui.toast.stairs'), 'magic'); break; }
       case 'altar': audio.play('altar'); break;
       case 'altarUsed': { const c = tileCenter(e.i); fx.magic(c.x, c.y); break; }
       case 'bomb': { const c = tileCenter(e.i); fx.boom(c.x, c.y); fx.shake(el.board); audio.play('bomb'); fx.haptic('heavy'); break; }
@@ -467,12 +470,12 @@ function consume(events) {
         const r = G.relicById(e.id);
         const c = fx.center(el.relicBar.hidden ? el.lv : el.relicBar);
         fx.ring(c.x, c.y, rarityColor(r), 130); fx.magic(c.x, c.y); fx.flash('gold');
-        audio.play('levelup'); fx.haptic('heavy'); toast('遗物 · ' + r.name, 'magic');
+        audio.play('levelup'); fx.haptic('heavy'); toast(tr('ui.toast.relic', { name: G.relicName(r) }), 'magic');
         break;
       }
       case 'deny': audio.play('deny'); break;
-      case 'locked': audio.play('locked'); toast('钥匙守卫也算「雷」，打掉它才能夺钥', 'bad'); break;
-      case 'blocked': audio.play('deny'); fx.shake(el.board); fx.haptic('light'); toast('这一击会要了你的命', 'bad'); break;
+      case 'locked': audio.play('locked'); toast(tr('ui.toast.locked'), 'bad'); break;
+      case 'blocked': audio.play('deny'); fx.shake(el.board); fx.haptic('light'); toast(tr('ui.toast.lethal'), 'bad'); break;
       case 'chord': audio.play('open'); fx.haptic('medium'); break;
       case 'chordHint': {
         audio.play('deny');
@@ -549,51 +552,55 @@ function openCombat(i) {
   const safePct = Math.max(0, (p.hp - f.take) / p.maxHp * 100);
   const lossPct = Math.min(100, f.take / p.maxHp * 100);
   const kind = t.kind === 'boss' ? 'boss' : t.kind === 'elite' ? 'elite' : '';
-  const tag = t.kind === 'boss' ? '<span class="mob-tag boss">龙王</span>' : t.kind === 'elite' ? '<span class="mob-tag">钥匙守卫</span>' : '';
+  const tag = t.kind === 'boss' ? `<span class="mob-tag boss">${tr('ui.combat.tag.boss')}</span>` : t.kind === 'elite' ? `<span class="mob-tag">${tr('ui.combat.tag.elite')}</span>` : '';
   const note = f.lethal
-    ? `<p class="fc-note danger">⚠ 预计承受 ${f.take} 点伤害，你只剩 ${p.hp} 点生命——这一击必死。先喝药水、升级，或用炸弹绕开。</p>`
+    ? `<p class="fc-note danger">${tr('ui.combat.note.lethal', { take: f.take, hp: p.hp })}</p>`
     : f.take === 0
-      ? `<p class="fc-note">一击必杀，毫发无伤。</p>`
-      : `<p class="fc-note">你先出手，${f.rounds} 回合内解决战斗，其间被反击 ${f.counters} 次${p.thorns ? `，反震同时打掉它 ${f.counters * p.thorns} 点生命` : ''}。</p>`;
-  const thornRow = p.thorns ? `<div class="fc-row free"><span>反震反弹（每次被反击）</span><b>${p.thorns}</b></div>` : '';
-  const cutNote = m.cut && (m.cut.def || m.cut.atk)
-    ? `<p class="fc-note good">本层已识破，它被削弱了：${[m.cut.def ? `防御 −${m.cut.def}` : '', m.cut.atk ? `攻击 −${m.cut.atk}` : ''].filter(Boolean).join('、')}。下面的属性与预演都已计入。</p>`
+      ? `<p class="fc-note">${tr('ui.combat.note.free')}</p>`
+      : `<p class="fc-note">${tr(p.thorns ? 'ui.combat.note.thorns' : 'ui.combat.note.normal', { rounds: f.rounds, counters: f.counters, recoil: f.counters * p.thorns })}</p>`;
+  const thornRow = p.thorns ? `<div class="fc-row free"><span>${tr('ui.combat.row.thorns')}</span><b>${p.thorns}</b></div>` : '';
+  const cutParts = [
+    m.cut && m.cut.def ? tr('ui.combat.cut.def', { n: m.cut.def }) : '',
+    m.cut && m.cut.atk ? tr('ui.combat.cut.atk', { n: m.cut.atk }) : '',
+  ].filter(Boolean);
+  const cutNote = cutParts.length
+    ? `<p class="fc-note good">${tr('ui.combat.cut', { parts: cutParts.join(tr('ui.combat.cut.sep')) })}</p>`
     : '';
   const aggroRow = m.awake && m.cd != null
-    ? `<div class="fc-row hurt"><span>惊扰骚扰（每 ${m.period} 回合）</span><b>-${G.aggroDamage(p, m)}</b></div>
-       <p class="fc-note danger">它已被惊扰，${m.cd} 回合后扑来。留着不打，它会按自己的节奏一直撕你——骚扰<b>可以致死</b>。</p>`
+    ? `<div class="fc-row hurt"><span>${tr('ui.combat.aggro.row', { period: m.period })}</span><b>-${G.aggroDamage(p, m)}</b></div>
+       <p class="fc-note danger">${tr('ui.combat.aggro.note', { cd: m.cd })}</p>`
     : '';
   openSheet('combat', `
     <div class="sheet-head">
-      <div><h2 class="sheet-title">战斗预演</h2><p class="sheet-sub">先算清楚，再挥剑。</p></div>
-      <button class="icon-btn sheet-close" data-sheet="close" aria-label="关闭">${svg('close')}</button>
+      <div><h2 class="sheet-title">${tr('ui.combat.title')}</h2><p class="sheet-sub">${tr('ui.combat.sub')}</p></div>
+      <button class="icon-btn sheet-close" data-sheet="close" aria-label="${tr('ui.btn.close')}">${svg('close')}</button>
     </div>
     <div class="mob-card ${kind}">
       <div class="mob-portrait">${svg(m.icon)}</div>
-      <div class="mob-info"><h3 class="mob-name">${m.name}${tag}</h3><p class="mob-flavor">${m.flavor}</p></div>
+      <div class="mob-info"><h3 class="mob-name">${G.mobName(m)}${tag}</h3><p class="mob-flavor">${G.mobFlavor(m)}</p></div>
     </div>
     <div class="stat-grid">
-      <div class="stat hp"><i>生命</i><b>${m.hp}</b></div>
-      <div class="stat atk"><i>攻击</i><b>${m.atk}</b></div>
-      <div class="stat def"><i>防御</i><b>${m.def}</b></div>
-      <div class="stat xp"><i>经验</i><b>${m.xp}</b></div>
-      <div class="stat gold"><i>金币</i><b>${m.gold}</b></div>
+      <div class="stat hp"><i>${tr('ui.combat.stat.hp')}</i><b>${m.hp}</b></div>
+      <div class="stat atk"><i>${tr('ui.combat.stat.atk')}</i><b>${m.atk}</b></div>
+      <div class="stat def"><i>${tr('ui.combat.stat.def')}</i><b>${m.def}</b></div>
+      <div class="stat xp"><i>${tr('ui.combat.stat.xp')}</i><b>${m.xp}</b></div>
+      <div class="stat gold"><i>${tr('ui.combat.stat.gold')}</i><b>${m.gold}</b></div>
     </div>
     ${cutNote}
     <div class="forecast">
-      <div class="fc-row"><span>你的每击伤害</span><b>${f.deal}</b></div>
+      <div class="fc-row"><span>${tr('ui.combat.deal')}</span><b>${f.deal}</b></div>
       ${thornRow}
-      <div class="fc-row"><span>需要回合</span><b>${f.rounds}</b></div>
-      <div class="fc-row ${f.take ? 'hurt' : 'free'}"><span>预计承受</span><b>${f.take}</b></div>
+      <div class="fc-row"><span>${tr('ui.combat.rounds')}</span><b>${f.rounds}</b></div>
+      <div class="fc-row ${f.take ? 'hurt' : 'free'}"><span>${tr('ui.combat.take')}</span><b>${f.take}</b></div>
       ${aggroRow}
       <div class="fc-bar"><i class="fc-safe" style="width:${safePct}%"></i><i class="fc-loss" style="width:${lossPct}%"></i></div>
       ${note}
     </div>
     <div class="sheet-actions">
-      <button class="btn btn-ghost" data-sheet="close">再想想</button>
-      ${p.potions > 0 && p.hp < p.maxHp ? `<button class="btn" data-sheet="potion" data-i="${i}">${svg('potion')}<span>药水</span></button>` : ''}
-      ${p.bombs > 0 ? `<button class="btn" data-sheet="bomb" data-i="${i}">${svg('bomb')}<span>炸弹</span></button>` : ''}
-      <button class="btn ${f.lethal ? 'btn-danger' : 'btn-primary'}" data-sheet="attack" data-i="${i}" ${f.lethal ? 'disabled' : ''}>${svg('sword')}<span>${f.lethal ? '必死' : '攻击'}</span></button>
+      <button class="btn btn-ghost" data-sheet="close">${tr('ui.combat.again')}</button>
+      ${p.potions > 0 && p.hp < p.maxHp ? `<button class="btn" data-sheet="potion" data-i="${i}">${svg('potion')}<span>${tr('ui.combat.potion')}</span></button>` : ''}
+      ${p.bombs > 0 ? `<button class="btn" data-sheet="bomb" data-i="${i}">${svg('bomb')}<span>${tr('ui.combat.bomb')}</span></button>` : ''}
+      <button class="btn ${f.lethal ? 'btn-danger' : 'btn-primary'}" data-sheet="attack" data-i="${i}" ${f.lethal ? 'disabled' : ''}>${svg('sword')}<span>${f.lethal ? tr('ui.combat.attack.lethal') : tr('ui.combat.attack')}</span></button>
     </div>`);
 }
 
@@ -601,19 +608,19 @@ function openAltar(i) {
   const p = S.player;
   const opts = G.ALTAR_OPTIONS.map((o) => {
     const dis = (o.id === 'blood' && p.hp <= G.BAL.bloodCost) || (o.id === 'greed' && p.def <= 0);
-    const why = o.id === 'blood' ? '（生命不足）' : '（防御已为 0）';
+    const why = o.id === 'blood' ? G.altarWhy('blood') : G.altarWhy('greed');
     return `<button class="opt" data-sheet="altar" data-i="${i}" data-choice="${o.id}" ${dis ? 'disabled' : ''}>
       <span class="opt-ic">${svg(o.icon)}</span>
-      <span class="opt-tx"><b>${o.name}</b><span>${o.desc}${dis ? why : ''}</span></span>
+      <span class="opt-tx"><b>${G.altarName(o)}</b><span>${G.altarDesc(o)}${dis ? why : ''}</span></span>
     </button>`;
   }).join('');
   openSheet('altar', `
     <div class="sheet-head">
-      <div><h2 class="sheet-title">古老祭坛</h2><p class="sheet-sub">石台上的紫色火焰只燃烧一次。选择你的献祭。</p></div>
-      <button class="icon-btn sheet-close" data-sheet="skip" aria-label="离开">${svg('close')}</button>
+      <div><h2 class="sheet-title">${tr('ui.altar.title')}</h2><p class="sheet-sub">${tr('ui.altar.sub')}</p></div>
+      <button class="icon-btn sheet-close" data-sheet="skip" aria-label="${tr('ui.altar.leave.aria')}">${svg('close')}</button>
     </div>
     ${opts}
-    <div class="sheet-actions"><button class="btn btn-ghost" data-sheet="skip">悄悄离开</button></div>`);
+    <div class="sheet-actions"><button class="btn btn-ghost" data-sheet="skip">${tr('ui.altar.leave')}</button></div>`);
   audio.play('altar');
 }
 
@@ -624,141 +631,120 @@ function openShop() {
     const can = p.gold >= price;
     return `<button class="opt" data-sheet="buy" data-id="${it.id}" ${can ? '' : 'disabled'}>
       <span class="opt-ic">${svg(it.icon)}</span>
-      <span class="opt-tx"><b>${it.name}</b><span>${it.desc}</span></span>
+      <span class="opt-tx"><b>${G.shopName(it)}</b><span>${G.shopDesc(it)}</span></span>
       <span class="opt-price ${can ? '' : 'no'}">${svg('coin')}${price}</span>
     </button>`;
   }).join('');
   openSheet('shop', `
     <div class="sheet-head">
-      <div><h2 class="sheet-title">行囊商人</h2><p class="sheet-sub">「砖缝里什么都长，包括生意。」每次购买后价格会上涨。</p></div>
-      <button class="icon-btn sheet-close" data-sheet="close" aria-label="关闭">${svg('close')}</button>
+      <div><h2 class="sheet-title">${tr('ui.shop.title')}</h2><p class="sheet-sub">${tr('ui.shop.sub')}</p></div>
+      <button class="icon-btn sheet-close" data-sheet="close" aria-label="${tr('ui.btn.close')}">${svg('close')}</button>
     </div>
-    <div class="gold-line">${svg('coin')}<span>持有</span><b>${p.gold}</b></div>
+    <div class="gold-line">${svg('coin')}<span>${tr('ui.shop.hold')}</span><b>${p.gold}</b></div>
     ${rows}
-    <div class="sheet-actions"><button class="btn btn-ghost" data-sheet="close">离开商店</button></div>`);
+    <div class="sheet-actions"><button class="btn btn-ghost" data-sheet="close">${tr('ui.shop.leave')}</button></div>`);
 }
 
 function openHelp() {
-  const flagBases = Object.values(G.DIFFICULTIES).map((d) => `${d.name} ${d.flags}`).join(' / ');
+  const flagBases = Object.values(G.DIFFICULTIES).map((d) => `${G.difficultyName(d)} ${d.flags}`).join(tr('ui.help.flagSep'));
   const legend = [
-    ['hand', '未探索的砖', '点开后可能是空地、怪物或宝藏', '#c9a3ff'],
-    ['flag', '标记', '插旗＝确认并规避：该格怪物不再骚扰你；按钮右上角＝还能插几面旗。上限是稀缺资源，要靠商店/祭坛/遗物抬高', '#ffd27a'],
-    ['bat', '怪物', '底部属性牌两行：生命 / 攻击·防御（防御为 0 时省略）；左上叹号＝几回合后扑来，右上钥匙＝守卫', '#ff8098'],
-    ['trap', '尖刺陷阱', '踩中直接扣血，同样计入数字', '#ff9f3a'],
-    ['guardian', '钥匙守卫', '它本身也算一格「雷」，就藏在暗格里；击败或炸掉即夺钥', '#ffd54a'],
-    ['chest', '宝箱', '发光的宝箱需要再点一下才开启', '#ffd54a'],
-    ['potion', '药水', '同样要点击拾取，恢复 30% 最大生命', '#7dff5a'],
-    ['altar', '祭坛', '四选一的献祭，每层只出现一次；「贪婪低语」只借本层 1 点防御，下行时恢复', '#ff4fd8'],
-    ['stairs', '下行阶梯', '找到它并持有钥匙即可下一层', '#3fe0ff'],
-    ['dragon', '深渊龙王', '第 8 层的终点，击败即通关', '#ff8ae8'],
-  ].map(([ic, t, d, c]) => `<div class="lg"><span class="lg-ic" style="color:${c}">${svg(ic)}</span><span class="lg-tx"><b>${t}</b><span>${d}</span></span></div>`).join('');
+    ['hand', 'ui.help.lg.hand', '#c9a3ff'],
+    ['flag', 'ui.help.lg.flag', '#ffd27a'],
+    ['bat', 'ui.help.lg.bat', '#ff8098'],
+    ['trap', 'ui.help.lg.trap', '#ff9f3a'],
+    ['guardian', 'ui.help.lg.guardian', '#ffd54a'],
+    ['chest', 'ui.help.lg.chest', '#ffd54a'],
+    ['potion', 'ui.help.lg.potion', '#7dff5a'],
+    ['altar', 'ui.help.lg.altar', '#ff4fd8'],
+    ['stairs', 'ui.help.lg.stairs', '#3fe0ff'],
+    ['dragon', 'ui.help.lg.dragon', '#ff8ae8'],
+  ].map(([ic, k, c]) => `<div class="lg"><span class="lg-ic" style="color:${c}">${svg(ic)}</span><span class="lg-tx"><b>${tr(k + '.t')}</b><span>${tr(k + '.d')}</span></span></div>`).join('');
   const nums = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => `<span data-n="${n}" class="tile" style="position:relative"><span class="tile-num" style="font-size:14px;color:${['', '#5fe3ff', '#8bff63', '#ffd54a', '#ff9f3a', '#ff6b4a', '#ff3b5c', '#ff4fd8', '#e6dcff'][n]}">${n}</span></span>`).join('');
+  const P = {
+    flagBases,
+    altar: G.ALTAR_FLAG_BONUS, relic: G.RELIC_FLAG_BONUS, recoil: G.RELIC_RECOIL,
+    defCut: G.SOLVE_DEF_CUT, flagGold: G.SOLVE_FLAG_GOLD, perfectXp: G.SOLVE_PERFECT_XP,
+    siege: G.RELIC_SIEGE_CAP, mindXp: G.RELIC_MIND_XP, mindDef: G.RELIC_MIND_DEF, survey: G.RELIC_SURVEY_CAP,
+    elixir: G.SHOP_ELIXIR_HP, vigorStep: G.RELIC_VIGOR_STEP, strataDef: G.STRATA_DEF, strataHp: G.STRATA_HP,
+  };
   openSheet('help', `
     <div class="sheet-head">
-      <div><h2 class="sheet-title">玩法说明</h2><p class="sheet-sub">扫雷的推理 + Roguelite 的取舍。共 8 层。</p></div>
-      <button class="icon-btn sheet-close" data-sheet="close" aria-label="关闭">${svg('close')}</button>
+      <div><h2 class="sheet-title">${tr('ui.help.title')}</h2><p class="sheet-sub">${tr('ui.help.sub')}</p></div>
+      <button class="icon-btn sheet-close" data-sheet="close" aria-label="${tr('ui.btn.close')}">${svg('close')}</button>
     </div>
     <div class="help-sec">
-      <h3 class="help-h">数字的含义</h3>
-      <p class="help-p">空地上的数字 = 周围 8 格中<b>尚未探明</b>的威胁数量（怪物 + 陷阱 + 守卫 + 龙王）。威胁被探明或清除后，数字会随之减小，
-      变化时格子会闪一下。<b>减到 0 会显示一个暗色的 0</b>，意思是「这一带已经安全」，不是数字丢了。<br>
-      注意：<b>点开怪物再退出来</b>也算探明——它从此不再计入周围数字，所以数字变小是正常的推理进度。</p>
+      <h3 class="help-h">${tr('ui.help.num.h')}</h3>
+      <p class="help-p">${tr('ui.help.num.p1')}</p>
       <div class="numline">${nums}</div>
-      <p class="help-p">首次点击永远安全，并会自动展开一片安全区。<br>
-      展开时顺带露出的<b>宝箱与药水不会自动拾取</b>——它们会持续发光，再点一下才收入行囊。</p>
+      <p class="help-p">${tr('ui.help.num.p2')}</p>
     </div>
     <div class="help-sec">
-      <h3 class="help-h">三种操作</h3>
-      <p class="help-p"><b>探索</b>：点击砖块。开到怪物不会立刻受伤，会先弹出战斗预演。<br>
-      <b>标记</b>：切到标记模式，或<b>长按 / 右键</b>任意暗格插旗。按钮右上角的角标是<b>还能插几面旗</b>。旗子意味着「我已确认它、并绕着走」：
-      被标记的怪物<b>不再骚扰你</b>，但旗数<b>上限很小</b>（${flagBases}），所以插旗是要花预算的决策。<br>
-      插旗格<b>可以直接点开</b>（自动拔旗）——想主动开战时不必先手动拔旗；旗子只挡批量展开，不挡你的主动点击。<br>
-      <b>快速展开</b>：点击已探明的数字格，若周围旗数正好等于数字，其余暗格会一次性安全展开。</p>
+      <h3 class="help-h">${tr('ui.help.ops.h')}</h3>
+      <p class="help-p">${tr('ui.help.ops.p', P)}</p>
     </div>
     <div class="help-sec">
-      <h3 class="help-h">抬高旗子上限</h3>
-      <p class="help-p">旗子上限<b>与怪物数量无关</b>，开局只有 ${flagBases} 面。想多插旗就得投资：
-      商店<b>旗囊</b> +1（越买越贵）、祭坛<b>旗帜祝福</b> +${G.ALTAR_FLAG_BONUS}、遗物<b>旗手纹章</b> +${G.RELIC_FLAG_BONUS}。</p>
-      <p class="help-p">加成<b>整局永久生效</b>，下行不清零；但每层的<b>旗子本身会全部收回</b>，重新分配。
-      于是「免骚扰」是一种越玩越宽裕的能力，而不是每层免费发满。</p>
+      <h3 class="help-h">${tr('ui.help.cap.h')}</h3>
+      <p class="help-p">${tr('ui.help.cap.p1', P)}</p>
+      <p class="help-p">${tr('ui.help.cap.p2')}</p>
     </div>
     <div class="help-sec">
-      <h3 class="help-h">战斗与成长</h3>
-      <p class="help-p">你<b>先出手</b>。每击伤害 = 攻击 − 对方防御（至少 1）。战斗回合数决定你被反击几次。<br>
-      击杀获得经验与金币：升级涨属性，金币可在<b>商店</b>换装备与补给。必死的战斗会被拦下——先变强，或者用炸弹。<br>
-      <b>反震甲</b>在每次被反击时替你打掉它 ${G.RELIC_RECOIL} 点生命——它缩短的是<b>回合数</b>，不是每击伤害，所以血厚的慢仗收益最大。</p>
+      <h3 class="help-h">${tr('ui.help.combat.h')}</h3>
+      <p class="help-p">${tr('ui.help.combat.p', P)}</p>
     </div>
     <div class="help-sec">
-      <h3 class="help-h">惊扰</h3>
-      <p class="help-p">翻开怪物<b>周围 8 格</b>中的任意一格，就会把它<b>惊扰</b>。被惊扰的怪物不再安静待着：
-      <b>每只怪有自己的攻击间隔</b>，倒计时归零就扑上来撕你一口（至少 1 点，<b>可以致死</b>）。
-      快而弱的咬得勤，慢而重的憋得久——间隔写在每种怪身上，不是全场一个节拍。</p>
-      <p class="help-p">棋盘上只有<b>已探明</b>的惊扰怪会亮红环，左上角是<b>红色叹号 + 它自己的倒计时</b>；
-      倒计时 ≤2 时那一格<b>红边框急闪</b>，表示马上要挨打。<b>数字最小的那只最先扑你</b>，先杀谁由此决定。</p>
-      <p class="help-p">顶部红色芯片只显示<b>几只被惊扰</b>。惊扰的怪越多，你挨的口数就越密——清场或插旗都能减压。</p>
-      <p class="help-p">时钟只按<b>操作</b>推进，不按真实时间——<b>思考、插旗、切模式、喝药、购物都不消耗回合</b>。
-      它逼你规划路线与清怪顺序，而不是催你手快。</p>
-      <p class="help-p"><b>插旗可以免骚扰</b>：被标记的怪物不计入惊扰，倒计时<b>冻结</b>，红色芯片的数字会随之减少；
-      拔旗或翻开它，它就从冻结处继续。于是「标出来绕开」和「点开打掉」都是有效解法，而不是被迫清场。</p>
+      <h3 class="help-h">${tr('ui.help.aggro.h')}</h3>
+      <p class="help-p">${tr('ui.help.aggro.p1')}</p>
+      <p class="help-p">${tr('ui.help.aggro.p2')}</p>
+      <p class="help-p">${tr('ui.help.aggro.p3')}</p>
+      <p class="help-p">${tr('ui.help.aggro.p4')}</p>
+      <p class="help-p">${tr('ui.help.aggro.p5')}</p>
     </div>
     <div class="help-sec">
-      <h3 class="help-h">完全识破</h3>
-      <p class="help-p">当你把<b>所有安全格都翻开</b>——剩余暗格<b>全部</b>是怪物/陷阱/守卫/龙王——这一层就算<b>解开了</b>，
-      等价于传统扫雷的胜利条件。游戏不会读心，但它认得这个局面。</p>
-      <p class="help-p">此时<b>旗帜会一面面飞回旗囊</b>，剩下的暗格<b>砖块依次掀开</b>，露出你推理出的怪物与陷阱——
-      插对的旗和漏标的暗格，都在这段动画里得到确认。同时<b>惊扰立刻停止</b>。
-      自动揭示<b>不带任何代价</b>——陷阱直接拆除不扣血，怪物不会扑你，也不会强行把你拉进战斗。</p>
-      <p class="help-p">之后你可以从容地<b>点开怪物赚经验金币</b>、用炸弹清场，或直接下楼。
-      钥匙守卫仍需击败或炸掉才能夺钥——识破免除的是<b>惩罚</b>，不是<b>目标</b>。</p>
-      <p class="help-p"><b>识破是有收益的</b>，而且收益按你推理的质量结算：本层<b>全体怪物防御 −${G.SOLVE_DEF_CUT}</b>；
-      每面<b>插对的旗</b>再换 ${G.SOLVE_FLAG_GOLD} 金币；若剩下的威胁<b>全部被你插了旗</b>（而不是漏标后被系统掀开），
-      就是<b>完美识破</b>，额外 +${G.SOLVE_PERFECT_XP} 经验。削弱只作用于<b>本层</b>，下楼后新怪物按你的强度重新生成。</p>
+      <h3 class="help-h">${tr('ui.help.solve.h')}</h3>
+      <p class="help-p">${tr('ui.help.solve.p1')}</p>
+      <p class="help-p">${tr('ui.help.solve.p2')}</p>
+      <p class="help-p">${tr('ui.help.solve.p3')}</p>
+      <p class="help-p">${tr('ui.help.solve.p4', P)}</p>
     </div>
     <div class="help-sec">
-      <h3 class="help-h">两条构筑轴</h3>
-      <p class="help-p"><b>推理流</b>：把「读懂棋盘」直接换成战力。投资旗子上限（旗囊 / 旗帜祝福 / 旗手纹章），
-      再拿<b>破阵</b>（每面插对的旗使怪物防御 −1，最多 −${G.RELIC_SIEGE_CAP}）、<b>夺气</b>（同理削攻击）、
-      <b>全识</b>（完美识破额外 +${G.RELIC_MIND_XP} 经验、防御再 −${G.RELIC_MIND_DEF}）、<b>测绘师</b>（卷轴每探明一处威胁永久 +1 攻击，最多 +${G.RELIC_SURVEY_CAP}）。
-      旗插得越准，这一层的仗就越好打。</p>
-      <p class="help-p"><b>体魄流</b>：把「血厚」换成战力。商店<b>生命精粹</b>永久 +${G.SHOP_ELIXIR_HP} 生命上限，
-      <b>血气方刚</b>按生命上限每 ${G.RELIC_VIGOR_STEP} 点 +1 攻击，<b>反震甲</b>每次被反击反弹 ${G.RELIC_RECOIL} 点（回合数越多省得越多），
-      <b>层岩誓约</b>每下行一层永久 +${G.STRATA_DEF} 防御与 +${G.STRATA_HP} 生命上限。血越厚，拳越沉，甲越硬。</p>
-      <p class="help-p">两条轴都<b>不改变信息量</b>：不自动标雷、不透视威胁，战斗预演的数字永远等于实际结算。</p>
+      <h3 class="help-h">${tr('ui.help.build.h')}</h3>
+      <p class="help-p">${tr('ui.help.build.p1', P)}</p>
+      <p class="help-p">${tr('ui.help.build.p2', P)}</p>
+      <p class="help-p">${tr('ui.help.build.p3')}</p>
     </div>
     <div class="help-sec">
-      <h3 class="help-h">目标</h3>
-      <p class="help-p">每层找到<b>下行阶梯</b>；第 2 层起阶梯上锁，必须击败<b>钥匙守卫</b>夺钥。第 8 层击败<b>深渊龙王</b>即通关。生命归零则本局结束。</p>
+      <h3 class="help-h">${tr('ui.help.goal.h')}</h3>
+      <p class="help-p">${tr('ui.help.goal.p')}</p>
     </div>
     <div class="help-sec">
-      <h3 class="help-h">遗物</h3>
-      <p class="help-p">第 2～7 层击败<b>钥匙守卫</b>后，会浮起三件遗物让你<b>三选一</b>，永久生效且本局不重复。
-      它们只改变代价与收益——不会替你标雷，也不会让战斗数字失真。完整列表见<b>遗物图鉴</b>。</p>
+      <h3 class="help-h">${tr('ui.help.relic.h')}</h3>
+      <p class="help-p">${tr('ui.help.relic.p')}</p>
     </div>
     <div class="help-sec">
-      <h3 class="help-h">图鉴</h3>
+      <h3 class="help-h">${tr('ui.help.legend.h')}</h3>
       <div class="legend">${legend}</div>
     </div>
     <div class="help-sec">
-      <h3 class="help-h">快捷键</h3>
-      <p class="help-p">方向键移动 · Enter/空格 探索 · F 标记 · 1/2/3/4 切换模式 · Q 药水 · B 商店 · H 说明 · R 遗物图鉴 · Esc 关闭</p>
+      <h3 class="help-h">${tr('ui.help.keys.h')}</h3>
+      <p class="help-p">${tr('ui.help.keys.p')}</p>
     </div>
     <div class="sheet-actions">
-      <button class="btn btn-ghost" data-sheet="codex">${svg('relic')}<span>遗物图鉴</span></button>
-      <button class="btn btn-primary btn-lg" data-sheet="close">明白了，下地牢</button>
+      <button class="btn btn-ghost" data-sheet="codex">${svg('relic')}<span>${tr('ui.btn.codex')}</span></button>
+      <button class="btn btn-primary btn-lg" data-sheet="close">${tr('ui.help.ok')}</button>
     </div>`);
 }
 
 function openMenu() {
   openSheet('menu', `
     <div class="sheet-head">
-      <div><h2 class="sheet-title">暂停</h2><p class="sheet-sub">第 ${S.floor} 层 · ${G.FLOOR_NAMES[S.floor]} · Lv.${S.player.lv}</p></div>
-      <button class="icon-btn sheet-close" data-sheet="close" aria-label="关闭">${svg('close')}</button>
+      <div><h2 class="sheet-title">${tr('ui.menu.title')}</h2><p class="sheet-sub">${tr('ui.menu.sub', { floor: S.floor, name: G.floorName(S.floor), lv: S.player.lv })}</p></div>
+      <button class="icon-btn sheet-close" data-sheet="close" aria-label="${tr('ui.btn.close')}">${svg('close')}</button>
     </div>
-    <button class="opt" data-sheet="sound"><span class="opt-ic">${svg(audio.enabled ? 'sound-on' : 'sound-off')}</span><span class="opt-tx"><b>音效与氛围</b><span>当前：${audio.enabled ? '开启' : '静音'}</span></span></button>
-    <button class="opt" data-sheet="help"><span class="opt-ic">${svg('help')}</span><span class="opt-tx"><b>玩法说明</b><span>数字、战斗与道具</span></span></button>
-    <button class="opt" data-sheet="codex"><span class="opt-ic">${svg('relic')}</span><span class="opt-tx"><b>遗物图鉴</b><span>${G.RELICS.length} 件遗物 · 已收集 ${S.relics.length} 件</span></span></button>
-    <button class="opt" data-sheet="restart"><span class="opt-ic">${svg('skull')}</span><span class="opt-tx"><b>放弃本局</b><span>回到标题，重新开始</span></span></button>
-    <div class="sheet-actions"><button class="btn btn-primary btn-lg" data-sheet="close">继续探索</button></div>`);
+    <button class="opt" data-sheet="sound"><span class="opt-ic">${svg(audio.enabled ? 'sound-on' : 'sound-off')}</span><span class="opt-tx"><b>${tr('ui.menu.sound.name')}</b><span>${tr('ui.menu.sound.current', { s: audio.enabled ? tr('ui.menu.sound.on') : tr('ui.menu.sound.off') })}</span></span></button>
+    <button class="opt" data-sheet="help"><span class="opt-ic">${svg('help')}</span><span class="opt-tx"><b>${tr('ui.menu.help.name')}</b><span>${tr('ui.menu.help.desc')}</span></span></button>
+    <button class="opt" data-sheet="codex"><span class="opt-ic">${svg('relic')}</span><span class="opt-tx"><b>${tr('ui.menu.codex.name')}</b><span>${tr('ui.menu.codex.desc', { total: G.RELICS.length, own: S.relics.length })}</span></span></button>
+    <button class="opt" data-sheet="restart"><span class="opt-ic">${svg('skull')}</span><span class="opt-tx"><b>${tr('ui.menu.restart.name')}</b><span>${tr('ui.menu.restart.desc')}</span></span></button>
+    <div class="sheet-actions"><button class="btn btn-primary btn-lg" data-sheet="close">${tr('ui.menu.resume')}</button></div>`);
 }
 
 function endSequence(win) {
@@ -783,19 +769,19 @@ function endSequence(win) {
     openSheet(win ? 'win' : 'death', `
       <div class="result ${win ? 'win' : ''}">
         <div class="result-ic">${svg(win ? 'crown' : 'skull')}</div>
-        <h2 class="result-title">${win ? '重见天光' : '长眠砖下'}</h2>
-        <p class="result-sub">${win ? '深渊龙王轰然崩塌，第八层的穹顶裂开一道光。你带着满身尘土走了出去。' : `你倒在了第 ${S.floor} 层「${G.FLOOR_NAMES[S.floor]}」。砖石重新合拢，等待下一个冒险者。`}</p>
+        <h2 class="result-title">${win ? tr('ui.result.win.title') : tr('ui.result.death.title')}</h2>
+        <p class="result-sub">${win ? tr('ui.result.win.sub') : tr('ui.result.death.sub', { floor: S.floor, name: G.floorName(S.floor) })}</p>
       </div>
       <div class="res-grid">
-        <div class="stat"><i>深度</i><b>${S.floor}</b></div>
-        <div class="stat"><i>等级</i><b>${S.player.lv}</b></div>
-        <div class="stat"><i>击杀</i><b>${st.kills}</b></div>
-        <div class="stat gold"><i>金币</i><b>${st.goldEarned}</b></div>
+        <div class="stat"><i>${tr('ui.result.depth')}</i><b>${S.floor}</b></div>
+        <div class="stat"><i>${tr('ui.result.lv')}</i><b>${S.player.lv}</b></div>
+        <div class="stat"><i>${tr('ui.result.kills')}</i><b>${st.kills}</b></div>
+        <div class="stat gold"><i>${tr('ui.result.gold')}</i><b>${st.goldEarned}</b></div>
       </div>
-      <div class="gold-line">${svg('sparkle')}<span>通关</span><b>${meta.wins}</b><span>/ ${meta.runs} 局</span></div>
+      <div class="gold-line">${svg('sparkle')}<span>${tr('ui.result.clears')}</span><b>${meta.wins}</b><span>${tr('ui.result.runs', { n: meta.runs })}</span></div>
       <div class="sheet-actions">
-        <button class="btn btn-ghost" data-sheet="title">返回标题</button>
-        <button class="btn btn-primary" data-sheet="again">${svg('down')}<span>再来一次</span></button>
+        <button class="btn btn-ghost" data-sheet="title">${tr('ui.result.toTitle')}</button>
+        <button class="btn btn-primary" data-sheet="again">${svg('down')}<span>${tr('ui.result.again')}</span></button>
       </div>`, true);
   }, win ? 900 : 700);
 }
@@ -804,8 +790,8 @@ function descendSequence() {
   clearSolve();
   busy = true;
   audio.play('descend');
-  el.fcDepth.textContent = 'DEPTH ' + S.floor;
-  el.fcName.textContent = G.FLOOR_NAMES[S.floor];
+  el.fcDepth.textContent = tr('ui.hud.depth.short', { n: S.floor });
+  el.fcName.textContent = G.floorName(S.floor);
   el.floorCard.hidden = false;
   el.floorCard.style.animation = 'none'; void el.floorCard.offsetWidth; el.floorCard.style.animation = '';
   const c = { x: innerWidth / 2, y: innerHeight / 2 };
@@ -849,7 +835,7 @@ function solveSequence(e) {
   busy = true;
   const cap = G.flagCap(S);
   const setFlagLeft = (left) => { el.flagText.textContent = `${left}/${cap}`; el.flag.textContent = String(cap - left); };
-  toast(e.perfect ? `完美识破 · ${e.count} 处威胁全部插旗` : `本层已识破 · ${e.count} 处威胁全部揭示`, 'magic');
+  toast(tr(e.perfect ? 'ui.toast.solve.perfect' : 'ui.toast.solve', { n: e.count }), 'magic');
   setFlagLeft(flags.length);
   const fStep = flags.length ? Math.max(70, Math.min(160, Math.round(560 / flags.length))) : 0;
   flags.forEach((i, k) => solveLater(() => {
@@ -941,13 +927,13 @@ function renderTitle() {
   el.diffGrid.innerHTML = Object.values(G.DIFFICULTIES).map((d) => {
     const c = d.id === 'easy' ? '#7dff5a' : d.id === 'normal' ? '#ffab2e' : '#ff3b5c';
     return `<button class="diff" role="radio" data-diff="${d.id}" style="--dc:${c}" aria-checked="${d.id === difficulty}">
-      <b>${d.name}</b><i>${d.tag}</i><s>${d.desc}<br>初始旗 ${d.flags} 面</s></button>`;
+      <b>${G.difficultyName(d)}</b><i>${G.difficultyTag(d)}</i><s>${G.difficultyDesc(d)}<br>${tr('difficulty.flags', { n: d.flags })}</s></button>`;
   }).join('');
   const has = !!G.deserialize(localStorage.getItem(RUN_KEY) || '');
   el.btnContinue.hidden = !has;
   el.record.innerHTML = meta.runs
-    ? `通关 <b>${meta.wins}</b> / ${meta.runs} 局`
-    : '第一次下潜？先从「地窖」开始，学会读数字。';
+    ? tr('ui.title.record', { wins: meta.wins, runs: meta.runs })
+    : tr('ui.title.first');
   syncSound();
 }
 
@@ -973,7 +959,7 @@ document.addEventListener('click', (e) => {
   switch (a) {
     case 'sound': audio.toggle(); syncSound(); if (sheetKind === 'menu') openMenu(); break;
     case 'start': startRun(difficulty); break;
-    case 'continue': if (!resumeRun()) { toast('没有可继续的探索', 'bad'); renderTitle(); } break;
+    case 'continue': if (!resumeRun()) { toast(tr('ui.toast.noRun'), 'bad'); renderTitle(); } break;
     case 'help': openHelp(); break;
     case 'codex': openCodex(); break;
     case 'menu': if (S) openMenu(); break;
@@ -1047,7 +1033,18 @@ document.addEventListener('pointerdown', () => audio.init(), { once: true });
 document.addEventListener('gesturestart', (e) => e.preventDefault());
 
 /* ─────────── 启动 ─────────── */
+// 静态骨架的文案挂在 data-i18n 上，HTML 里的中文只作为无脚本时的兜底。
+function applyI18n() {
+  for (const n of document.querySelectorAll('[data-i18n]')) n.textContent = tr(n.dataset.i18n);
+  for (const n of document.querySelectorAll('[data-i18n-html]')) n.innerHTML = tr(n.dataset.i18nHtml);
+  for (const n of document.querySelectorAll('[data-i18n-aria]')) n.setAttribute('aria-label', tr(n.dataset.i18nAria));
+  const desc = document.querySelector('meta[data-i18n-desc]');
+  if (desc) desc.setAttribute('content', tr(desc.dataset.i18nDesc));
+  document.title = tr('ui.meta.title');
+}
+
 fx.init();
+applyI18n();
 renderTitle();
 fitBoard();
 

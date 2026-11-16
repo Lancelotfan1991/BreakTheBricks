@@ -2,6 +2,7 @@ const CACHE = 'bbr-v1';
 const SHELL = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest', 'icon.svg',
   'src/main.js', 'src/ui.js', 'src/game.js', 'src/fx.js', 'src/audio.js',
+  'src/i18n.js', 'src/locales/zh-CN.js',
   'icons/icon-192.png', 'icons/icon-512.png',
 ];
 

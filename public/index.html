@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
 <meta name="theme-color" content="#0d0a13">
-<meta name="description" content="破砖深渊 —— 扫雷 × Roguelite 地牢探索，竖屏手机浏览器即点即玩。">
+<meta name="description" content="破砖深渊 —— 扫雷 × Roguelite 地牢探索，竖屏手机浏览器即点即玩。" data-i18n-desc="ui.meta.desc">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<title>破砖深渊 · Break the Brick</title>
+<title data-i18n="ui.meta.title">破砖深渊 · Break the Brick</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -64,18 +64,18 @@
 <div id="app">
   <!-- ══════════ 标题 ══════════ -->
   <section id="screen-title" class="screen title-screen">
-    <button class="icon-btn corner-sound" data-act="sound" aria-label="音效开关"><svg class="ic"><use href="#i-sound-on"/></svg></button>
+    <button class="icon-btn corner-sound" data-act="sound" aria-label="音效开关" data-i18n-aria="ui.btn.sound"><svg class="ic"><use href="#i-sound-on"/></svg></button>
     <div class="title-inner">
       <div class="torch-row"><span class="torch"></span><span class="torch"></span></div>
       <p class="eyebrow">MINESWEEPER × ROGUELITE</p>
-      <h1 class="logo"><span class="logo-cn">破砖深渊</span><span class="logo-en">BREAK THE BRICK</span></h1>
-      <p class="tagline">砖石之下藏着怪物、宝藏与通往下一层的阶梯。<br>用数字推理出安全的落脚点，活着走到第八层。</p>
-      <div class="diff-grid" id="diffGrid" role="radiogroup" aria-label="难度选择"></div>
-      <button class="btn btn-primary btn-lg" data-act="start"><svg class="ic"><use href="#i-down"/></svg><span>开始探索</span></button>
+      <h1 class="logo"><span class="logo-cn" data-i18n="ui.logo.cn">破砖深渊</span><span class="logo-en">BREAK THE BRICK</span></h1>
+      <p class="tagline" data-i18n-html="ui.title.tagline">砖石之下藏着怪物、宝藏与通往下一层的阶梯。<br>用数字推理出安全的落脚点，活着走到第八层。</p>
+      <div class="diff-grid" id="diffGrid" role="radiogroup" aria-label="难度选择" data-i18n-aria="ui.title.diffAria"></div>
+      <button class="btn btn-primary btn-lg" data-act="start"><svg class="ic"><use href="#i-down"/></svg><span data-i18n="ui.btn.start">开始探索</span></button>
       <div class="title-row">
-        <button class="btn btn-ghost" data-act="continue" id="btnContinue" hidden><svg class="ic"><use href="#i-sparkle"/></svg><span>继续探索</span></button>
-        <button class="btn btn-ghost" data-act="help"><svg class="ic"><use href="#i-help"/></svg><span>玩法说明</span></button>
-        <button class="btn btn-ghost" data-act="codex"><svg class="ic"><use href="#i-relic"/></svg><span>遗物图鉴</span></button>
+        <button class="btn btn-ghost" data-act="continue" id="btnContinue" hidden><svg class="ic"><use href="#i-sparkle"/></svg><span data-i18n="ui.btn.continue">继续探索</span></button>
+        <button class="btn btn-ghost" data-act="help"><svg class="ic"><use href="#i-help"/></svg><span data-i18n="ui.btn.help">玩法说明</span></button>
+        <button class="btn btn-ghost" data-act="codex"><svg class="ic"><use href="#i-relic"/></svg><span data-i18n="ui.btn.codex">遗物图鉴</span></button>
       </div>
       <p class="record" id="record"></p>
     </div>
@@ -89,9 +89,9 @@
         <span class="floor-meta"><b id="floorName">苔痕门厅</b><i id="floorSub">DEPTH 1 / 8</i></span>
       </div>
       <div class="topbar-actions">
-        <button class="icon-btn" data-act="sound" aria-label="音效开关"><svg class="ic"><use href="#i-sound-on"/></svg></button>
-        <button class="icon-btn" data-act="help" aria-label="玩法说明"><svg class="ic"><use href="#i-help"/></svg></button>
-        <button class="icon-btn" data-act="menu" aria-label="菜单"><svg class="ic"><use href="#i-menu"/></svg></button>
+        <button class="icon-btn" data-act="sound" aria-label="音效开关" data-i18n-aria="ui.btn.sound"><svg class="ic"><use href="#i-sound-on"/></svg></button>
+        <button class="icon-btn" data-act="help" aria-label="玩法说明" data-i18n-aria="ui.btn.help"><svg class="ic"><use href="#i-help"/></svg></button>
+        <button class="icon-btn" data-act="menu" aria-label="菜单" data-i18n-aria="ui.btn.menu"><svg class="ic"><use href="#i-menu"/></svg></button>
       </div>
     </header>
 
@@ -106,7 +106,7 @@
           <span class="chip chip-atk"><svg class="ic"><use href="#i-sword"/></svg><b id="atkVal">5</b></span>
           <span class="chip chip-def"><svg class="ic"><use href="#i-shield"/></svg><b id="defVal">1</b></span>
           <span class="chip chip-gold"><svg class="ic"><use href="#i-coin"/></svg><b id="goldVal">0</b></span>
-          <span class="chip chip-key" id="keyChip" hidden><svg class="ic"><use href="#i-key"/></svg><b>钥匙</b></span>
+          <span class="chip chip-key" id="keyChip" hidden><svg class="ic"><use href="#i-key"/></svg><b data-i18n="ui.chip.key">钥匙</b></span>
           <span class="chip chip-threat" id="threatChip"><svg class="ic"><use href="#i-skull"/></svg><b id="threatVal">0</b><i><svg class="ic"><use href="#i-flag"/></svg><span id="flagText">0/0</span></i></span>
           <span class="chip chip-aggro" id="aggroChip" hidden><svg class="ic"><use href="#i-fang"/></svg><b id="aggroCount">0</b></span>
         </div>
@@ -115,26 +115,26 @@
 
     <div class="relic-bar" id="relicBar" hidden>
       <div class="relic-slots" id="relicSlots"></div>
-      <button class="relic-codex" data-act="codex" aria-label="遗物图鉴"><svg class="ic"><use href="#i-relic"/></svg><span>图鉴</span></button>
+      <button class="relic-codex" data-act="codex" aria-label="遗物图鉴" data-i18n-aria="ui.btn.codex"><svg class="ic"><use href="#i-relic"/></svg><span data-i18n="ui.relic.codex.short">图鉴</span></button>
     </div>
 
     <div class="board-wrap" id="boardWrap">
       <div class="board-frame">
         <span class="sconce sconce-l"></span><span class="sconce sconce-r"></span>
-        <div id="board" class="board" role="grid" aria-label="地牢砖格"></div>
+        <div id="board" class="board" role="grid" aria-label="地牢砖格" data-i18n-aria="ui.board.aria"></div>
       </div>
     </div>
 
-    <div class="ticker"><span class="ticker-dot"></span><p id="logLine">点击任意砖块开始探索。</p></div>
+    <div class="ticker"><span class="ticker-dot"></span><p id="logLine" data-i18n="ui.log.intro">点击任意砖块开始探索。</p></div>
 
     <nav class="actionbar" id="actionbar">
-      <button class="act is-on" data-mode="explore"><svg class="ic"><use href="#i-hand"/></svg><span>探索</span></button>
-      <button class="act" data-mode="flag"><svg class="ic"><use href="#i-flag"/></svg><span>标记</span><em id="flagCount">0</em></button>
-      <button class="act" data-mode="scroll"><svg class="ic"><use href="#i-scroll"/></svg><span>卷轴</span><em id="scrollCount">1</em></button>
-      <button class="act" data-mode="bomb"><svg class="ic"><use href="#i-bomb"/></svg><span>炸弹</span><em id="bombCount">1</em></button>
-      <button class="act act-potion" data-act="potion"><svg class="ic"><use href="#i-potion"/></svg><span>药水</span><em id="potionCount">2</em></button>
-      <button class="act act-shop" data-act="shop"><svg class="ic"><use href="#i-coin"/></svg><span>商店</span></button>
-      <button class="act act-descend" data-act="descend" id="btnDescend" disabled><svg class="ic"><use href="#i-down"/></svg><span>下一层</span></button>
+      <button class="act is-on" data-mode="explore"><svg class="ic"><use href="#i-hand"/></svg><span data-i18n="ui.act.explore">探索</span></button>
+      <button class="act" data-mode="flag"><svg class="ic"><use href="#i-flag"/></svg><span data-i18n="ui.act.flag">标记</span><em id="flagCount">0</em></button>
+      <button class="act" data-mode="scroll"><svg class="ic"><use href="#i-scroll"/></svg><span data-i18n="ui.act.scroll">卷轴</span><em id="scrollCount">1</em></button>
+      <button class="act" data-mode="bomb"><svg class="ic"><use href="#i-bomb"/></svg><span data-i18n="ui.act.bomb">炸弹</span><em id="bombCount">1</em></button>
+      <button class="act act-potion" data-act="potion"><svg class="ic"><use href="#i-potion"/></svg><span data-i18n="ui.act.potion">药水</span><em id="potionCount">2</em></button>
+      <button class="act act-shop" data-act="shop"><svg class="ic"><use href="#i-coin"/></svg><span data-i18n="ui.act.shop">商店</span></button>
+      <button class="act act-descend" data-act="descend" id="btnDescend" disabled><svg class="ic"><use href="#i-down"/></svg><span data-i18n="ui.act.descend">下一层</span></button>
     </nav>
   </main>
 </div>

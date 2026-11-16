@@ -168,7 +168,7 @@ test('已拾取药水与已清除怪物同样保留邻雷数', () => {
       if (mob.mob.hp > 0) continue;
       const want = hiddenAround(s, mob.i).length;
       assert.equal(mob.n, want);
-      assert.equal(G.tileLabel(mob), want ? `${mob.mob.name}（已清除），危险 ${want}` : `${mob.mob.name}（已清除）`);
+      assert.equal(G.tileLabel(mob), want ? `${G.mobName(mob.mob)}（已清除），危险 ${want}` : `${G.mobName(mob.mob)}（已清除）`);
       if (want) mobSeen++;
     }
   }
@@ -477,12 +477,12 @@ test('遗物表完整：28 件、id 唯一、分类与稀有度合法', () => {
   assert.equal(G.RELICS.length, 28);
   assert.equal(new Set(G.RELICS.map((r) => r.id)).size, 28);
   for (const r of G.RELICS) {
-    assert.ok(G.RELIC_CATS[r.cat], `${r.id} 分类非法`);
+    assert.ok(G.RELIC_CATS.includes(r.cat), `${r.id} 分类非法`);
     assert.ok(G.RELIC_RARITY[r.rarity], `${r.id} 稀有度非法`);
-    assert.ok(r.name && r.icon && r.desc && r.flavor, `${r.id} 字段缺失`);
+    assert.ok(G.relicName(r) && r.icon && G.relicDesc(r) && G.relicFlavor(r), `${r.id} 文案缺失`);
     assert.equal(G.relicById(r.id), r);
   }
-  for (const cat of Object.keys(G.RELIC_CATS)) assert.ok(G.RELICS.some((r) => r.cat === cat), `${cat} 类为空`);
+  for (const cat of G.RELIC_CATS) assert.ok(G.RELICS.some((r) => r.cat === cat), `${cat} 类为空`);
 });
 
 test('击杀钥匙守卫触发三选一：不重复、只能选其中之一', () => {
@@ -1219,7 +1219,7 @@ test('旗帜领主：识破收回旗帜后，仍按插对的旗数回血', () =>
   s.player.hp = 5;
   s.stairsFound = true; s.hasKey = true;
   G.tryDescend(s);
-  assert.ok(s.log.some((l) => l.text.includes('旗帜领主认出了 3 面插对的旗')), '完美推理不该让旗帜领主少回血');
+  assert.ok(s.log.some((l) => l.k === 'log.bannerlord' && l.p.n === 3), '完美推理不该让旗帜领主少回血');
 });
 
 test('boardSolved 把宝箱/药水/祭坛/阶梯都算安全格', () => {
@@ -1385,7 +1385,7 @@ test('完美识破：剩余威胁全部插旗才给额外经验，漏一面就�
   assert.equal(full.sv.perfect, true);
   assert.equal(full.sv.xp, G.SOLVE_PERFECT_XP);
   assert.equal(full.sv.flagged.length, full.threats.length);
-  assert.ok(full.s.log.some((l) => l.text.includes('完美识破')), '结算要在日志里说清楚');
+  assert.ok(full.s.log.some((l) => l.k === 'log.solve.reward.perfect'), '结算要在日志里说清楚');
   const part = solveWith(full.threats.length - 1);
   assert.equal(part.sv.perfect, false);
   assert.equal(part.sv.xp, 0);
