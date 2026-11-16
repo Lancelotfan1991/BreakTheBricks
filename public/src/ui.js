@@ -19,7 +19,6 @@ const el = {
   descend: $('#btnDescend'), log: $('#logLine'), ticker: document.querySelector('.ticker'),
   scrim: $('#scrim'), sheet: $('#sheet'), sheetBody: $('#sheetBody'),
   toast: $('#toast'), floorCard: $('#floorCard'), fcDepth: $('#fcDepth'), fcName: $('#fcName'),
-  solveCard: $('#solveCard'), scSub: $('#scSub'),
   diffGrid: $('#diffGrid'), record: $('#record'), btnContinue: $('#btnContinue'), actionbar: $('#actionbar'),
   relicBar: $('#relicBar'), relicSlots: $('#relicSlots'),
 };
@@ -32,7 +31,10 @@ let sheetKind = null;
 let sheetLock = false;
 let busy = false;
 let toastTimer = 0;
-let solveTimer = 0;
+// 识破时状态已一次性翻完，DOM 却要按节奏回放：solveHold 暂存掀开前的砖面，solveAnim 标记本格正在掀
+let solveHold = null;
+const solveAnim = new Map();
+let solveTimers = [];
 
 function loadMeta() {
   try { return Object.assign({ wins: 0, runs: 0 }, JSON.parse(localStorage.getItem(META_KEY) || '{}')); }
@@ -62,6 +64,7 @@ const ICON = { monster: null, elite: 'guardian', boss: 'dragon', trap: 'trap', c
 const svg = (id, cls = 'ic') => `<svg class="${cls}" aria-hidden="true"><use href="#i-${id}"/></svg>`;
 
 function buildBoard() {
+  clearSolve();
   el.board.innerHTML = '';
   tiles = [];
   const frag = document.createDocumentFragment();
@@ -152,10 +155,11 @@ function tileView(t) {
 function renderBoard(popSet) {
   for (let i = 0; i < G.SIZE; i++) {
     const t = S.tiles[i], b = tiles[i];
-    const v = tileView(t);
+    const held = solveHold && solveHold.get(i);
+    const v = held || tileView(t);
     const sig = v.cls + '|' + v.inner + '|' + v.n;
     if (b._sig !== sig) {
-      const shifted = t.revealed && b._n != null && b._n !== v.n;
+      const shifted = !held && t.revealed && b._n != null && b._n !== v.n;
       b.className = v.cls;
       b.innerHTML = v.inner;
       b.dataset.n = v.n ? String(v.n) : '';
@@ -166,13 +170,18 @@ function renderBoard(popSet) {
         b.classList.add('num-shift');
         setTimeout(() => b.classList.remove('num-shift'), 620);
       }
-      if (popSet && popSet.has(i)) {
+      if (solveAnim.has(i)) {
+        b.classList.add('solve-out');
+        if (solveAnim.get(i)) b.classList.add('was-flag');
+        solveLater(() => b.classList.remove('solve-out', 'was-flag'), 480);
+      } else if (popSet && popSet.has(i)) {
         b.classList.add('pop');
         setTimeout(() => b.classList.remove('pop'), 360);
       }
     } else if (b.getAttribute('aria-label') !== v.label) b.setAttribute('aria-label', v.label);
     b._n = v.n;
   }
+  solveAnim.clear();
   el.board.classList.remove('mode-explore', 'mode-flag', 'mode-bomb', 'mode-scroll');
   el.board.classList.add('mode-' + S.mode);
 }
@@ -192,6 +201,11 @@ function renderHud() {
   el.hpText.textContent = `${p.hp} / ${p.maxHp}`;
   el.hpBar.classList.toggle('low', pct <= 0.3);
   el.atk.textContent = p.atk; el.def.textContent = p.def; el.gold.textContent = p.gold;
+  // 祭坛借走的防御要让人看见「是借的」，否则玩家会以为永久亏了
+  const defChip = el.def.parentElement;
+  defChip.classList.toggle('debt', S.defDebt > 0);
+  defChip.title = S.defDebt > 0 ? `祭坛借走 ${S.defDebt} 点防御，下行时恢复` : '';
+  defChip.setAttribute('aria-label', S.defDebt > 0 ? `防御 ${p.def}，祭坛借走 ${S.defDebt} 点，下行时恢复` : `防御 ${p.def}`);
   el.lv.textContent = p.lv;
   el.ring.style.strokeDashoffset = String(119.4 * (1 - p.xp / p.xpNext));
   const remain = S.generated ? G.remainingThreats(S) : S.threatTotal;
@@ -248,6 +262,8 @@ function relicNote(s, r) {
   if (r.id === 'whetSoul') return `${s.relicState.whet}/${G.RELIC_WHET_CAP}`;
   if (r.id === 'carefulStep') return `${s.relicState.trapWard}`;
   if (r.id === 'momentum') return s.relicState.firstKill ? '已用' : '待发';
+  if (r.id === 'cartographer') return `${s.relicState.survey}/${G.RELIC_SURVEY_CAP}`;
+  if (r.id === 'vigor') return `+${s.player.atkBonus}`;
   return '';
 }
 
@@ -316,7 +332,8 @@ function openCodex() {
       <h3 class="help-h">怎么获得</h3>
       <p class="help-p">第 2～7 层各有一名<b>钥匙守卫</b>。击败它（或用炸弹炸掉它）就会浮起 <b>${G.RELIC_DRAW_COUNT} 件</b>遗物，<b>三选一</b>，一局最多 ${G.MAX_FLOOR - 2} 件。<br>
       抽取按稀有度加权：${odds}。已持有的不会再出现，所以越到后期越容易见到史诗。<br>
-      遗物<b>只改变代价与收益，不改变信息量</b>——没有任何遗物会替你标雷或透视威胁，战斗数字也永远等于实际结算。</p>
+      遗物<b>只改变代价与收益，不改变信息量</b>——没有任何遗物会替你标雷或透视威胁，战斗数字也永远等于实际结算。<br>
+      两条构筑轴：<b>推理流</b>把插对的旗与卷轴探明换成战力，<b>体魄流</b>把生命上限换成攻击、防御与反震。详见玩法说明。</p>
     </div>
     ${groups}
     <div class="sheet-actions"><button class="btn btn-primary btn-lg" data-sheet="${back}">${S && S.relicChoices ? '回到抉择' : '关闭图鉴'}</button></div>`, !!(S && S.relicChoices));
@@ -333,6 +350,7 @@ const FLY = {
   weapon: { icon: 'sword', sel: '.chip-atk', cls: 'crit', color: '#ffab2e' },
   armor: { icon: 'shield', sel: '.chip-def', cls: 'cyan', color: '#3fe0ff' },
   gold: { icon: 'coin', sel: '.chip-gold', cls: 'gold', color: '#ffd54a' },
+  flag: { icon: 'flag', sel: '#threatChip', cls: 'crit', color: '#ffab2e' },
 };
 
 function flyToBag(from, f) {
@@ -349,6 +367,9 @@ function consume(events) {
   const pops = new Set();
   let delay = 0;
   const later = (fn, ms) => setTimeout(fn, ms);
+  // 识破的格子留给 solveSequence 逐格回放，这里不能抢着弹开或扬尘
+  const solveEv = events.find((e) => e.type === 'solved');
+  const solveSet = new Set(solveEv ? solveEv.tiles : []);
   // item/gold 事件不带格子坐标，紧随其后的 loot 才带；先配对，别把上一层的收获算到这一格
   const flyFrom = new Map();
   let bag = [];
@@ -361,6 +382,7 @@ function consume(events) {
   for (const e of events) {
     switch (e.type) {
       case 'reveal': {
+        if (solveSet.has(e.i)) break;
         pops.add(e.i);
         if (pops.size === 1) fx.haptic('tick');
         if (pops.size <= 3) { const c = tileCenter(e.i); later(() => fx.dust(c.x, c.y), delay); delay += 26; }
@@ -437,7 +459,7 @@ function consume(events) {
       case 'altar': audio.play('altar'); break;
       case 'altarUsed': { const c = tileCenter(e.i); fx.magic(c.x, c.y); break; }
       case 'bomb': { const c = tileCenter(e.i); fx.boom(c.x, c.y); fx.shake(el.board); audio.play('bomb'); fx.haptic('heavy'); break; }
-      case 'disarm': { const c = tileCenter(e.i); fx.dust(c.x, c.y); break; }
+      case 'disarm': { if (solveSet.has(e.i)) break; const c = tileCenter(e.i); fx.dust(c.x, c.y); break; }
       case 'scroll': { const c = tileCenter(e.i); fx.magic(c.x, c.y); fx.ring(c.x, c.y, '#3fe0ff', 110); audio.play('scroll'); break; }
       case 'buy': audio.play('coin'); break;
       case 'relicOffer': audio.play('altar'); break;
@@ -458,7 +480,7 @@ function consume(events) {
         break;
       }
       case 'mode': audio.play('ui'); break;
-      case 'solved': audio.play('levelup'); fx.haptic('heavy'); fx.flash('heal'); showSolve(e.count); break;
+      case 'solved': holdSolve(solveEv); audio.play('levelup'); fx.haptic('heavy'); break;
       case 'descend': fx.haptic('medium'); break;
       case 'death': fx.rumble(420); fx.shake(el.board); fx.flash('hurt'); break;
       case 'win': fx.rumble(260); later(() => fx.rumble(260), 320); break;
@@ -476,6 +498,10 @@ function apply(events, opts = {}) {
   if (events.some((e) => e.type === 'descend')) return descendSequence();
   if (S.status === 'dead') return endSequence(false);
   if (S.status === 'won') return endSequence(true);
+  const sv = events.find((e) => e.type === 'solved');
+  // 抽屉会盖住棋盘，这时候逐格回放没人看得见，直接落到终态
+  if (sv && !S.relicChoices && S.pendingCombat < 0 && S.pendingAltar < 0) return solveSequence(sv);
+  if (sv) { clearSolve(); render(); }
   if (S.relicChoices) return openRelicDraw();
   if (S.pendingCombat >= 0) return openCombat(S.pendingCombat);
   if (S.pendingAltar >= 0) return openAltar(S.pendingAltar);
@@ -515,7 +541,7 @@ function closeSheet() {
   el.sheetBody.innerHTML = '';
   if (S) { G.closePending(S); saveRun(); }
 }
-function forceClose() { sheetLock = false; closeSheet(); hideSolve(); }
+function forceClose() { sheetLock = false; closeSheet(); }
 
 function openCombat(i) {
   const t = S.tiles[i], m = t.mob, p = S.player;
@@ -528,7 +554,11 @@ function openCombat(i) {
     ? `<p class="fc-note danger">⚠ 预计承受 ${f.take} 点伤害，你只剩 ${p.hp} 点生命——这一击必死。先喝药水、升级，或用炸弹绕开。</p>`
     : f.take === 0
       ? `<p class="fc-note">一击必杀，毫发无伤。</p>`
-      : `<p class="fc-note">你先出手，${f.rounds} 回合内解决战斗，其间被反击 ${f.rounds - 1} 次。</p>`;
+      : `<p class="fc-note">你先出手，${f.rounds} 回合内解决战斗，其间被反击 ${f.counters} 次${p.thorns ? `，反震同时打掉它 ${f.counters * p.thorns} 点生命` : ''}。</p>`;
+  const thornRow = p.thorns ? `<div class="fc-row free"><span>反震反弹（每次被反击）</span><b>${p.thorns}</b></div>` : '';
+  const cutNote = m.cut && (m.cut.def || m.cut.atk)
+    ? `<p class="fc-note good">本层已识破，它被削弱了：${[m.cut.def ? `防御 −${m.cut.def}` : '', m.cut.atk ? `攻击 −${m.cut.atk}` : ''].filter(Boolean).join('、')}。下面的属性与预演都已计入。</p>`
+    : '';
   const aggroRow = m.awake && m.cd != null
     ? `<div class="fc-row hurt"><span>惊扰骚扰（每 ${m.period} 回合）</span><b>-${G.aggroDamage(p, m)}</b></div>
        <p class="fc-note danger">它已被惊扰，${m.cd} 回合后扑来。留着不打，它会按自己的节奏一直撕你——骚扰<b>可以致死</b>。</p>`
@@ -549,8 +579,10 @@ function openCombat(i) {
       <div class="stat xp"><i>经验</i><b>${m.xp}</b></div>
       <div class="stat gold"><i>金币</i><b>${m.gold}</b></div>
     </div>
+    ${cutNote}
     <div class="forecast">
       <div class="fc-row"><span>你的每击伤害</span><b>${f.deal}</b></div>
+      ${thornRow}
       <div class="fc-row"><span>需要回合</span><b>${f.rounds}</b></div>
       <div class="fc-row ${f.take ? 'hurt' : 'free'}"><span>预计承受</span><b>${f.take}</b></div>
       ${aggroRow}
@@ -568,10 +600,11 @@ function openCombat(i) {
 function openAltar(i) {
   const p = S.player;
   const opts = G.ALTAR_OPTIONS.map((o) => {
-    const dis = o.id === 'blood' && p.hp <= G.BAL.bloodCost;
+    const dis = (o.id === 'blood' && p.hp <= G.BAL.bloodCost) || (o.id === 'greed' && p.def <= 0);
+    const why = o.id === 'blood' ? '（生命不足）' : '（防御已为 0）';
     return `<button class="opt" data-sheet="altar" data-i="${i}" data-choice="${o.id}" ${dis ? 'disabled' : ''}>
       <span class="opt-ic">${svg(o.icon)}</span>
-      <span class="opt-tx"><b>${o.name}</b><span>${o.desc}${dis ? '（生命不足）' : ''}</span></span>
+      <span class="opt-tx"><b>${o.name}</b><span>${o.desc}${dis ? why : ''}</span></span>
     </button>`;
   }).join('');
   openSheet('altar', `
@@ -615,7 +648,7 @@ function openHelp() {
     ['guardian', '钥匙守卫', '它本身也算一格「雷」，就藏在暗格里；击败或炸掉即夺钥', '#ffd54a'],
     ['chest', '宝箱', '发光的宝箱需要再点一下才开启', '#ffd54a'],
     ['potion', '药水', '同样要点击拾取，恢复 30% 最大生命', '#7dff5a'],
-    ['altar', '祭坛', '三选一的献祭，每层只出现一次', '#ff4fd8'],
+    ['altar', '祭坛', '四选一的献祭，每层只出现一次；「贪婪低语」只借本层 1 点防御，下行时恢复', '#ff4fd8'],
     ['stairs', '下行阶梯', '找到它并持有钥匙即可下一层', '#3fe0ff'],
     ['dragon', '深渊龙王', '第 8 层的终点，击败即通关', '#ff8ae8'],
   ].map(([ic, t, d, c]) => `<div class="lg"><span class="lg-ic" style="color:${c}">${svg(ic)}</span><span class="lg-tx"><b>${t}</b><span>${d}</span></span></div>`).join('');
@@ -652,7 +685,8 @@ function openHelp() {
     <div class="help-sec">
       <h3 class="help-h">战斗与成长</h3>
       <p class="help-p">你<b>先出手</b>。每击伤害 = 攻击 − 对方防御（至少 1）。战斗回合数决定你被反击几次。<br>
-      击杀获得经验与金币：升级涨属性，金币可在<b>商店</b>换装备与补给。必死的战斗会被拦下——先变强，或者用炸弹。</p>
+      击杀获得经验与金币：升级涨属性，金币可在<b>商店</b>换装备与补给。必死的战斗会被拦下——先变强，或者用炸弹。<br>
+      <b>反震甲</b>在每次被反击时替你打掉它 ${G.RELIC_RECOIL} 点生命——它缩短的是<b>回合数</b>，不是每击伤害，所以血厚的慢仗收益最大。</p>
     </div>
     <div class="help-sec">
       <h3 class="help-h">惊扰</h3>
@@ -671,10 +705,25 @@ function openHelp() {
       <h3 class="help-h">完全识破</h3>
       <p class="help-p">当你把<b>所有安全格都翻开</b>——剩余暗格<b>全部</b>是怪物/陷阱/守卫/龙王——这一层就算<b>解开了</b>，
       等价于传统扫雷的胜利条件。游戏不会读心，但它认得这个局面。</p>
-      <p class="help-p">此时会弹出<b>绿色横幅「本层已识破」</b>，并且：<b>剩余威胁全部自动揭示</b>、<b>旗帜全部收回</b>、
-      <b>惊扰立刻停止</b>。自动揭示<b>不带任何代价</b>——陷阱直接拆除不扣血，怪物不会扑你，也不会强行把你拉进战斗。</p>
+      <p class="help-p">此时<b>旗帜会一面面飞回旗囊</b>，剩下的暗格<b>砖块依次掀开</b>，露出你推理出的怪物与陷阱——
+      插对的旗和漏标的暗格，都在这段动画里得到确认。同时<b>惊扰立刻停止</b>。
+      自动揭示<b>不带任何代价</b>——陷阱直接拆除不扣血，怪物不会扑你，也不会强行把你拉进战斗。</p>
       <p class="help-p">之后你可以从容地<b>点开怪物赚经验金币</b>、用炸弹清场，或直接下楼。
       钥匙守卫仍需击败或炸掉才能夺钥——识破免除的是<b>惩罚</b>，不是<b>目标</b>。</p>
+      <p class="help-p"><b>识破是有收益的</b>，而且收益按你推理的质量结算：本层<b>全体怪物防御 −${G.SOLVE_DEF_CUT}</b>；
+      每面<b>插对的旗</b>再换 ${G.SOLVE_FLAG_GOLD} 金币；若剩下的威胁<b>全部被你插了旗</b>（而不是漏标后被系统掀开），
+      就是<b>完美识破</b>，额外 +${G.SOLVE_PERFECT_XP} 经验。削弱只作用于<b>本层</b>，下楼后新怪物按你的强度重新生成。</p>
+    </div>
+    <div class="help-sec">
+      <h3 class="help-h">两条构筑轴</h3>
+      <p class="help-p"><b>推理流</b>：把「读懂棋盘」直接换成战力。投资旗子上限（旗囊 / 旗帜祝福 / 旗手纹章），
+      再拿<b>破阵</b>（每面插对的旗使怪物防御 −1，最多 −${G.RELIC_SIEGE_CAP}）、<b>夺气</b>（同理削攻击）、
+      <b>全识</b>（完美识破额外 +${G.RELIC_MIND_XP} 经验、防御再 −${G.RELIC_MIND_DEF}）、<b>测绘师</b>（卷轴每探明一处威胁永久 +1 攻击，最多 +${G.RELIC_SURVEY_CAP}）。
+      旗插得越准，这一层的仗就越好打。</p>
+      <p class="help-p"><b>体魄流</b>：把「血厚」换成战力。商店<b>生命精粹</b>永久 +${G.SHOP_ELIXIR_HP} 生命上限，
+      <b>血气方刚</b>按生命上限每 ${G.RELIC_VIGOR_STEP} 点 +1 攻击，<b>反震甲</b>每次被反击反弹 ${G.RELIC_RECOIL} 点（回合数越多省得越多），
+      <b>层岩誓约</b>每下行一层永久 +${G.STRATA_DEF} 防御与 +${G.STRATA_HP} 生命上限。血越厚，拳越沉，甲越硬。</p>
+      <p class="help-p">两条轴都<b>不改变信息量</b>：不自动标雷、不透视威胁，战斗预演的数字永远等于实际结算。</p>
     </div>
     <div class="help-sec">
       <h3 class="help-h">目标</h3>
@@ -713,6 +762,7 @@ function openMenu() {
 }
 
 function endSequence(win) {
+  clearSolve();
   busy = true;
   meta.runs++;
   if (win) meta.wins++;
@@ -751,8 +801,8 @@ function endSequence(win) {
 }
 
 function descendSequence() {
+  clearSolve();
   busy = true;
-  hideSolve();
   audio.play('descend');
   el.fcDepth.textContent = 'DEPTH ' + S.floor;
   el.fcName.textContent = G.FLOOR_NAMES[S.floor];
@@ -764,17 +814,70 @@ function descendSequence() {
   setTimeout(() => { el.floorCard.hidden = true; busy = false; saveRun(); }, 1680);
 }
 
-// 解谜完成横幅：不锁输入（pointer-events:none），玩家可以直接继续打怪或下楼
-function showSolve(count) {
-  el.scSub.textContent = `${count} 处威胁全部揭示 · 旗帜已收回 · 不再被骚扰`;
-  el.solveCard.hidden = false;
-  el.solveCard.style.animation = 'none'; void el.solveCard.offsetWidth; el.solveCard.style.animation = '';
-  const c = { x: innerWidth / 2, y: innerHeight / 2 };
-  fx.ring(c.x, c.y, '#7dff5a', 250); fx.heal(c.x, c.y);
-  clearTimeout(solveTimer);
-  solveTimer = setTimeout(hideSolve, 1680);
+/* ─────────── 完全识破：收旗 + 逐格掀砖 ─────────── */
+// 状态在 revealSolved 里一次翻完，DOM 却要按节奏回放：先把翻完前的砖面扣下来，
+// 再一面一面收旗、一格一格掀砖。玩家看见的是「我插的旗确实对了，剩下的暗格也确实是雷」，
+// 而不是一块盖住棋盘的横幅。
+function holdSolve(e) {
+  clearSolve();
+  solveHold = new Map();
+  for (const i of e.tiles) {
+    const b = tiles[i];
+    solveHold.set(i, {
+      cls: b.className.replace(/\s*(pop|num-shift|hint|solve-out|was-flag|flag-retract)\b/g, ''),
+      inner: b.innerHTML,
+      n: Number(b.dataset.n) || 0,
+      label: b.getAttribute('aria-label') || '',
+      flag: b.classList.contains('tile-flag'),
+    });
+  }
 }
-function hideSolve() { clearTimeout(solveTimer); el.solveCard.hidden = true; }
+
+function solveLater(fn, ms) { solveTimers.push(setTimeout(fn, ms)); }
+
+function clearSolve() {
+  for (const id of solveTimers) clearTimeout(id);
+  solveTimers = [];
+  solveHold = null;
+  solveAnim.clear();
+  for (const b of tiles) b.classList.remove('solve-out', 'was-flag', 'flag-retract');
+}
+
+function solveSequence(e) {
+  const bricks = e.tiles, flags = e.flagged;
+  if (!bricks.length || matchMedia('(prefers-reduced-motion: reduce)').matches) { clearSolve(); render(); return; }
+  busy = true;
+  const cap = G.flagCap(S);
+  const setFlagLeft = (left) => { el.flagText.textContent = `${left}/${cap}`; el.flag.textContent = String(cap - left); };
+  toast(e.perfect ? `完美识破 · ${e.count} 处威胁全部插旗` : `本层已识破 · ${e.count} 处威胁全部揭示`, 'magic');
+  setFlagLeft(flags.length);
+  const fStep = flags.length ? Math.max(70, Math.min(160, Math.round(560 / flags.length))) : 0;
+  flags.forEach((i, k) => solveLater(() => {
+    tiles[i].classList.add('flag-retract');
+    flyToBag(tileCenter(i), FLY.flag);
+    audio.play('unflag');
+    setFlagLeft(flags.length - k - 1);
+  }, k * fStep));
+  const start = flags.length * fStep + 260;
+  const step = Math.max(45, Math.min(110, Math.round(1000 / bricks.length)));
+  bricks.forEach((i, k) => solveLater(() => {
+    const wasFlag = solveHold.get(i).flag;
+    solveHold.delete(i);
+    solveAnim.set(i, wasFlag);
+    renderBoard();
+    const c = tileCenter(i);
+    fx.dust(c.x, c.y);
+    if (k % 2 === 0) fx.haptic('tick');
+    if (k % 3 === 0) audio.play('reveal');
+  }, start + k * step));
+  solveLater(() => {
+    clearSolve();
+    busy = false;
+    render(); fitBoard(); saveRun();
+    const c = fx.center(el.board);
+    fx.ring(c.x, c.y, '#ffd54a', 240);
+  }, start + bricks.length * step + 400);
+}
 
 /* ─────────── 提示 ─────────── */
 function toast(text, tone = '') {
@@ -795,6 +898,7 @@ function startRun(diff, seed) {
   localStorage.setItem('bbr.diff', diff);
   S = G.createRun(diff, seed ?? ((Date.now() ^ (Math.random() * 0xffffff)) | 0));
   prev = {};
+  busy = false;
   forceClose();
   el.title.hidden = true;
   el.game.hidden = false;
@@ -810,6 +914,7 @@ function resumeRun() {
   const s = G.deserialize(localStorage.getItem(RUN_KEY) || '');
   if (!s) return false;
   S = s; difficulty = s.difficulty; prev = {};
+  busy = false;
   forceClose();
   el.title.hidden = true; el.game.hidden = false;
   buildBoard(); render();
@@ -822,6 +927,8 @@ function resumeRun() {
 }
 
 function toTitle() {
+  clearSolve();
+  busy = false;
   forceClose();
   saveRun();
   S = null;

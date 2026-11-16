@@ -1,10 +1,33 @@
-// 自动玩家：用于平衡性与稳定性验证（node tests/simulate.mjs [runs] [difficulty]）
+// 自动玩家：用于平衡性与稳定性验证
+// node tests/simulate.mjs [runs] [difficulty] [build]   build ∈ reason(推理流) / body(体魄流)，缺省为混合抓取
 import {
   createRun, tapTile, attack, usePotion, buy, altarChoose, tryDescend, closePending,
   forecast, neighbors, canDescend, SIZE, MAX_FLOOR, shopPrice, setMode, chooseRelic,
+  toggleFlag, flagCap, RELIC_SURVEY_CAP,
 } from '../public/src/game.js';
 
 const isMob = (t) => t.mob && t.mob.hp > 0;
+
+// 演绎的另一半：暗格数正好等于「数字 − 已插旗」→ 这些暗格全是威胁，插旗规避。
+// 插旗不消耗回合，所以这是纯收益；也是测量识破收益与推理流的前提。
+function flagPass(s) {
+  const cap = flagCap(s);
+  if (s.flags >= cap) return false;
+  for (const t of s.tiles) {
+    if (!t.revealed || t.kind !== 'empty' || t.n === 0) continue;
+    const nb = neighbors(t.i);
+    const flags = nb.filter((j) => s.tiles[j].flagged).length;
+    const hidden = nb.filter((j) => !s.tiles[j].revealed && !s.tiles[j].flagged);
+    if (!hidden.length || hidden.length !== t.n - flags) continue;
+    let did = false;
+    for (const j of hidden) {
+      if (s.flags >= cap) break;
+      toggleFlag(s, j); did = true;
+    }
+    if (did) return true;
+  }
+  return false;
+}
 
 function bestSafeTile(s) {
   // 演绎：数字格标记数 == 数字 → 其余暗格安全
@@ -41,46 +64,64 @@ function bestSafeTile(s) {
   return hidden[0].i;
 }
 
-function shopPass(s) {
+function shopPass(s, build) {
   const p = s.player;
   let guard = 0;
   while (guard++ < 12) {
     if (p.hp < p.maxHp * 0.5 && p.potions === 0 && p.gold >= shopPrice(s, 'potion')) { buy(s, 'potion'); continue; }
+    if (build === 'reason' && p.gold >= shopPrice(s, 'pouch') + 20) { buy(s, 'pouch'); continue; }
+    if (build === 'body' && p.gold >= shopPrice(s, 'elixir') + 20) { buy(s, 'elixir'); continue; }
     if (p.gold >= shopPrice(s, 'whet') + 20) { buy(s, 'whet'); continue; }
     if (p.gold >= shopPrice(s, 'plate') + 20) { buy(s, 'plate'); continue; }
+    if (build === 'reason' && p.scrolls < 2 && p.gold >= shopPrice(s, 'scroll') + 20) { buy(s, 'scroll'); continue; }
     if (p.potions < 2 && p.gold >= shopPrice(s, 'potion')) { buy(s, 'potion'); continue; }
     break;
   }
 }
 
-const RELIC_PREF = ['momentum', 'dragonWard', 'ironStomach', 'vampiricEdge', 'guardianBane', 'thornMail',
-  'alchemist', 'whetSoul', 'spikeSoles', 'carefulStep', 'mint', 'deepPockets', 'altarGrace', 'prospector',
-  'blastWave', 'trapSalvage', 'bloodPact', 'glassCannon', 'greedyHeart', 'bannerLord', 'bannerBearer'];
+const RELIC_PREF = ['momentum', 'strataOath', 'dragonWard', 'ironStomach', 'vampiricEdge', 'guardianBane',
+  'thornMail', 'recoilMail', 'alchemist', 'whetSoul', 'vigor', 'bannerLord', 'bannerBearer', 'siegeBreak',
+  'moraleBreak', 'spikeSoles', 'carefulStep', 'mint', 'deepPockets', 'altarGrace', 'prospector', 'perfectMind',
+  'blastWave', 'cartographer', 'trapSalvage', 'bloodPact', 'glassCannon', 'greedyHeart'];
+
+// 两条构筑轴各自的取舍顺序：用来验证「专投一条」是否真的能通关，而不是只测混合抓取
+const BUILD_PREF = {
+  reason: ['bannerBearer', 'siegeBreak', 'moraleBreak', 'perfectMind', 'bannerLord', 'cartographer', 'momentum',
+    'dragonWard', 'guardianBane', 'recoilMail', 'thornMail', 'whetSoul', 'vigor', 'ironStomach', 'vampiricEdge',
+    'alchemist', 'mint', 'deepPockets', 'altarGrace', 'prospector', 'spikeSoles', 'carefulStep', 'blastWave',
+    'trapSalvage', 'strataOath', 'bloodPact', 'glassCannon', 'greedyHeart'],
+  body: ['strataOath', 'recoilMail', 'vigor', 'ironStomach', 'vampiricEdge', 'dragonWard', 'thornMail',
+    'guardianBane', 'momentum', 'alchemist', 'whetSoul', 'altarGrace', 'bloodPact', 'glassCannon', 'bannerLord',
+    'bannerBearer', 'siegeBreak', 'moraleBreak', 'spikeSoles', 'carefulStep', 'mint', 'deepPockets', 'prospector',
+    'perfectMind', 'blastWave', 'cartographer', 'trapSalvage', 'greedyHeart'],
+};
 
 function pickRelic(s, prefer) {
-  if (prefer) {
+  const table = BUILD_PREF[prefer] || RELIC_PREF;
+  if (prefer && !BUILD_PREF[prefer]) {
     if (s.relicChoices.includes(prefer)) return prefer;
-    const idle = RELIC_PREF.slice().reverse().find((id) => s.relicChoices.includes(id));
+    const idle = table.slice().reverse().find((id) => s.relicChoices.includes(id));
     return idle || s.relicChoices[0];
   }
   const hurt = s.player.hp < s.player.maxHp * 0.6;
   const val = (id) => {
-    const idx = RELIC_PREF.indexOf(id);
+    const idx = table.indexOf(id);
     // 表外遗物给低分而不是 indexOf(-1) 反推出的最高分，否则新增遗物会被机器人当成首选
-    let v = idx < 0 ? -5 : RELIC_PREF.length - idx;
+    let v = idx < 0 ? -5 : table.length - idx;
     if (hurt && ['ironStomach', 'vampiricEdge', 'alchemist', 'dragonWard', 'altarGrace'].includes(id)) v += 12;
     if (!hurt && ['whetSoul', 'bloodPact', 'glassCannon', 'momentum'].includes(id)) v += 8;
-    if (id === 'bannerLord' || id === 'bannerBearer') v -= 20; // 自动玩家不插旗，这两条对它等于白板
+    if (['bannerLord', 'bannerBearer', 'siegeBreak', 'moraleBreak'].includes(id)) v += 4; // 机器人会插旗，这几条不再是白板
     return v;
   };
   return s.relicChoices.slice().sort((a, b) => val(b) - val(a))[0];
 }
 
-export function playRun(difficulty, seed, verbose = false, prefer = null) {
+export function playRun(difficulty, seed, verbose = false, prefer = null, build = null) {
   const s = createRun(difficulty, seed);
   const trace = [];
   const floors = [];
   let guard = 0, dmg = 0, healed = 0, potionsUsed = 0, blocked = 0, aggroDmg = 0, aggroHits = 0;
+  let solves = 0, solveFlags = 0, perfect = 0;
   let forced = -1, forcedSig = '';
   let mark = { floor: 1, dmg: 0, healed: 0 };
   const snap = () => {
@@ -93,15 +134,16 @@ export function playRun(difficulty, seed, verbose = false, prefer = null) {
       if (e.type === 'damage') dmg += e.amount;
       if (e.type === 'aggro') { aggroDmg += e.amount; aggroHits++; }
       if (e.type === 'heal') healed += e.amount;
+      if (e.type === 'solved') { solves++; solveFlags += e.flagged.length; if (e.flagged.length === e.count) perfect++; }
       if (e.type === 'descend' || e.type === 'win') snap();
     }
     return evs;
   };
   while (s.status === 'playing' && guard++ < 4000) {
-    if (s.relicChoices) { run(chooseRelic, pickRelic(s, prefer)); continue; }
+    if (s.relicChoices) { run(chooseRelic, pickRelic(s, build || prefer)); continue; }
     if (s.pendingAltar >= 0) {
       const p = s.player;
-      const choice = p.hp < p.maxHp * 0.6 ? 'pray' : p.hp > 20 ? 'blood' : 'greed';
+      const choice = p.hp < p.maxHp * 0.6 ? 'pray' : build === 'reason' ? 'banner' : p.hp > 20 ? 'blood' : p.def > 0 ? 'greed' : 'pray';
       run(altarChoose, s.pendingAltar, choice);
       continue;
     }
@@ -114,7 +156,7 @@ export function playRun(difficulty, seed, verbose = false, prefer = null) {
       } else if (must && s.player.bombs > 0) {
         closePending(s); setMode(s, 'bomb'); run(tapTile, t.i);
       } else if (must && f.lethal) {
-        shopPass(s);
+        shopPass(s, build);
         if (s.player.hp < s.player.maxHp && s.player.potions > 0) { run(usePotion); continue; }
         const f2 = forecast(s.player, t.mob);
         if (!f2.lethal) { run(attack, s.pendingCombat); continue; }
@@ -125,10 +167,24 @@ export function playRun(difficulty, seed, verbose = false, prefer = null) {
       continue;
     }
     const p = s.player;
+    if (flagPass(s)) continue;
     const loot = s.tiles.find((t) => t.revealed && !t.used && (t.kind === 'chest' || t.kind === 'potion'));
     if (loot) { run(tapTile, loot.i); continue; }
     if (p.hp < p.maxHp * 0.45 && p.potions > 0) { run(usePotion); potionsUsed++; continue; }
-    shopPass(s);
+    shopPass(s, build);
+
+    // 推理流用卷轴喂测绘师：挑暗格最密处展开，一次探明的威胁最多
+    if (build === 'reason' && s.relics.includes('cartographer') && p.scrolls > 0 && s.relicState.survey < RELIC_SURVEY_CAP) {
+      const hidden = s.tiles.filter((t) => !t.revealed && !t.flagged);
+      if (hidden.length > 12) {
+        let at = -1, most = -1;
+        for (const t of hidden) {
+          const n = [t.i, ...neighbors(t.i)].filter((j) => !s.tiles[j].revealed && !s.tiles[j].flagged).length;
+          if (n > most) { most = n; at = t.i; }
+        }
+        if (at >= 0) { setMode(s, 'scroll'); run(tapTile, at); continue; }
+      }
+    }
 
     const cheap = s.tiles.find((t) => t.revealed && isMob(t) && !forecast(p, t.mob).lethal && forecast(p, t.mob).take <= p.hp * 0.3);
     if (cheap) { run(attack, cheap.i); continue; }
@@ -158,7 +214,8 @@ export function playRun(difficulty, seed, verbose = false, prefer = null) {
     seed, difficulty, status: s.status, floor: s.floor, lv: s.player.lv, hp: s.player.hp, maxHp: s.player.maxHp,
     atk: s.player.atk, def: s.player.def, kills: s.stats.kills, turns: s.stats.turns, guard,
     stuck: guard >= 4000, dmg, healed, potionsUsed, blocked, aggroDmg, aggroHits, trace: trace.join('>'), floors,
-    relics: s.relics.slice(), whet: s.relicState.whet,
+    relics: s.relics.slice(), whet: s.relicState.whet, solves, solveFlags, perfect,
+    thorns: s.player.thorns, survey: s.relicState.survey, atkBonus: s.player.atkBonus, flagBonus: s.flagBonus,
   };
   if (verbose) { console.log(res); for (const f of floors) console.log(JSON.stringify(f)); }
   return res;
@@ -167,12 +224,13 @@ export function playRun(difficulty, seed, verbose = false, prefer = null) {
 if (process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('simulate.mjs')) {
   const runs = Number(process.argv[2] || 120);
   const diff = process.argv[3];
+  const build = process.argv[4] || null;
   if (diff === 'trace') { playRun(process.argv[4] || 'normal', Number(process.argv[5] || 12345), true); }
   else {
     const diffs = diff ? [diff] : ['easy', 'normal', 'hard'];
     for (const d of diffs) {
       const out = [];
-      for (let k = 0; k < runs; k++) out.push(playRun(d, 1000 + k * 7919));
+      for (let k = 0; k < runs; k++) out.push(playRun(d, 1000 + k * 7919, false, null, build));
       const wins = out.filter((r) => r.status === 'won').length;
       const stuck = out.filter((r) => r.stuck).length;
       const avgFloor = out.reduce((a, r) => a + r.floor, 0) / out.length;
@@ -185,7 +243,13 @@ if (process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('simulate.mj
       const avgRelics = out.reduce((a, r) => a + r.relics.length, 0) / out.length;
       const avgAggro = out.reduce((a, r) => a + r.aggroDmg, 0) / out.length;
       const avgHits = out.reduce((a, r) => a + r.aggroHits, 0) / out.length;
-      console.log(`${d.padEnd(7)} 胜率 ${(wins / runs * 100).toFixed(1)}%  层数 ${avgFloor.toFixed(2)}  等级 ${avgLv.toFixed(1)}  遗物 ${avgRelics.toFixed(1)}  操作 ${avgTurns.toFixed(0)}  受伤 ${avgDmg.toFixed(0)}  骚扰 ${avgAggro.toFixed(0)}(${(avgAggro / avgDmg * 100).toFixed(0)}%,${avgHits.toFixed(0)}次)  治疗 ${avgHeal.toFixed(0)}  卡死 ${stuck}  分布 ${JSON.stringify(hist)}`);
+      const avgSolves = out.reduce((a, r) => a + r.solves, 0) / out.length;
+      const avgSolveFlags = out.reduce((a, r) => a + r.solveFlags, 0) / out.length;
+      const perfects = out.reduce((a, r) => a + r.perfect, 0);
+      const avgMaxHp = out.reduce((a, r) => a + r.maxHp, 0) / out.length;
+      const avgAtk = out.reduce((a, r) => a + r.atk, 0) / out.length;
+      const avgDef = out.reduce((a, r) => a + r.def, 0) / out.length;
+      console.log(`${(build || 'mixed').padEnd(6)} ${d.padEnd(7)} 胜率 ${(wins / runs * 100).toFixed(1)}%  层数 ${avgFloor.toFixed(2)}  等级 ${avgLv.toFixed(1)}  遗物 ${avgRelics.toFixed(1)}  血上限 ${avgMaxHp.toFixed(0)}  攻 ${avgAtk.toFixed(1)}  防 ${avgDef.toFixed(1)}  操作 ${avgTurns.toFixed(0)}  受伤 ${avgDmg.toFixed(0)}  骚扰 ${avgAggro.toFixed(0)}(${(avgAggro / avgDmg * 100).toFixed(0)}%,${avgHits.toFixed(0)}次)  治疗 ${avgHeal.toFixed(0)}  识破 ${avgSolves.toFixed(2)}(旗${avgSolveFlags.toFixed(1)},完美${perfects})  卡死 ${stuck}  分布 ${JSON.stringify(hist)}`);
     }
   }
 }

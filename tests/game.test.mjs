@@ -473,9 +473,9 @@ function grant(s, id) {
 const hiddenThreats = (s) => s.tiles.filter((t) => !t.revealed && ['monster', 'elite', 'trap', 'boss'].includes(t.kind));
 function atFloor(s, f) { s.floor = f; G.buildFloor(s); G.tapTile(s, 30); G.closePending(s); return s; }
 
-test('遗物表完整：21 件、id 唯一、分类与稀有度合法', () => {
-  assert.equal(G.RELICS.length, 21);
-  assert.equal(new Set(G.RELICS.map((r) => r.id)).size, 21);
+test('遗物表完整：28 件、id 唯一、分类与稀有度合法', () => {
+  assert.equal(G.RELICS.length, 28);
+  assert.equal(new Set(G.RELICS.map((r) => r.id)).size, 28);
   for (const r of G.RELICS) {
     assert.ok(G.RELIC_CATS[r.cat], `${r.id} 分类非法`);
     assert.ok(G.RELIC_RARITY[r.rarity], `${r.id} 稀有度非法`);
@@ -1115,8 +1115,9 @@ test('三条渠道可叠加，加成跨层保留而旗子每层收回', () => {
 // ---------- 完全识破 ----------
 const THREATS = ['monster', 'elite', 'trap', 'boss'];
 // 把一层做到「只剩最后一个安全格」，翻开它就等价于扫雷解出整层
-function nearlySolved(diff = 'normal', seed = 21) {
+function nearlySolved(diff = 'normal', seed = 21, floor = 1) {
   const s = fresh(diff, seed);
+  if (floor > 1) atFloor(s, floor);
   const safe = s.tiles.filter((t) => !THREATS.includes(t.kind) && !t.revealed);
   const last = safe.find((t) => t.kind === 'empty');
   assert.ok(last, `${diff} seed${seed} 应留有未翻开的空地`);
@@ -1149,6 +1150,21 @@ test('完全识破：安全格全翻开即自动揭示，零伤害、收回旗�
       assert.equal(out.filter((e) => e.type === 'solved').length, 1, `${tag} 恰好一次识破事件`);
     }
   }
+});
+
+test('完全识破：事件带掀砖名单与收旗名单，供 UI 逐格回放', () => {
+  const { s, last } = nearlySolved();
+  const threats = s.tiles.filter((t) => THREATS.includes(t.kind) && !t.revealed);
+  const marked = threats.slice(0, 3).map((t) => t.i);
+  for (const i of marked) G.toggleFlag(s, i);
+  const out = G.tapTile(s, last.i);
+  const sv = out.find((e) => e.type === 'solved');
+  assert.deepEqual(sv.tiles, threats.map((t) => t.i), '掀砖名单＝本次自动揭示的全部威胁，按格子顺序');
+  assert.deepEqual(sv.flagged, marked, '收旗名单＝识破前插着的那几面旗');
+  assert.equal(sv.count, sv.tiles.length);
+  assert.ok(sv.flagged.every((i) => sv.tiles.includes(i)), '插旗格必然也在掀砖名单里');
+  // 状态已经一次翻完，UI 只能靠这份名单回放动画
+  assert.ok(sv.tiles.every((i) => s.tiles[i].revealed && !s.tiles[i].flagged));
 });
 
 test('完全识破：陷阱安全拆除，怪物仍可自愿开战', () => {
@@ -1317,4 +1333,313 @@ test('快速展开仍然跳过插旗格', () => {
   assert.equal(s.flags, num.n);
   G.tapTile(s, num.i);
   for (const j of flagged) assert.equal(s.tiles[j].revealed, false, '插旗格不被快速展开掀开');
+});
+
+// ---------- 识破收益与两条构筑轴 ----------
+const grantAll = (s, ...ids) => ids.forEach((id) => grant(s, id));
+
+function solveWith(flags, relics = [], diff = 'normal', seed = 21, floor = 1) {
+  const { s, last } = nearlySolved(diff, seed, floor);
+  grantAll(s, ...relics);
+  s.flagBonus = 60; // 完美识破要求旗数够插满剩余威胁，这里放开预算只测结算
+  const threats = s.tiles.filter((t) => THREATS.includes(t.kind) && !t.revealed);
+  const pre = threats.map((t) => (t.mob ? { def: t.mob.def, atk: t.mob.atk, hp: t.mob.hp } : null));
+  const n = flags === 'all' ? threats.length : flags;
+  for (const t of threats.slice(0, n)) G.toggleFlag(s, t.i);
+  const before = { gold: s.player.gold, lv: s.player.lv };
+  const out = G.tapTile(s, last.i);
+  return { s, out, sv: out.find((e) => e.type === 'solved'), threats, pre, before, last };
+}
+
+test('识破收益：零旗也有基础削弱，防御不会削成负数', () => {
+  let cut = 0;
+  // 第一层的怪防御本来就是 0，削不出记录；深层才有防御可削，两种情况都要覆盖
+  for (const [floor, seed] of [[1, 21], [5, 21], [5, 5], [6, 9]]) {
+    const { sv, threats, pre } = solveWith(0, [], 'normal', seed, floor);
+    assert.equal(sv.perfect, false);
+    assert.equal(sv.cutDef, G.SOLVE_DEF_CUT);
+    assert.equal(sv.cutAtk, 0);
+    assert.equal(sv.gold, 0);
+    assert.equal(sv.xp, 0);
+    threats.forEach((t, k) => {
+      if (!pre[k]) { assert.equal(t.mob, null, '陷阱没有属性可削'); return; }
+      assert.equal(t.mob.def, Math.max(0, pre[k].def - G.SOLVE_DEF_CUT));
+      assert.equal(t.mob.atk, pre[k].atk, '基础收益只削防御');
+      if (t.mob.cut) { cut++; assert.equal(t.mob.cut.atk, 0); }
+      else assert.equal(pre[k].def, 0, '没留下削减记录只可能是因为防御本来就是 0');
+    });
+  }
+  assert.ok(cut > 0, '有防御的怪应留下削减记录供 UI 说明');
+});
+
+test('识破收益：每面插对的旗换金币，铸币印放大它', () => {
+  const a = solveWith(3);
+  assert.equal(a.sv.gold, 3 * G.SOLVE_FLAG_GOLD);
+  assert.equal(a.s.player.gold - a.before.gold, 3 * G.SOLVE_FLAG_GOLD);
+  const b = solveWith(3, ['mint']);
+  assert.equal(b.sv.gold, Math.round(3 * G.SOLVE_FLAG_GOLD * 1.5));
+});
+
+test('完美识破：剩余威胁全部插旗才给额外经验，漏一面就不算', () => {
+  const full = solveWith('all');
+  assert.equal(full.sv.perfect, true);
+  assert.equal(full.sv.xp, G.SOLVE_PERFECT_XP);
+  assert.equal(full.sv.flagged.length, full.threats.length);
+  assert.ok(full.s.log.some((l) => l.text.includes('完美识破')), '结算要在日志里说清楚');
+  const part = solveWith(full.threats.length - 1);
+  assert.equal(part.sv.perfect, false);
+  assert.equal(part.sv.xp, 0);
+});
+
+test('破阵与夺气：插对的旗按上限削全体怪物防御与攻击', () => {
+  const { sv, threats, pre } = solveWith(6, ['siegeBreak', 'moraleBreak']);
+  assert.equal(sv.cutDef, G.SOLVE_DEF_CUT + G.RELIC_SIEGE_CAP);
+  assert.equal(sv.cutAtk, G.RELIC_MORALE_CAP);
+  threats.forEach((t, k) => {
+    if (!pre[k]) return;
+    assert.equal(t.mob.def, Math.max(0, pre[k].def - sv.cutDef));
+    assert.equal(t.mob.atk, Math.max(0, pre[k].atk - sv.cutAtk));
+    assert.deepEqual(t.mob.cut, { def: Math.min(pre[k].def, sv.cutDef), atk: Math.min(pre[k].atk, sv.cutAtk) });
+  });
+  const few = solveWith(2, ['siegeBreak', 'moraleBreak']);
+  assert.equal(few.sv.cutDef, G.SOLVE_DEF_CUT + 2, '未达上限时按旗数线性结算');
+  assert.equal(few.sv.cutAtk, 2);
+});
+
+test('全识：完美识破再削防御并给大额经验，非完美时不触发', () => {
+  const full = solveWith('all', ['perfectMind']);
+  assert.equal(full.sv.xp, G.SOLVE_PERFECT_XP + G.RELIC_MIND_XP);
+  assert.equal(full.sv.cutDef, G.SOLVE_DEF_CUT + G.RELIC_MIND_DEF);
+  const part = solveWith(1, ['perfectMind']);
+  assert.equal(part.sv.xp, 0);
+  assert.equal(part.sv.cutDef, G.SOLVE_DEF_CUT);
+});
+
+test('识破削弱只作用本层，下行后新怪物不带削减记录', () => {
+  const { s } = solveWith('all', ['siegeBreak', 'moraleBreak']);
+  s.stairsFound = true; s.hasKey = true;
+  G.tryDescend(s);
+  G.tapTile(s, 30);
+  assert.ok(s.tiles.some((t) => t.mob), '新一层应已生成怪物');
+  assert.ok(s.tiles.every((t) => !t.mob || !t.mob.cut), '新怪物重新生成，不继承上一层的削弱');
+});
+
+test('识破收益只在解出时结算：插旗本身不发金币', () => {
+  const { s, last } = nearlySolved();
+  s.flagBonus = 60;
+  const threats = s.tiles.filter((t) => THREATS.includes(t.kind) && !t.revealed);
+  const gold0 = s.player.gold;
+  for (const t of threats) G.toggleFlag(s, t.i);
+  assert.equal(s.player.gold, gold0, '插旗不消耗回合也不发钱');
+  assert.equal(s.solved, false);
+  G.tapTile(s, last.i);
+  assert.ok(s.player.gold > gold0);
+});
+
+test('识破削弱后，预演与结算读的是同一份被削过的属性', () => {
+  const { s, threats } = solveWith('all', ['siegeBreak', 'moraleBreak']);
+  const t = threats.find((x) => x.mob && x.mob.hp > 0);
+  const f = G.forecast(s.player, t.mob);
+  s.player.hp = s.player.maxHp = 9999;
+  const c = G.attack(s, t.i).find((e) => e.type === 'combat');
+  assert.equal(c.take, f.take);
+  assert.equal(c.rounds, f.rounds);
+});
+
+test('反震甲：预演回合与承伤等于逐回合模拟，含「死于反震」的那一口', () => {
+  for (const T of [0, 1, 3, 7]) {
+    const p = hero({ atk: 7, def: 2, hp: 500, maxHp: 500, thorns: T });
+    for (const hp of [1, 4, 10, 20, 21, 37, 100]) {
+      for (const def of [0, 3, 9]) {
+        const mob = { hp, def, atk: 9, elite: false, boss: false };
+        const f = G.forecast(p, mob);
+        let left = hp, rounds = 0, counters = 0;
+        while (left > 0) {
+          left -= G.hitDamage(p.atk, def); rounds++;
+          if (left <= 0) break;
+          counters++; left -= T;
+        }
+        const tag = `T${T} hp${hp} def${def}`;
+        assert.equal(f.rounds, rounds, `${tag} 回合数`);
+        assert.equal(f.counters, counters, `${tag} 被反击次数`);
+        assert.equal(f.take, counters * G.hitDamage(mob.atk, p.def), `${tag} 承伤`);
+      }
+    }
+  }
+});
+
+test('反震甲：它省的是回合数，不是每击伤害', () => {
+  const mob = { hp: 60, def: 2, atk: 12, elite: false, boss: false };
+  const a = G.forecast(hero({ atk: 8, def: 3, hp: 500, maxHp: 500, thorns: 0 }), mob);
+  const b = G.forecast(hero({ atk: 8, def: 3, hp: 500, maxHp: 500, thorns: G.RELIC_RECOIL }), mob);
+  assert.equal(a.deal, b.deal, '反震不改变每击伤害');
+  assert.ok(b.rounds < a.rounds, '反震缩短回合');
+  assert.ok(b.take < a.take, '反震减少承伤');
+});
+
+test('反震甲：装上即生效，龙王仍在满血可胜的上限内生成', () => {
+  for (const diff of ['easy', 'normal', 'hard']) {
+    for (let seed = 1; seed <= 8; seed++) {
+      const s = G.createRun(diff, seed);
+      grant(s, 'recoilMail');
+      assert.equal(s.player.thorns, G.RELIC_RECOIL);
+      s.floor = G.MAX_FLOOR; G.buildFloor(s); G.tapTile(s, 30);
+      const boss = find(s, 'boss')[0];
+      assert.ok(boss, '第 8 层应有龙王');
+      const p = { ...s.player, freeKill: false, hp: s.player.maxHp };
+      const f = G.forecast(p, boss.mob);
+      assert.ok(f.take <= Math.floor(p.maxHp * G.BAL.bossCap), `${diff} seed${seed} 龙王满血可胜`);
+      assert.ok(!f.lethal, `${diff} seed${seed} 不该出现必死龙王`);
+    }
+  }
+});
+
+test('血气方刚：攻击按生命上限派生，重复同步不叠加', () => {
+  const s = fresh('normal', 5);
+  const atk0 = s.player.atk;
+  grant(s, 'vigor');
+  const want = Math.floor(s.player.maxHp / G.RELIC_VIGOR_STEP);
+  assert.equal(s.player.atk, atk0 + want);
+  assert.equal(s.player.atkBonus, want);
+  for (let k = 0; k < 5; k++) { s.floor = 2; G.buildFloor(s); }
+  assert.equal(s.player.atk, atk0 + want, '反复下楼不该把派生攻击越叠越多');
+  assert.equal(s.player.atkBonus, want);
+});
+
+test('血气方刚：生命精粹涨血上限会跟着涨攻击，血之契扣血上限会跟着扣', () => {
+  const s = fresh('normal', 5);
+  grant(s, 'vigor');
+  s.player.gold = 9999;
+  const atk0 = s.player.atk, hp0 = s.player.maxHp;
+  G.buy(s, 'elixir'); G.buy(s, 'elixir');
+  assert.equal(s.player.maxHp, hp0 + 2 * G.SHOP_ELIXIR_HP);
+  assert.equal(s.player.atk, atk0 + Math.floor((hp0 + 2 * G.SHOP_ELIXIR_HP) / G.RELIC_VIGOR_STEP) - Math.floor(hp0 / G.RELIC_VIGOR_STEP));
+  const atk1 = s.player.atk, hp1 = s.player.maxHp;
+  grant(s, 'bloodPact');
+  assert.equal(s.player.maxHp, hp1 - 8);
+  assert.equal(s.player.atk, atk1 + 4 - (Math.floor(hp1 / G.RELIC_VIGOR_STEP) - Math.floor((hp1 - 8) / G.RELIC_VIGOR_STEP)));
+});
+
+test('生命精粹：永久 +6 生命上限并立即恢复，价格递增', () => {
+  const s = fresh('normal', 3);
+  s.player.gold = 999; s.player.hp = 5;
+  const hp0 = s.player.maxHp, p1 = G.shopPrice(s, 'elixir');
+  G.buy(s, 'elixir');
+  assert.equal(s.player.maxHp, hp0 + G.SHOP_ELIXIR_HP);
+  assert.equal(s.player.hp, 5 + G.SHOP_ELIXIR_HP);
+  assert.equal(s.bought.elixir, 1);
+  assert.ok(G.shopPrice(s, 'elixir') > p1, '越买越贵');
+});
+
+test('测绘师：卷轴探明的新威胁换永久攻击，封顶后不再涨且跨层保留', () => {
+  const s = fresh('normal', 21);
+  grant(s, 'cartographer');
+  s.player.scrolls = 20;
+  const atk0 = s.player.atk;
+  const densest = () => {
+    let at = -1, most = -1;
+    for (const t of s.tiles) {
+      if (t.revealed) continue;
+      const n = [t.i, ...G.neighbors(t.i)].filter((j) => !s.tiles[j].revealed && !s.tiles[j].flagged).length;
+      if (n > most) { most = n; at = t.i; }
+    }
+    return at;
+  };
+  for (let k = 0; k < 12 && s.relicState.survey < G.RELIC_SURVEY_CAP; k++) {
+    const at = densest(); if (at < 0) break;
+    G.setMode(s, 'scroll'); G.tapTile(s, at);
+  }
+  assert.equal(s.relicState.survey, G.RELIC_SURVEY_CAP, '应能攒满');
+  assert.equal(s.player.atk, atk0 + G.RELIC_SURVEY_CAP);
+  const at = densest();
+  if (at >= 0) { G.setMode(s, 'scroll'); G.tapTile(s, at); }
+  assert.equal(s.player.atk, atk0 + G.RELIC_SURVEY_CAP, '封顶后不再涨');
+  s.stairsFound = true; s.hasKey = true;
+  G.tryDescend(s);
+  assert.equal(s.relicState.survey, G.RELIC_SURVEY_CAP, '下楼不清零');
+  assert.equal(s.player.atk, atk0 + G.RELIC_SURVEY_CAP);
+});
+
+test('测绘师：只数这次新探明的威胁，已探明的不算', () => {
+  const s = arena();
+  grant(s, 'cartographer');
+  putMob(s, 0); putMob(s, 1);
+  s.tiles[0].revealed = true; G.recalc(s);
+  s.player.scrolls = 3;
+  const atk0 = s.player.atk;
+  G.setMode(s, 'scroll'); G.tapTile(s, 1);
+  assert.equal(s.relicState.survey, 1);
+  assert.equal(s.player.atk, atk0 + 1);
+});
+
+test('层岩誓约：每下行一层永久 +1 防御与 +3 生命上限', () => {
+  const s = fresh('normal', 9);
+  grant(s, 'strataOath');
+  const def0 = s.player.def, hp0 = s.player.maxHp;
+  s.player.hp = 1;
+  for (let f = 1; f <= 3; f++) {
+    s.stairsFound = true; s.hasKey = true;
+    G.tryDescend(s);
+    assert.equal(s.player.def, def0 + f * G.STRATA_DEF);
+    assert.equal(s.player.maxHp, hp0 + f * G.STRATA_HP);
+  }
+  assert.ok(s.player.hp > 1, '成长同时回血');
+});
+
+test('贪婪低语：只借本层 1 点防御，下行归还', () => {
+  const s = fresh('normal', 13);
+  atFloor(s, 2);
+  const altar = find(s, 'altar')[0];
+  assert.ok(altar, '第 2 层应有祭坛');
+  const def0 = s.player.def, gold0 = s.player.gold;
+  G.altarChoose(s, altar.i, 'greed');
+  assert.equal(s.player.def, def0 - 1);
+  assert.equal(s.defDebt, 1);
+  assert.equal(s.player.gold - gold0, 45);
+  assert.equal(altar.used, true);
+  s.stairsFound = true; s.hasKey = true;
+  G.tryDescend(s);
+  assert.equal(s.player.def, def0, '下行归还借走的防御');
+  assert.equal(s.defDebt, 0);
+});
+
+test('贪婪低语：防御为 0 时拒绝，不白送金币也不消耗祭坛', () => {
+  const s = fresh('normal', 13);
+  atFloor(s, 2);
+  const altar = find(s, 'altar')[0];
+  s.player.def = 0;
+  const gold0 = s.player.gold;
+  assert.deepEqual(G.altarChoose(s, altar.i, 'greed'), []);
+  assert.equal(s.player.gold, gold0);
+  assert.equal(altar.used, false);
+  assert.equal(s.defDebt, 0);
+});
+
+test('贪婪低语：连借两层也不会变成永久防御损失', () => {
+  const s = fresh('normal', 13);
+  const def0 = s.player.def;
+  for (const f of [2, 3]) {
+    atFloor(s, f);
+    G.altarChoose(s, find(s, 'altar')[0].i, 'greed');
+    assert.equal(s.player.def, def0 - 1);
+    assert.equal(s.defDebt, 1);
+    s.stairsFound = true; s.hasKey = true;
+    G.tryDescend(s);
+    assert.equal(s.player.def, def0);
+    assert.equal(s.defDebt, 0);
+  }
+});
+
+test('构筑字段可存档往返，v8 存档被拒绝', () => {
+  const s = fresh('normal', 21);
+  grantAll(s, 'vigor', 'recoilMail', 'cartographer', 'strataOath');
+  s.player.gold = 999; G.buy(s, 'elixir');
+  s.defDebt = 1; s.player.def -= 1;
+  const back = G.deserialize(G.serialize(s));
+  assert.equal(back.player.thorns, G.RELIC_RECOIL);
+  assert.equal(back.player.atkBonus, s.player.atkBonus);
+  assert.equal(back.player.atk, s.player.atk);
+  assert.equal(back.relicState.survey, s.relicState.survey);
+  assert.equal(back.defDebt, 1);
+  assert.equal(G.deserialize(JSON.stringify({ ...s, v: 8 })), null, 'v8 存档应被拒绝');
 });

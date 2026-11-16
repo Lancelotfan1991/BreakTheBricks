@@ -3,7 +3,7 @@ export const COLS = 7;
 export const ROWS = 9;
 export const SIZE = COLS * ROWS;
 export const MAX_FLOOR = 8;
-export const SAVE_VERSION = 8;
+export const SAVE_VERSION = 9;
 
 export const DIFFICULTIES = {
   easy: { id: 'easy', name: '地窖', tag: '轻松', desc: '怪物孱弱 · 补给充裕', threat: 0.78, power: 0.82, loot: 1.35, hp: 38, gold: 25, potions: 2, flags: 4 },
@@ -11,10 +11,27 @@ export const DIFFICULTIES = {
   hard: { id: 'hard', name: '炼狱', tag: '噩梦', desc: '寸步难行 · 精英横行', threat: 1.22, power: 1.1, loot: 0.8, hp: 28, gold: 0, potions: 2, flags: 2 },
 };
 
+// 两条构筑轴：推理流把「插对的旗」换成战力，体魄流把「生命上限」换成战力。
+// 所有加成都是确定性的加减，预演数字仍然等于实际结算。
+export const SHOP_ELIXIR_HP = 6;
+export const SOLVE_DEF_CUT = 1;        // 识破基础收益：本层全体怪物防御 −1
+export const SOLVE_FLAG_GOLD = 4;      // 每面插对的旗换 4 金币
+export const SOLVE_PERFECT_XP = 15;    // 剩余威胁全部插旗（完美识破）的额外经验
+export const RELIC_SIEGE_CAP = 4;      // 破阵：旗帜换防御削减的上限
+export const RELIC_MORALE_CAP = 4;     // 夺气：旗帜换攻击削减的上限
+export const RELIC_MIND_XP = 50;       // 全识：完美识破的额外经验
+export const RELIC_MIND_DEF = 2;       // 全识：完美识破再削防御
+export const RELIC_SURVEY_CAP = 4;     // 测绘师：卷轴探明威胁换攻击的上限
+export const RELIC_VIGOR_STEP = 12;    // 血气方刚：每 12 点生命上限换 1 攻击
+export const RELIC_RECOIL = 3;         // 反震甲：每次被反击反弹的伤害
+export const STRATA_DEF = 1;           // 层岩誓约：每下行一层的防御成长
+export const STRATA_HP = 3;            // 层岩誓约：每下行一层的生命上限成长
+
 export const SHOP = [
   { id: 'potion', name: '治疗药水', icon: 'potion', desc: '恢复 30% 最大生命', base: 30, step: 12 },
   { id: 'whet', name: '磨刀石', icon: 'sword', desc: '永久 +1 攻击', base: 30, step: 14 },
   { id: 'plate', name: '铁甲片', icon: 'shield', desc: '永久 +1 防御', base: 30, step: 16 },
+  { id: 'elixir', name: '生命精粹', icon: 'flask', desc: `永久 +${SHOP_ELIXIR_HP} 生命上限并立即恢复`, base: 45, step: 18 },
   { id: 'pouch', name: '旗囊', icon: 'flag', desc: '永久 +1 旗子上限', base: 25, step: 10 },
   { id: 'scroll', name: '侦查卷轴', icon: 'scroll', desc: '安全探明 3×3 区域', base: 22, step: 6 },
   { id: 'bomb', name: '裂石炸弹', icon: 'bomb', desc: '无伤摧毁一个威胁', base: 40, step: 10 },
@@ -58,6 +75,8 @@ export const RELICS = [
   { id: 'blastWave', name: '冲击波', icon: 'bomb', cat: 'explore', rarity: 'rare', desc: '炸弹同时摧毁目标周围 8 格的所有陷阱。', flavor: '砖石记得每一次爆炸的形状。' },
   { id: 'bannerLord', name: '旗帜领主', icon: 'flag', cat: 'explore', rarity: 'rare', desc: '下行时，每面插对的旗回复 2 生命（最多 12）。', flavor: '它只奖赏那些真正读懂了数字的人。' },
   { id: 'bannerBearer', name: '旗手纹章', icon: 'flag', cat: 'explore', rarity: 'rare', desc: `旗子上限永久 +${RELIC_FLAG_BONUS}。`, flavor: '纹章上的旗面比你的手臂还长，插下去就没人敢拔。' },
+  { id: 'cartographer', name: '测绘师', icon: 'scroll', cat: 'explore', rarity: 'rare', desc: `卷轴每探明一处威胁，永久 +1 攻击（最多 +${RELIC_SURVEY_CAP}）。`, flavor: '把危险画进图里的人，刀也知道该往哪儿落。' },
+  { id: 'perfectMind', name: '全识', icon: 'eye', cat: 'explore', rarity: 'epic', desc: `完美识破额外 +${RELIC_MIND_XP} 经验，怪物防御再 −${RELIC_MIND_DEF}。`, flavor: '一个格子都没猜错的时候，深渊会先眨眼睛。' },
 
   { id: 'thornMail', name: '荆棘甲', icon: 'shield', cat: 'combat', rarity: 'common', desc: '战斗承伤固定减少 2 点。', flavor: '甲片缝隙里长出了倒刺，先扎到的是敌人。' },
   { id: 'dragonWard', name: '龙鳞护符', icon: 'dragon', cat: 'combat', rarity: 'rare', desc: '战斗承伤减少 25%。', flavor: '一片幼龙的鳞，还留着体温。' },
@@ -65,6 +84,10 @@ export const RELICS = [
   { id: 'vampiricEdge', name: '吸血刃', icon: 'fang', cat: 'combat', rarity: 'common', desc: '每次击杀回复 4 生命。', flavor: '刃口有一道永不干涸的暗红细线。' },
   { id: 'momentum', name: '势如破竹', icon: 'sparkle', cat: 'combat', rarity: 'epic', desc: '每层第一次击杀不承受任何伤害。', flavor: '第一击总是最干净的，之后才轮到代价。' },
   { id: 'whetSoul', name: '磨刀之魂', icon: 'sword', cat: 'combat', rarity: 'rare', desc: `每次击杀永久 +1 攻击，最多叠加 ${RELIC_WHET_CAP} 次。`, flavor: '每一次挥砍都在替下一次开刃。' },
+  { id: 'siegeBreak', name: '破阵', icon: 'sword', cat: 'combat', rarity: 'rare', desc: `识破时，每面插对的旗使本层怪物防御额外 −1（最多 −${RELIC_SIEGE_CAP}）。`, flavor: '旗插在哪里，阵就在哪里裂开。' },
+  { id: 'moraleBreak', name: '夺气', icon: 'fang', cat: 'combat', rarity: 'rare', desc: `识破时，每面插对的旗使本层怪物攻击 −1（最多 −${RELIC_MORALE_CAP}）。`, flavor: '被看穿的怪物，连嘶吼都短了半截。' },
+  { id: 'recoilMail', name: '反震甲', icon: 'shield', cat: 'combat', rarity: 'rare', desc: `战斗中每次被反击，反弹 ${RELIC_RECOIL} 点伤害。`, flavor: '它咬你一口，崩掉的是它自己的牙。' },
+  { id: 'vigor', name: '血气方刚', icon: 'heart', cat: 'combat', rarity: 'rare', desc: `生命上限每 ${RELIC_VIGOR_STEP} 点，攻击 +1。`, flavor: '血越厚，拳越沉。' },
 
   { id: 'ironStomach', name: '铁胃', icon: 'flask', cat: 'supply', rarity: 'common', desc: '药水恢复量从 30% 提升到 38% 最大生命。', flavor: '连瓶塞一起嚼碎，药效才算完整。' },
   { id: 'alchemist', name: '炼金壶', icon: 'potion', cat: 'supply', rarity: 'rare', desc: '每下行两层额外获得 1 瓶药水。', flavor: '壶底永远剩着一口，摇一摇又满了。' },
@@ -76,6 +99,7 @@ export const RELICS = [
   { id: 'bloodPact', name: '血之契', icon: 'heart', cat: 'pact', rarity: 'epic', desc: '攻击 +4，但生命上限 −8。', flavor: '契约用你的血写成，也用你的血偿还。' },
   { id: 'glassCannon', name: '玻璃炮', icon: 'crown', cat: 'pact', rarity: 'epic', desc: '攻击 +6，但战斗承伤 +35%。', flavor: '通透、锋利、一碰就碎。' },
   { id: 'greedyHeart', name: '贪婪之心', icon: 'skull', cat: 'pact', rarity: 'rare', desc: '宝箱金币翻倍，但宝箱开出的药水变成 25 金币。', flavor: '它把一切能救命的东西都换算成了价钱。' },
+  { id: 'strataOath', name: '层岩誓约', icon: 'altar', cat: 'pact', rarity: 'epic', desc: `每下行一层，永久 +${STRATA_DEF} 防御与 +${STRATA_HP} 生命上限。`, flavor: '石头记得每一个肯往下走的人。' },
 ];
 
 export const relicById = (id) => RELICS.find((r) => r.id === id);
@@ -126,13 +150,19 @@ export function recalc(s) {
 export const hitDamage = (atk, def) => Math.max(1, atk - def);
 export function forecast(p, mob) {
   const deal = hitDamage(p.atk, mob.def);
-  const rounds = Math.ceil(mob.hp / deal);
+  const T = p.thorns;
+  // 反震跟着反击走：第 r 回合玩家打 deal，怪物若没死就反击一次并吃 T 点反震。
+  // 于是它可能死在第 r 次挥剑，也可能死在第 r 次反击的反震上——后者玩家仍要挨这一口。
+  // 两种死法取先到的那个，回合数因此是 ceil(hp/(deal+T))，而挨打次数要多算一次。
+  const rounds = Math.ceil(mob.hp / (deal + T));
+  const byThorns = T > 0 && rounds * deal + (rounds - 1) * T < mob.hp;
+  const counters = rounds - 1 + (byThorns ? 1 : 0);
   const perHit = hitDamage(mob.atk, p.def);
-  let take = (rounds - 1) * perHit;
+  let take = counters * perHit;
   if (mob.elite || mob.boss) take *= p.eliteTakeMul;
   take = Math.max(0, Math.round(take * p.takeMul) - p.takeFlat);
   if (p.freeKill) take = 0;
-  return { deal, rounds, take, lethal: take >= p.hp, perHit };
+  return { deal, rounds, counters, take, lethal: take >= p.hp, perHit };
 }
 
 // ---------- 惊扰 ----------
@@ -195,11 +225,11 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
     floor: 1,
     tiles: [],
     generated: false,
-    player: { hp: d.hp, maxHp: d.hp, atk: 5, def: 1, lv: 1, xp: 0, xpNext: 12, gold: d.gold, potions: 2, bombs: 1, scrolls: 1, takeMul: 1, takeFlat: 0, eliteTakeMul: 1, freeKill: false },
+    player: { hp: d.hp, maxHp: d.hp, atk: 5, def: 1, lv: 1, xp: 0, xpNext: 12, gold: d.gold, potions: 2, bombs: 1, scrolls: 1, takeMul: 1, takeFlat: 0, eliteTakeMul: 1, freeKill: false, thorns: 0, atkBonus: 0 },
     bought: {},
     relics: [],
     relicChoices: null,
-    relicState: { whet: 0, firstKill: false, trapWard: 0 },
+    relicState: { whet: 0, firstKill: false, trapWard: 0, survey: 0 },
     hasKey: false,
     stairsFound: false,
     stairsIndex: -1,
@@ -209,6 +239,7 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
     flagBonus: 0,
     solved: false,
     solvedFlags: 0,
+    defDebt: 0,
     pendingCombat: -1,
     pendingAltar: -1,
     stats: { kills: 0, revealed: 0, goldEarned: 0, damage: 0, turns: 0 },
@@ -241,6 +272,12 @@ export function buildFloor(s) {
   s.pendingCombat = -1;
   s.pendingAltar = -1;
   s.relicState.firstKill = false;
+  // 祭坛「贪婪低语」借走的防御只借一层，下楼就还——代价是周转的，不是永久的
+  if (s.defDebt > 0) {
+    s.player.def += s.defDebt;
+    say(s, `祭坛借走的甲胄回来了：防御 +${s.defDebt}。`, 'good');
+    s.defDebt = 0;
+  }
   syncRelicMods(s);
   s.plan = planFloor(s, f, d);
   s.threatTotal = s.plan.monsters + s.plan.traps + (s.plan.elite ? 1 : 0) + (s.plan.boss ? 1 : 0);
@@ -279,7 +316,9 @@ function makeMob(s, f, d, type) {
   const B = BAL;
   const def = Math.floor(f / 2) + b.def;
   const mix = (fixed, ref) => fixed * (1 - B.adapt) + ref * B.adapt;
-  const hpRef = hitDamage(p.atk, def) * (B.refRounds + B.refRoundsF * f);
+  const deal = hitDamage(p.atk, def);
+  // 自适应血量必须按 forecast 的同一份公式反推，否则反震省下的回合会被生成器原样加回去
+  const hpRef = (deal + p.thorns) * (B.refRounds + B.refRoundsF * f);
   const atkRef = p.def + p.maxHp * (B.refBurn + B.refBurnF * f);
   let hp = Math.round(mix(B.mobHp + B.mobHpF * f, hpRef) * b.hp * P);
   let atk = Math.round(mix(B.mobAtk + B.mobAtkF * f, atkRef) * b.atk * P);
@@ -369,6 +408,7 @@ function revealSolved(s, out) {
   if (!hidden.length) return;
   s.solved = true;
   // 暗格全是威胁，所以此刻插着的每一面旗都必然插对——先记账再收回，旗帜领主才不会因完美推理而少回血
+  const flagged = s.tiles.filter((t) => t.flagged).map((t) => t.i);
   s.solvedFlags = s.flags;
   for (const t of s.tiles) t.flagged = false;
   s.flags = 0;
@@ -380,7 +420,35 @@ function revealSolved(s, out) {
   }
   for (const t of s.tiles) if (t.mob) { t.mob.awake = false; t.mob.cd = null; }
   say(s, `本层解谜完成：${hidden.length} 处威胁全部揭示，旗帜已收回，它们不再骚扰你。`, 'magic');
-  ev(out, 'solved', { count: hidden.length });
+
+  // 识破结算。棋盘此刻已经全亮，「插对了几面旗」不再是泄密信息，可以放心按它发奖。
+  // 完美识破＝剩下的每一处威胁都被你插了旗，而不是漏标后被系统掀开。
+  const correct = flagged.length;
+  const perfect = correct === hidden.length;
+  let cutDef = SOLVE_DEF_CUT, cutAtk = 0;
+  if (hasRelic(s, 'siegeBreak')) cutDef += Math.min(RELIC_SIEGE_CAP, correct);
+  if (hasRelic(s, 'moraleBreak')) cutAtk += Math.min(RELIC_MORALE_CAP, correct);
+  if (perfect && hasRelic(s, 'perfectMind')) cutDef += RELIC_MIND_DEF;
+  for (const t of s.tiles) {
+    const m = t.mob;
+    if (!m || m.hp <= 0) continue;
+    const d = Math.min(m.def, cutDef), a = Math.min(m.atk, cutAtk);
+    if (!d && !a) continue;
+    m.def -= d; m.atk -= a;
+    m.cut = { def: d, atk: a };
+  }
+  const gold = correct ? addGold(s, correct * SOLVE_FLAG_GOLD, out) : 0;
+  let xp = perfect ? SOLVE_PERFECT_XP : 0;
+  if (perfect && hasRelic(s, 'perfectMind')) xp += RELIC_MIND_XP;
+  if (xp) gainXp(s, xp, out);
+  const gain = [];
+  if (cutDef) gain.push(`怪物防御 −${cutDef}`);
+  if (cutAtk) gain.push(`怪物攻击 −${cutAtk}`);
+  if (gold) gain.push(`+${gold} 金币`);
+  if (xp) gain.push(`+${xp} 经验`);
+  say(s, `识破奖励${perfect ? '（完美识破）' : ''}：${gain.join(' · ')}。`, 'good');
+  // tiles/flagged 供 UI 逐格掀砖：状态已经一次性改完，动画只能靠这份名单回放
+  ev(out, 'solved', { count: hidden.length, tiles: hidden.map((t) => t.i), flagged, perfect, cutDef, cutAtk, gold, xp });
 }
 export function shopPrice(s, id) {
   const item = SHOP.find((x) => x.id === id);
@@ -390,6 +458,7 @@ export function shopPrice(s, id) {
 
 function gainXp(s, amount, out) {
   const p = s.player;
+  const lv0 = p.lv;
   p.xp += amount;
   while (p.xp >= p.xpNext) {
     p.xp -= p.xpNext;
@@ -402,6 +471,8 @@ function gainXp(s, amount, out) {
     say(s, `等级提升！Lv.${p.lv} 攻击+1 生命上限+4${p.lv % BAL.lvDefEvery === 0 ? ' 防御+1' : ''}`, 'good');
     ev(out, 'levelup', { lv: p.lv });
   }
+  // 生命上限长了，血气方刚的派生攻击要跟着长
+  if (p.lv > lv0) syncRelicMods(s);
 }
 
 function hurt(s, amount, out, source, at = -1) {
@@ -625,8 +696,17 @@ function tapInner(s, i) {
     ev(out, 'scroll', { i });
     ensureBoard(s, i);
     const area = [i, ...neighbors(i)];
+    const surveyed = area.filter((j) => !s.tiles[j].revealed && isThreat(s.tiles[j])).length;
     for (const j of area) openTile(s, j, out, { safe: true, silent: true, noFlood: true });
     say(s, '卷轴展开，周围的砖石变得透明。', 'magic');
+    if (hasRelic(s, 'cartographer') && surveyed) {
+      const add = Math.min(RELIC_SURVEY_CAP - s.relicState.survey, surveyed);
+      if (add > 0) {
+        s.relicState.survey += add;
+        s.player.atk += add;
+        say(s, `测绘师把 ${surveyed} 处危险记进了图里：攻击 +${add}（${s.relicState.survey}/${RELIC_SURVEY_CAP}）。`, 'magic');
+      }
+    }
     return { out, spent: true };
   }
 
@@ -752,6 +832,7 @@ export function buy(s, id) {
   if (id === 'potion') p.potions++;
   if (id === 'whet') p.atk += BAL.shopWhet;
   if (id === 'plate') p.def += 1;
+  if (id === 'elixir') { p.maxHp += SHOP_ELIXIR_HP; heal(s, SHOP_ELIXIR_HP, out); syncRelicMods(s); }
   if (id === 'pouch') s.flagBonus += 1;
   if (id === 'scroll') p.scrolls++;
   if (id === 'bomb') p.bombs++;
@@ -763,7 +844,7 @@ export function buy(s, id) {
 export const ALTAR_OPTIONS = [
   { id: 'blood', name: '血之契约', icon: 'sword', desc: '献祭 10 点生命，永久 +2 攻击' },
   { id: 'pray', name: '静默祈祷', icon: 'heart', desc: '恢复 45% 最大生命' },
-  { id: 'greed', name: '贪婪低语', icon: 'coin', desc: '立刻获得 45 金币，但防御 -1' },
+  { id: 'greed', name: '贪婪低语', icon: 'coin', desc: '立刻获得 45 金币，本层防御 −1（下行时恢复）' },
   { id: 'banner', name: '旗帜祝福', icon: 'flag', desc: `永久 +${ALTAR_FLAG_BONUS} 旗子上限` },
 ];
 
@@ -774,6 +855,7 @@ export function altarChoose(s, i, choice) {
   if (!t || t.kind !== 'altar' || t.used) return out;
   const p = s.player;
   if (choice === 'blood' && p.hp <= BAL.bloodCost) { say(s, '你的血不够献祭了。', 'warn'); return out; }
+  if (choice === 'greed' && p.def <= 0) { say(s, '你的甲胄已经薄无可薄。', 'warn'); return out; }
   t.used = true;
   s.pendingAltar = -1;
   if (choice === 'blood') {
@@ -788,9 +870,10 @@ export function altarChoose(s, i, choice) {
     s.flagBonus += ALTAR_FLAG_BONUS;
     say(s, `紫火卷成一面旗落进你手里：旗子上限提升到 ${flagCap(s)}。`, 'magic');
   } else {
-    addGold(s, 45, out);
-    p.def = Math.max(0, p.def - 1);
-    say(s, '金币从石缝涌出，而你的甲胄薄了一分。', 'magic');
+    const got = addGold(s, 45, out);
+    p.def -= 1;
+    s.defDebt += 1;
+    say(s, `金币从石缝涌出（+${got}）。甲胄薄了一分：本层防御 −1，下行时恢复。`, 'magic');
   }
   ev(out, 'altarUsed', { i, choice });
   return out;
@@ -815,6 +898,12 @@ export function tryDescend(s) {
     }
   }
   if (hasRelic(s, 'alchemist') && s.floor % 2 === 0) { s.player.potions++; say(s, '炼金壶在行囊里凝出了一瓶药水。', 'good'); ev(out, 'item', { item: 'potion' }); }
+  if (hasRelic(s, 'strataOath')) {
+    s.player.def += STRATA_DEF;
+    s.player.maxHp += STRATA_HP;
+    heal(s, STRATA_HP, out);
+    say(s, `层岩誓约又刻下一道：防御 +${STRATA_DEF}，生命上限 +${STRATA_HP}。`, 'magic');
+  }
   s.floor++;
   buildFloor(s);
   say(s, `沿阶梯而下——第 ${s.floor} 层 · ${FLOOR_NAMES[s.floor]}。通关奖励 ${bonus} 金币。`, 'magic');
@@ -839,6 +928,11 @@ function syncRelicMods(s) {
   p.takeFlat = hasRelic(s, 'thornMail') ? 2 : 0;
   p.eliteTakeMul = hasRelic(s, 'guardianBane') ? 0.6 : 1;
   p.freeKill = hasRelic(s, 'momentum') && !s.relicState.firstKill;
+  p.thorns = hasRelic(s, 'recoilMail') ? RELIC_RECOIL : 0;
+  // 血气方刚是派生值：按 maxHp 重算目标加成，只写回差额，重复同步才不会越叠越多
+  const want = hasRelic(s, 'vigor') ? Math.floor(p.maxHp / RELIC_VIGOR_STEP) : 0;
+  p.atk += want - p.atkBonus;
+  p.atkBonus = want;
 }
 
 function rollRelicChoices(s) {
