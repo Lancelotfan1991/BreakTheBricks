@@ -1165,7 +1165,7 @@ export function tileLabel(t) {
     const name = ref('mob.' + t.mob.id + '.name');
     return t.mob.awake && t.mob.cd != null ? tr('tile.mob.aggro', { name, cd: t.mob.cd }) : tr('tile.mob', { name });
   }
-  if (t.kind === 'stairs') return tr('tile.stairs');
+  if (t.kind === 'stairs') return t.n ? tr('tile.stairs.danger', { n: t.n }) : tr('tile.stairs');
   const name = t.mob ? tr('tile.mob.cleared', { name: ref('mob.' + t.mob.id + '.name') })
     : t.kind === 'trap' ? tr(t.used ? 'tile.trap.used' : 'tile.trap')
     : t.kind === 'altar' ? tr(t.used ? 'tile.altar.used' : 'tile.altar')

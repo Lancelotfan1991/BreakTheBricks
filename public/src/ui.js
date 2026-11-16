@@ -135,9 +135,12 @@ function tileView(t) {
   }
   if (t.kind === 'stairs') {
     cls += ' tile-stairs';
+    n = t.n;
     inner = svg('stairs');
     const locked = !G.canDescend(S);
     if (locked) { inner += `<span class="tile-lock">${svg('lock')}</span>`; label += tr('ui.board.locked'); }
+    // 阶梯格同样要交出邻格威胁数：数字缩进左上角徽章，出口图形与推理线索两不误
+    inner += `<span class="tile-num${n ? '' : ' tile-zero'}">${n}</span>`;
     return { cls, inner, n, label };
   }
   if (!t.used) {

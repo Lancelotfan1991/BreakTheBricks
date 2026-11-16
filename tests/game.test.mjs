@@ -152,6 +152,23 @@ test('空宝箱仍给出邻雷数与危险标签，且可双击展开', () => {
   assert.ok(chorded >= 3, `可双击的空宝箱样本不足：${chorded}`);
 });
 
+test('下行阶梯保留邻雷数，标签带上危险数', () => {
+  let seen = 0;
+  for (let seed = 1; seed <= 80 && seen < 3; seed++) {
+    const s = G.createRun('normal', seed);
+    G.tapTile(s, 30);
+    const st = s.tiles.find((t) => t.kind === 'stairs');
+    if (!st) continue;
+    G.tapTile(s, st.i);
+    assert.equal(st.revealed, true);
+    const want = hiddenAround(s, st.i).length;
+    assert.equal(st.n, want, `阶梯 ${st.i} 邻雷数错误`);
+    assert.equal(G.tileLabel(st), want ? `下行阶梯，危险 ${want}` : '下行阶梯');
+    if (want) seen++;
+  }
+  assert.ok(seen >= 3, `有数字的阶梯样本不足：${seen}`);
+});
+
 test('已拾取药水与已清除怪物同样保留邻雷数', () => {
   let potSeen = 0, mobSeen = 0;
   for (let seed = 1; seed <= 80 && (potSeen < 2 || mobSeen < 2); seed++) {

@@ -226,6 +226,7 @@ export default {
   'tile.mob.aggro': '{name}，{cd} 回合后骚扰',
   'tile.mob.cleared': '{name}（已清除）',
   'tile.stairs': '下行阶梯',
+  'tile.stairs.danger': '下行阶梯，危险 {n}',
   'tile.trap': '陷阱',
   'tile.trap.used': '已触发陷阱',
   'tile.altar': '古老祭坛',
