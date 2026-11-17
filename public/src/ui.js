@@ -14,7 +14,7 @@ const el = {
   floorNum: $('#floorNum'), floorName: $('#floorName'), floorSub: $('#floorSub'),
   hpFill: $('#hpFill'), hpText: $('#hpText'), hpBar: document.querySelector('.hp-bar'),
   atk: $('#atkVal'), def: $('#defVal'), gold: $('#goldVal'), lv: $('#lvNum'), ring: $('#xpRing'),
-  keyChip: $('#keyChip'),
+  threat: $('#threatVal'), threatChip: $('#threatChip'), keyChip: $('#keyChip'),
   potion: $('#potionCount'), bomb: $('#bombCount'), scroll: $('#scrollCount'), flag: $('#flagCount'),
   descend: $('#btnDescend'), log: $('#logLine'), ticker: document.querySelector('.ticker'),
   scrim: $('#scrim'), sheet: $('#sheet'), sheetBody: $('#sheetBody'),
@@ -31,6 +31,8 @@ const el = {
 
 let S = null;
 let difficulty = localStorage.getItem('bbr.diff') || 'normal';
+const SKIP_ANIM_KEY = 'bbr.skipBattleAnim';
+let skipBattleAnim = localStorage.getItem(SKIP_ANIM_KEY) === '1';
 let meta = loadMeta();
 let tiles = [];
 let sheetKind = null;
@@ -278,6 +280,11 @@ function renderHud() {
     : tr('ui.hud.def', { def: p.def }));
   el.lv.textContent = p.lv;
   el.ring.style.strokeDashoffset = String(119.4 * (1 - p.xp / p.xpNext));
+  // 剩余威胁＝还没清除的怪物与陷阱总数，是扫雷式演绎的关键读数
+  const remain = S.generated ? G.remainingThreats(S) : 0;
+  el.threat.textContent = remain;
+  el.threatChip.hidden = !S.generated;
+  el.threatChip.setAttribute('aria-label', tr('ui.hud.threat.aria', { n: remain }));
   const cap = G.flagCap(S);
   el.keyChip.hidden = !S.hasKey;
   el.potion.textContent = p.potions; el.bomb.textContent = p.bombs; el.scroll.textContent = p.scrolls;
@@ -678,7 +685,7 @@ function btFloat(node, text, cls) {
   span.className = 'bt-float ' + cls;
   span.textContent = text;
   span.style.left = `${r.left - s.left + r.width / 2}px`;
-  span.style.top = `${Math.max(0, r.top - s.top + r.height * 0.18)}px`;
+  span.style.top = `${Math.max(0, r.top - s.top + r.height * 0.32)}px`;
   el.btFx.appendChild(span);
   setTimeout(() => span.remove(), 700);
 }
@@ -692,7 +699,7 @@ function btReplay(node, cls) {
 function runBattle(i, done) {
   const t = S.tiles[i], m = t.mob, p = S.player;
   const f = G.forecast(p, m);
-  if (motionReduced()) { done(); return; }
+  if (skipBattleAnim || motionReduced()) { done(); return; }
   const seq = ++battleSeq;
   const bo = el.battle;
   busy = true;
@@ -833,11 +840,16 @@ function openCombat(i) {
       <div class="fc-bar"><i class="fc-safe" style="width:${safePct}%"></i><i class="fc-loss" style="width:${lossPct}%"></i></div>
       ${note}
     </div>
-    <div class="sheet-actions">
-      ${forced ? '' : `<button class="btn btn-ghost" data-sheet="close">${tr('ui.combat.again')}</button>`}
-      ${p.potions > 0 && p.hp < p.maxHp ? `<button class="btn" data-sheet="potion" data-i="${i}">${svg('potion')}<span>${tr('ui.combat.potion')}</span></button>` : ''}
-      ${p.bombs > 0 ? `<button class="btn" data-sheet="bomb" data-i="${i}">${svg('bomb')}<span>${tr('ui.combat.bomb')}</span></button>` : ''}
-      <button class="btn ${f.lethal ? 'btn-danger' : 'btn-primary'}" data-sheet="attack" data-i="${i}">${svg('sword')}<span>${tr(f.lethal ? (forced ? 'ui.combat.attack.doom' : 'ui.combat.attack.lethal') : 'ui.combat.attack')}</span></button>
+    <div class="sheet-foot">
+      <button class="fc-toggle${skipBattleAnim ? ' on' : ''}" data-sheet="btAnim" aria-pressed="${skipBattleAnim}">
+        <span>${tr('ui.combat.anim')}</span><i class="fc-sw" aria-hidden="true"></i>
+      </button>
+      <div class="sheet-actions">
+        ${forced ? '' : `<button class="btn btn-ghost" data-sheet="close">${tr('ui.combat.again')}</button>`}
+        ${p.potions > 0 && p.hp < p.maxHp ? `<button class="btn" data-sheet="potion" data-i="${i}">${svg('potion')}<span>${tr('ui.combat.potion')}</span></button>` : ''}
+        ${p.bombs > 0 ? `<button class="btn" data-sheet="bomb" data-i="${i}">${svg('bomb')}<span>${tr('ui.combat.bomb')}</span></button>` : ''}
+        <button class="btn ${f.lethal ? 'btn-danger' : 'btn-primary'}" data-sheet="attack" data-i="${i}">${svg('sword')}<span>${tr(f.lethal ? (forced ? 'ui.combat.attack.doom' : 'ui.combat.attack.lethal') : 'ui.combat.attack')}</span></button>
+      </div>
     </div>`, forced);
 }
 
@@ -1230,6 +1242,12 @@ el.sheetBody.addEventListener('click', (e) => {
   switch (k) {
     case 'close': closeSheet(); break;
     case 'skip': G.closePending(S); saveRun(); closeSheet(); break;
+    case 'btAnim':
+      skipBattleAnim = !skipBattleAnim;
+      localStorage.setItem(SKIP_ANIM_KEY, skipBattleAnim ? '1' : '0');
+      b.classList.toggle('on', skipBattleAnim);
+      b.setAttribute('aria-pressed', String(skipBattleAnim));
+      break;
     case 'attack': {
       const i = +b.dataset.i;
       const forced = S.forcedCombat === i;

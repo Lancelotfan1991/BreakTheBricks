@@ -405,6 +405,7 @@ export default {
   'ui.hud.def.aria.debt': '防御 {def}，祭坛借走 {n} 点，下行时恢复',
   'ui.boss.aria': '{name}：生命 {hp}/{max}，攻击 {atk}',
   'ui.hud.flag.aria': '标记模式，剩余旗子 {left}，上限 {cap}',
+  'ui.hud.threat.aria': '剩余威胁 {n}：尚未清除的怪物与陷阱总数',
   'ui.descend.locked': '需钥匙',
   'ui.descend.boss': '需击败龙王',
   'ui.descend.next': '下一层',
@@ -464,6 +465,7 @@ export default {
   'ui.combat.attack': '攻击',
   'ui.combat.attack.lethal': '必死',
   'ui.combat.attack.doom': '拼死一击',
+  'ui.combat.anim': '跳过战斗动画',
 
   // ---------- 横版战斗演绎 ----------
   'ui.battle.hero': '你',

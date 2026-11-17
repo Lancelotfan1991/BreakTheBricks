@@ -168,6 +168,7 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
 .chip-def.debt{border-color:rgba(255,171,46,.55);background:rgba(255,171,46,.13)}
 .chip-def.debt b{color:var(--amber-hi)}
 .chip-gold{color:#ffe08a}.chip-gold .ic{color:var(--gold)}
+.chip-threat{color:#e0b8ff;margin-left:auto}.chip-threat .ic{color:var(--magenta)}
 .chip-key{color:#ffe08a;border-color:rgba(255,213,74,.4);background:rgba(255,213,74,.13);animation:keyPop .5s cubic-bezier(.2,1.6,.4,1)}
 .chip-key .ic{color:var(--gold)}
 .bb-atk{color:#ff9aab}.bb-atk .ic{color:var(--blood)}
@@ -450,6 +451,11 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
   margin:0 -16px -18px;padding:12px 16px 18px;
   background:linear-gradient(180deg,rgba(21,14,29,0),rgba(21,14,29,.93) 34%,#150e1d 100%)}
 .sheet-actions .btn{flex:1}
+/* 战斗预演把动画开关和按钮一起钉在底部，矮屏上也始终可见 */
+.sheet-foot{position:sticky;bottom:-18px;z-index:3;display:flex;flex-direction:column;gap:8px;
+  margin:0 -16px -18px;padding:12px 16px 18px;
+  background:linear-gradient(180deg,rgba(21,14,29,0),rgba(21,14,29,.93) 26%,#150e1d 100%)}
+.sheet-foot .sheet-actions{position:static;margin:0;padding:0;background:none}
 
 /* 战斗 */
 .mob-card{display:flex;gap:13px;align-items:center;padding:13px;border-radius:15px;
@@ -484,6 +490,17 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
 .fc-note{margin:0;font-size:11px;line-height:1.6;color:var(--ink-3)}
 .fc-note.danger{color:#ff9aab;font-weight:700}
 .fc-note.good{color:var(--acid)}
+.fc-toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
+  padding:7px 11px;border-radius:10px;font-size:11.5px;letter-spacing:.04em;color:var(--ink-3);text-align:left;
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07)}
+.fc-toggle .fc-sw{position:relative;flex:none;width:30px;height:17px;border-radius:9px;
+  background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.14);
+  transition:background .16s,border-color .16s}
+.fc-toggle .fc-sw::after{content:"";position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;
+  background:#8d7ba3;transition:transform .16s,background .16s}
+.fc-toggle.on{color:var(--ink-2);border-color:rgba(255,213,74,.28)}
+.fc-toggle.on .fc-sw{background:rgba(255,213,74,.2);border-color:rgba(255,213,74,.5)}
+.fc-toggle.on .fc-sw::after{transform:translateX(13px);background:var(--gold)}
 
 /* 祭坛 / 商店 */
 .opt{display:flex;align-items:center;gap:11px;padding:12px;border-radius:14px;text-align:left;width:100%;
@@ -622,37 +639,56 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
 .fly.heal{color:#8dff63}.fly.gold{color:#ffd54a}.fly.crit{color:#ffab2e}.fly.cyan{color:#3fe0ff}
 @keyframes countPop{0%{transform:scale(1)}35%{transform:scale(1.6)}100%{transform:scale(1)}}
 
-/* ── 横版战斗演绎 ───────────────────────────────── */
-.battle{position:fixed;inset:0;z-index:92;display:flex;flex-direction:column;justify-content:space-between;
-  padding:calc(14px + env(safe-area-inset-top)) 14px calc(12px + env(safe-area-inset-bottom));
-  background:radial-gradient(120% 80% at 50% 18%,#2b1836 0%,#120c1a 58%,#07040c 100%);
+/* ── 横版战斗演绎：居中战斗卡 ───────────────────── */
+.battle{position:fixed;inset:0;z-index:92;display:grid;place-items:center;
+  padding:calc(14px + env(safe-area-inset-top)) 14px calc(14px + env(safe-area-inset-bottom));
+  background:radial-gradient(120% 80% at 50% 22%,#2b1836 0%,#120c1a 56%,#07040c 100%);
   animation:btFadeIn .18s ease-out both;overflow:hidden}
 @keyframes btFadeIn{from{opacity:0}to{opacity:1}}
 .battle-vignette{position:absolute;inset:0;pointer-events:none;
-  background:radial-gradient(80% 60% at 50% 58%,transparent 40%,rgba(5,3,9,.85) 100%)}
-.battle.boss{background:radial-gradient(120% 80% at 50% 18%,#3a1030 0%,#180a1c 58%,#07040c 100%)}
-.battle.boss .battle-vignette{background:radial-gradient(80% 60% at 50% 58%,transparent 32%,rgba(255,20,60,.2) 72%,rgba(5,3,9,.92) 100%)}
-.battle-top{position:relative;z-index:2;display:flex;align-items:flex-start;gap:10px}
+  background:radial-gradient(70% 55% at 50% 50%,transparent 32%,rgba(5,3,9,.8) 100%)}
+.battle.boss{background:radial-gradient(120% 80% at 50% 22%,#3a1030 0%,#180a1c 56%,#07040c 100%)}
+.battle.boss .battle-vignette{background:radial-gradient(70% 55% at 50% 50%,transparent 26%,rgba(255,20,60,.18) 72%,rgba(5,3,9,.9) 100%)}
+.battle-card{position:relative;z-index:2;width:min(100%,400px);display:flex;flex-direction:column;gap:8px;
+  padding:12px 14px 9px;border-radius:20px;
+  background:linear-gradient(180deg,rgba(41,26,53,.94),rgba(16,10,24,.97));
+  border:1px solid rgba(160,120,210,.28);
+  box-shadow:0 26px 60px -22px #000,inset 0 1px 0 rgba(255,255,255,.07);
+  animation:btCardIn .24s cubic-bezier(.2,1.2,.4,1) both}
+@keyframes btCardIn{from{opacity:0;transform:translateY(10px) scale(.96)}to{opacity:1;transform:none}}
+.battle.boss .battle-card{border-color:rgba(255,79,216,.42);
+  box-shadow:0 26px 60px -22px #000,0 0 34px -8px rgba(255,79,216,.35),inset 0 1px 0 rgba(255,255,255,.08)}
+.battle-top{display:flex;align-items:flex-start;gap:10px}
 .bt-side{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
 .bt-side.right{align-items:flex-end}
-.bt-name{max-width:100%;font-size:12px;letter-spacing:.12em;color:var(--ink-2);text-shadow:0 1px 4px #000;
+.bt-name-row{display:flex;align-items:center;gap:6px;max-width:100%}
+.bt-side.right .bt-name-row{flex-direction:row-reverse}
+.bt-dot{flex:none;width:7px;height:7px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px rgba(255,213,74,.8)}
+.bt-side.right .bt-dot{background:#ff4f7e;box-shadow:0 0 8px rgba(255,79,126,.8)}
+.bt-name{max-width:100%;font-size:12px;letter-spacing:.12em;color:var(--ink);text-shadow:0 1px 4px #000;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bt-bar{width:100%;height:13px}
+.bt-bar{width:100%;height:14px;border-radius:7px}
+.bt-bar i{border-radius:7px}
 .bt-bar span{font-size:10px}
 .bt-bar.mob i{background:linear-gradient(90deg,#ff2d55,#ff7a3d 60%,#ffd54a)}
-.bt-vs{padding-top:14px;font-family:var(--num);font-size:13px;font-weight:700;letter-spacing:.12em;color:var(--ink-3)}
-.battle-stage{position:relative;z-index:1;flex:1;min-height:0}
-.bt-floor{position:absolute;left:4%;right:4%;bottom:14%;height:2px;
+.bt-vs{flex:none;align-self:center;display:grid;place-items:center;width:30px;height:30px;margin-top:4px;
+  border-radius:50%;font-family:var(--num);font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--gold);
+  background:radial-gradient(circle at 50% 35%,#3a2748,#171020 76%);
+  border:1px solid rgba(255,213,74,.35);box-shadow:0 0 14px -2px rgba(255,213,74,.35),inset 0 0 10px rgba(0,0,0,.6)}
+.battle-stage{position:relative;height:clamp(168px,28vh,210px);border-radius:14px;overflow:hidden;
+  background:radial-gradient(90% 80% at 50% 30%,rgba(120,80,160,.22),rgba(8,5,12,.55) 72%);
+  border:1px solid rgba(255,255,255,.06);box-shadow:inset 0 0 26px rgba(0,0,0,.55)}
+.bt-floor{position:absolute;left:8%;right:8%;bottom:24%;height:2px;
   background:linear-gradient(90deg,transparent,rgba(255,171,46,.5),transparent);box-shadow:0 0 18px rgba(255,171,46,.3)}
-.fighter{position:absolute;bottom:14%;display:grid;place-items:center;width:96px;height:96px;border-radius:22px;
+.fighter{position:absolute;bottom:24%;display:grid;place-items:center;width:84px;height:84px;border-radius:20px;
   background:radial-gradient(circle at 50% 40%,rgba(255,255,255,.1),rgba(0,0,0,.42) 72%);
   border:1px solid rgba(255,255,255,.1);box-shadow:0 18px 40px -18px #000,inset 0 0 22px rgba(0,0,0,.6)}
-.fighter .ic{width:62px;height:62px}
-.fighter.hero{left:6%;color:#ffd27a;--eye:#1a1022}
-.fighter.mob{right:6%;color:#ff7a9a;--eye:#1a1022}
+.fighter .ic{width:54px;height:54px}
+.fighter.hero{left:11%;color:#ffd27a;--eye:#1a1022}
+.fighter.mob{right:11%;color:#ff7a9a;--eye:#1a1022}
 .fighter.mob.elite .ic{color:#ffab2e;filter:drop-shadow(0 0 12px rgba(255,171,46,.6))}
-.fighter.mob.boss{width:122px;height:122px}
-.fighter.mob.boss .ic{width:86px;height:86px;color:#ff4fd8;filter:drop-shadow(0 0 16px rgba(255,79,216,.7))}
+.fighter.mob.boss{width:108px;height:108px}
+.fighter.mob.boss .ic{width:74px;height:74px;color:#ff4fd8;filter:drop-shadow(0 0 16px rgba(255,79,216,.7))}
 .fighter.lunge-r{animation:btLungeR .18s ease-out}
 .fighter.lunge-l{animation:btLungeL .18s ease-out}
 @keyframes btLungeR{40%{transform:translateX(30px) scale(1.06)}}
@@ -661,21 +697,20 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
 @keyframes btDie{30%{transform:translateY(-6px) scale(1.08);filter:brightness(2.8)}
   100%{transform:translateY(28px) rotate(10deg) scale(.7);opacity:0;filter:brightness(.4)}}
 .battle-fx{position:absolute;inset:0;overflow:hidden;pointer-events:none}
-.bt-float{position:absolute;font-family:var(--num);font-weight:700;font-size:22px;white-space:nowrap;
+.bt-float{position:absolute;font-family:var(--num);font-weight:700;font-size:21px;white-space:nowrap;
   text-shadow:0 2px 6px rgba(0,0,0,.95),0 0 14px currentColor;animation:btFloat .62s cubic-bezier(.2,.8,.3,1) forwards}
 .bt-float.dmg{color:#ff5a78}.bt-float.hero-hit{color:#ff8a5a}
 @keyframes btFloat{0%{transform:translate(-50%,0) scale(.5);opacity:0}
   20%{transform:translate(-50%,-10px) scale(1.2);opacity:1}
-  100%{transform:translate(-50%,-58px) scale(.9);opacity:0}}
-.bt-kill{position:absolute;left:50%;top:34%;transform:translate(-50%,-50%);opacity:0;
-  font-family:var(--display);font-size:34px;letter-spacing:.24em;text-indent:.24em;color:var(--gold);
+  100%{transform:translate(-50%,-52px) scale(.9);opacity:0}}
+.bt-kill{position:absolute;left:50%;top:36%;transform:translate(-50%,-50%);opacity:0;
+  font-family:var(--display);font-size:32px;letter-spacing:.24em;text-indent:.24em;color:var(--gold);
   text-shadow:0 0 24px rgba(255,213,74,.8)}
 .bt-kill.on{animation:btKill .55s cubic-bezier(.2,1.4,.4,1) forwards}
 @keyframes btKill{0%{opacity:0;transform:translate(-50%,-50%) scale(.5)}
   30%{opacity:1;transform:translate(-50%,-50%) scale(1.12)}
   100%{opacity:0;transform:translate(-50%,-72%) scale(1)}}
-.battle-skip{position:relative;z-index:2;margin:0;text-align:center;font-size:11px;letter-spacing:.14em;
-  color:var(--ink-3);opacity:.7}
+.battle-skip{margin:0;text-align:center;font-size:10.5px;letter-spacing:.16em;color:var(--ink-3);opacity:.65}
 
 /* ── 滚动条 ───────────────────────────────── */
 *{scrollbar-width:thin;scrollbar-color:#7a4fa0 rgba(0,0,0,.3)}
