@@ -24,7 +24,7 @@ export default {
   'shop.plate.name': '铁甲片',
   'shop.plate.desc': '永久 +1 防御',
   'shop.elixir.name': '生命精粹',
-  'shop.elixir.desc': '永久 +{hp} 生命上限并立即恢复',
+  'shop.elixir.desc': '生命上限永久 +{hp}，并立即回复 {hp} 点生命',
   'shop.pouch.name': '旗囊',
   'shop.pouch.desc': '永久 +1 旗子上限',
   'shop.scroll.name': '侦查卷轴',
@@ -388,6 +388,10 @@ export default {
   'ui.act.descend': '下一层',
   'ui.relic.codex.short': '图鉴',
   'ui.log.intro': '点击任意砖块开始探索。',
+  'ui.log.aria': '探索日志，点击查看历史记录',
+  'ui.log.title': '探索日志',
+  'ui.log.sub': '最近 {n} 条，最新在上',
+  'ui.log.empty': '还没有记录。',
 
   // ---------- 棋盘与 HUD ----------
   'ui.board.pos': '第{row}行第{col}列 {label}',

@@ -795,8 +795,8 @@ test('骨甲：按生命上限派生固定减伤，封顶后不再增长', () =>
   grant(s, 'bonePlate');
   s.player.gold = 9999;
   s.player.maxHp = 74; s.player.hp = 74;
-  G.buy(s, 'elixir'); // 80 → 80/40 = 2
-  assert.equal(s.player.maxHp, 80);
+  G.buy(s, 'elixir'); // 84 → 84/40 = 2
+  assert.equal(s.player.maxHp, 84);
   assert.equal(s.player.takeFlat, 2);
   s.player.maxHp = 300; s.player.hp = 300;
   G.buy(s, 'elixir'); // 306 → 封顶 4

@@ -22,7 +22,7 @@ export const difficultyDesc = (d) => tr('difficulty.' + d.id + '.desc');
 
 // 两条构筑轴：推理流把「插对的旗」换成战力，体魄流把「生命上限」换成战力。
 // 所有加成都是确定性的加减，预演数字仍然等于实际结算。
-export const SHOP_ELIXIR_HP = 6;
+export const SHOP_ELIXIR_HP = 10;
 export const BOMB_DAMAGE = 60;         // 炸弹基础固定伤害：前期杂兵一发带走，后期精英与龙王炸不死
 export const SOLVE_DEF_CUT = 1;        // 识破基础收益：本层全体怪物防御 −1
 export const SOLVE_FLAG_GOLD = 4;      // 每面插对的旗换 4 金币

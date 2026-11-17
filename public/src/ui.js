@@ -397,6 +397,19 @@ function openRelicDraw() {
     </div>`, true);
 }
 
+function openLog() {
+  if (!S) return;
+  const rows = S.log.slice().reverse().map((e) =>
+    `<div class="log-row lg-${e.tone}"><span class="log-dot"></span><p>${tr(e.k, e.p)}</p></div>`).join('');
+  openSheet('log', `
+    <div class="sheet-head">
+      <div><h2 class="sheet-title">${tr('ui.log.title')}</h2><p class="sheet-sub">${tr('ui.log.sub', { n: S.log.length })}</p></div>
+      <button class="icon-btn sheet-close" data-sheet="close" aria-label="${tr('ui.btn.close')}">${svg('close')}</button>
+    </div>
+    <div class="log-list">${rows || `<p class="log-empty">${tr('ui.log.empty')}</p>`}</div>
+    <div class="sheet-actions"><button class="btn btn-primary btn-lg" data-sheet="close">${tr('ui.btn.close')}</button></div>`);
+}
+
 function openCodex() {
   const owned = S ? S.relics : [];
   const back = S && S.relicChoices ? 'relicBack' : 'close';
@@ -1214,6 +1227,13 @@ document.addEventListener('click', (e) => {
   }
 });
 
+el.ticker.addEventListener('click', () => { if (!guard()) { audio.play('ui'); openLog(); } });
+el.ticker.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  e.preventDefault();
+  if (!guard()) { audio.play('ui'); openLog(); }
+});
+
 el.scrim.addEventListener('click', () => { if (!sheetLock) { audio.play('ui'); closeSheet(); } });
 
 el.sheetBody.addEventListener('click', (e) => {
@@ -1311,6 +1331,6 @@ window.__game = {
   tap: doTap, flag: doFlag,
   start: startRun, resume: resumeRun, toTitle,
   sheet: () => sheetKind,
-  closeSheet, openShop, openHelp, openCodex, openRelicDraw, openCombat, battle: runBattle,
+  closeSheet, openShop, openHelp, openCodex, openRelicDraw, openCombat, openLog, battle: runBattle,
   setDifficulty: (d) => { difficulty = d; renderTitle(); },
 };
