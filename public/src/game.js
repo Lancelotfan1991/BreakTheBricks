@@ -7,7 +7,7 @@ export const ROWS = 9;
 export const SIZE = COLS * ROWS;
 export const MAX_FLOOR = 30;
 export const BOSS_EVERY = 10;
-export const SAVE_VERSION = 12;
+export const SAVE_VERSION = 13;
 export const isBossFloor = (f) => f % BOSS_EVERY === 0;
 export const isFinalFloor = (f) => f >= MAX_FLOOR;
 
@@ -45,24 +45,24 @@ export const SHOP = [
   { id: 'pouch', icon: 'flag', base: 25, step: 10 },
   { id: 'scroll', icon: 'scroll', base: 22, step: 6 },
   { id: 'bomb', icon: 'bomb', base: 40, step: 10 },
-  { id: 'relic', icon: 'relic', base: 80, step: 55 },
+  { id: 'relic', icon: 'relic', base: 80, step: 50 },
 ];
 const SHOP_PARAMS = { elixir: { hp: SHOP_ELIXIR_HP }, bomb: { dmg: BOMB_DAMAGE } };
 export const shopName = (it) => tr('shop.' + it.id + '.name');
-export const shopDesc = (it, s) =>
-  tr('shop.' + it.id + '.desc', it.id === 'bomb' && s ? { dmg: bombBase(s) } : SHOP_PARAMS[it.id]);
+export const relicShopLeft = (s) => Math.max(0, RELIC_SHOP_CAP - ((s && s.bought && s.bought.relic) || 0));
+export const shopDesc = (it, s) => {
+  if (it.id === 'relic') return tr('shop.relic.desc', { cap: RELIC_SHOP_CAP, left: relicShopLeft(s) });
+  return tr('shop.' + it.id + '.desc', it.id === 'bomb' && s ? { dmg: bombBase(s) } : SHOP_PARAMS[it.id]);
+};
 
-// period＝这只怪自己的骚扰间隔（按操作回合数）。快而弱的咬得勤，慢而重的憋得久，
-// 于是「先杀谁」不再只是比伤害大小，而是比谁的节奏更迫近。
-// 间隔取 38～58 而非个位数：每只怪各自出手，总压力随惊扰数量叠加，调短会让胜率崩掉。
 const BESTIARY = [
-  { id: 'bat', icon: 'bat', hp: 0.7, atk: 1.15, def: 0, min: 1, max: 3, period: 38 },
-  { id: 'slime', icon: 'slime', hp: 1.35, atk: 0.78, def: 0, min: 1, max: 4, period: 52 },
-  { id: 'skeleton', icon: 'skeleton', hp: 1, atk: 1, def: 1, min: 2, max: 6, period: 45 },
-  { id: 'spider', icon: 'spider', hp: 0.85, atk: 1.28, def: 0, min: 3, max: 7, period: 40 },
-  { id: 'orc', icon: 'orc', hp: 1.12, atk: 1.18, def: 1, min: 4, max: 8, period: 48 },
-  { id: 'golem', icon: 'golem', hp: 1.55, atk: 0.9, def: 3, min: 5, max: 8, period: 58 },
-  { id: 'wraith', icon: 'wraith', hp: 0.92, atk: 1.12, def: 4, min: 6, max: 8, period: 42 },
+  { id: 'bat', icon: 'bat', hp: 0.7, atk: 1.15, def: 0, min: 1, max: 3 },
+  { id: 'slime', icon: 'slime', hp: 1.35, atk: 0.78, def: 0, min: 1, max: 4 },
+  { id: 'skeleton', icon: 'skeleton', hp: 1, atk: 1, def: 1, min: 2, max: 6 },
+  { id: 'spider', icon: 'spider', hp: 0.85, atk: 1.28, def: 0, min: 3, max: 7 },
+  { id: 'orc', icon: 'orc', hp: 1.12, atk: 1.18, def: 1, min: 4, max: 8 },
+  { id: 'golem', icon: 'golem', hp: 1.55, atk: 0.9, def: 3, min: 5, max: 8 },
+  { id: 'wraith', icon: 'wraith', hp: 0.92, atk: 1.12, def: 4, min: 6, max: 8 },
 ];
 
 export const floorName = (f) => tr('floor.' + f);
@@ -81,6 +81,8 @@ export const RELIC_CATS = ['explore', 'combat', 'supply', 'pact'];
 export const rarityName = (id) => tr('rarity.' + id);
 export const catName = (id) => tr('cat.' + id);
 export const RELIC_DRAW_COUNT = 3;
+// 商店的遗物匣本局最多买 3 次：随机给一件，不给挑选，避免金币稳定换到最强永久收益。
+export const RELIC_SHOP_CAP = 3;
 // 一局能拿到的遗物必须远少于池子，构筑才有取舍。守卫每 2 层才掉一次，龙王另给一次。
 export const RELIC_EVERY = 2;
 export const isRelicFloor = (f) => !isBossFloor(f) && f % RELIC_EVERY === 0;
@@ -278,6 +280,12 @@ export function recalc(s) {
 
 // ---------- combat math ----------
 export const hitDamage = (atk, def) => Math.max(1, atk - def);
+// 偷袭就是白挨一次普通攻击：攻击 − 防御，并按战斗同一套减伤结算。
+export function ambushDamage(p, mob) {
+  const perHit = hitDamage(mob.atk, p.def);
+  const mul = (mob.elite || mob.boss ? p.eliteTakeMul : 1) * p.takeMul;
+  return Math.max(0, Math.round(perHit * mul) - p.takeFlat);
+}
 export function forecast(p, mob) {
   const deal = hitDamage(p.atk, mob.def);
   const T = p.thorns;
@@ -295,53 +303,9 @@ export function forecast(p, mob) {
   return { deal, rounds, counters, take, lethal: take >= p.hp, perHit };
 }
 
-// ---------- 惊扰 ----------
-// 怪物是「可选 + 信息完全 + 结算确定」的，理性玩家永远只打打得过的仗，
-// 于是怪物沦为路障而非威胁。惊扰给「不打它」加上代价。
-// 每只怪有自己的间隔与倒计时，到点各自扑一口——压力因此随惊扰数量上升，
-// 而「先杀谁」取决于谁的节奏更迫近、谁咬得更痛。时钟按操作推进而非真实时间：思考免费，标记也免费。
-export function aggroDamage(p, mob) {
-  let dmg = hitDamage(mob.atk, p.def) * BAL.aggroMul;
-  if (mob.elite || mob.boss) dmg *= p.eliteTakeMul;
-  return Math.max(1, Math.round(dmg * p.takeMul) - p.takeFlat);
-}
-
-// 插旗＝我已确认并规避它：被标记的怪物不再骚扰，倒计时也冻结，拔旗后从原处继续
-const awakeMobs = (s) => s.tiles.filter((t) => t.mob && t.mob.hp > 0 && t.mob.awake && !t.flagged);
-
-// 汇总只给「几只 / 最近一口还有几回合」，不给位置——未探明怪物的坐标仍要靠演绎。
-export function aggroSummary(s) {
-  const awake = awakeMobs(s);
-  if (!awake.length) return null;
-  let next = Infinity;
-  for (const t of awake) next = Math.min(next, t.mob.cd ?? t.mob.period);
-  return { count: awake.length, next };
-}
-
-function awaken(s, i) {
-  for (const j of [i, ...neighbors(i)]) {
-    const t = s.tiles[j];
-    if (t.mob && t.mob.hp > 0 && !t.mob.awake) {
-      t.mob.awake = true;
-      if (t.mob.cd == null) t.mob.cd = t.mob.period;
-    }
-  }
-}
-
-function tickAggro(s, out) {
-  if (s.status !== 'playing') return;
-  for (const t of awakeMobs(s)) {
-    const m = t.mob;
-    if (m.cd == null) m.cd = m.period;
-    if (--m.cd > 0) continue;
-    m.cd = m.period;
-    const dmg = aggroDamage(s.player, m);
-    say(s, 'log.aggro.hit', { mob: ref('mob.' + m.id + '.name'), dmg }, 'bad');
-    ev(out, 'aggro', { i: t.i, amount: dmg });
-    hurt(s, dmg, out, 'mob', t.i, m.id);
-    if (s.status !== 'playing') return;
-  }
-}
+// ---------- 遭遇 ----------
+// 怪物藏在砖下：手动翻开撞见它，就是被它偷袭——先白挨一次普通攻击，并且这一战无法回避。
+// 卷轴探明、完全识破掀开的怪物不算偷袭（不是你把砖掀开的），之后点它仍是普通预演。
 
 // ---------- creation ----------
 export function createRun(difficulty = 'normal', seed = Date.now()) {
@@ -366,13 +330,13 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
     stairsIndex: -1,
     bossDown: false,
     mode: 'explore',
-    threatTotal: 0,
     flags: 0,
     flagBonus: 0,
     solved: false,
     solvedFlags: 0,
     defDebt: 0,
     pendingCombat: -1,
+    forcedCombat: -1,
     pendingAltar: -1,
     stats: { kills: 0, revealed: 0, goldEarned: 0, damage: 0, turns: 0 },
     log: [],
@@ -403,6 +367,7 @@ export function buildFloor(s) {
   s.solvedFlags = 0;
   s.mode = 'explore';
   s.pendingCombat = -1;
+  s.forcedCombat = -1;
   s.pendingAltar = -1;
   s.relicState.firstKill = false;
   // 祭坛「贪婪低语」借走的防御只借一层，下楼就还——代价是周转的，不是永久的
@@ -413,7 +378,6 @@ export function buildFloor(s) {
   }
   syncRelicMods(s);
   s.plan = planFloor(s, f, d);
-  s.threatTotal = s.plan.monsters + s.plan.traps + (s.plan.elite ? 1 : 0) + (s.plan.boss ? 1 : 0);
 }
 
 // 怪物强度按「深度」而非层号成长：前 8 层保持原始曲线，之后每两层折算一层。
@@ -439,15 +403,14 @@ export const BAL = {
   lvXp: 12, lvXpF: 10, lvHp: 6, lvAtk: 1, lvDefEvery: 3,
   potionPct: 0.3, prayPct: 0.45, descendPct: 0.05,
   trapBase: 5, trapF: 2.8,
-  aggroMul: 0.25,
   bloodCost: 10, bloodAtk: 2,
   eliteCap: 0.9, bossCap: 0.95, shopWhet: 1, mobGold: 2, mobGoldF: 1, chestGold: 8, chestGoldF: 3,
 };
 
 function makeMob(s, f, d, type) {
   const pool = BESTIARY.filter((b) => f >= b.min && f <= b.max);
-  const b = type === 'elite' ? { id: 'guardian', icon: 'guardian', hp: 1, atk: 1, def: 0, period: 52 }
-    : type === 'boss' ? { id: 'dragon', icon: 'dragon', hp: 1, atk: 1, def: 0, period: 48 }
+  const b = type === 'elite' ? { id: 'guardian', icon: 'guardian', hp: 1, atk: 1, def: 0 }
+    : type === 'boss' ? { id: 'dragon', icon: 'dragon', hp: 1, atk: 1, def: 0 }
       : pick(s, pool.length ? pool : BESTIARY);
   const P = d.power;
   const p = s.player;
@@ -465,7 +428,7 @@ function makeMob(s, f, d, type) {
   let gold = Math.round((BAL.mobGold + BAL.mobGoldF * f) * d.loot);
   if (type === 'elite') { hp = Math.round(hp * 1.9); atk = Math.round(atk * 1.3); xp *= 3; gold = Math.round(gold * 3.2); }
   if (type === 'boss') { hp = Math.round(hp * 3.4); atk = Math.round(atk * 1.45); xp = 120; gold = 260; }
-  const mob = { id: b.id, icon: b.icon, hp, maxHp: hp, atk, def, xp, gold, elite: type === 'elite', boss: type === 'boss', period: b.period, cd: null, awake: false };
+  const mob = { id: b.id, icon: b.icon, hp, maxHp: hp, atk, def, xp, gold, elite: type === 'elite', boss: type === 'boss' };
   // 反锁死：钥匙守卫 / 龙王在生成时必须是「满血可胜」的。
   // 这里刻意忽略 freeKill——否则「势如破竹」会让守卫绕过上限生成，一旦首杀被小怪用掉就无解。
   if (type === 'elite' || type === 'boss') {
@@ -501,12 +464,10 @@ export function ensureBoard(s, safeIndex) {
     const i = take(far), t = s.tiles[i];
     t.kind = 'boss';
     t.mob = makeMob(s, f, d, 'boss');
-    // 龙王不藏在砖下：它是这一层的压力来源，生成即亮在棋盘上，并从第一步开始计时。
+    // 龙王不藏在砖下：它是这一层的压力来源，生成即亮在棋盘上，由玩家决定何时开战。
     // 现身不等于「已探明」以外的特权：它只是不再计入邻格数字，其余规则照旧。
     t.revealed = true;
-    t.mob.awake = true;
-    t.mob.cd = t.mob.period;
-    say(s, 'log.boss.awake', { mob: ref('mob.' + t.mob.id + '.name'), period: t.mob.period }, 'bad');
+    say(s, 'log.boss.spawn', { mob: ref('mob.' + t.mob.id + '.name') }, 'bad');
   }
   if (p.elite) { const i = take(far); s.tiles[i].kind = 'elite'; s.tiles[i].mob = makeMob(s, f, d, 'elite'); }
   if (p.altar) s.tiles[take()].kind = 'altar';
@@ -544,12 +505,12 @@ export function remainingThreats(s) {
   return s.tiles.filter((t) => isThreat(t) && !t.used && !(t.mob && t.mob.hp <= 0)).length;
 }
 // 旗子上限＝难度固定基数 + 事件投资，刻意与敌人数量脱钩：
-// 旗子是稀缺资源，「插旗免骚扰」因此是要花钱买的决策，而不是每层免费发满。
+// 旗子是稀缺资源，要花钱买上限，每层只发固定几面。
 export function flagCap(s) {
   return DIFFICULTIES[s.difficulty].flags + s.flagBonus;
 }
 // 剩余暗格全是威胁＝安全格已全部翻开，等价于扫雷已经解出。
-// 这时还让怪物骚扰、还让玩家自己踩陷阱，是在惩罚一次成功的推理。
+// 这时还让玩家自己踩陷阱，是在惩罚一次成功的推理。
 export function boardSolved(s) {
   return s.generated && s.tiles.every((t) => t.revealed || isThreat(t));
 }
@@ -569,7 +530,6 @@ function revealSolved(s, out) {
     if (t.kind === 'trap') { t.used = true; ev(out, 'disarm', { i: t.i }); }
     else ev(out, 'reveal', { i: t.i, kind: t.kind });
   }
-  for (const t of s.tiles) if (t.mob) { t.mob.awake = false; t.mob.cd = null; }
   say(s, 'log.solved', { n: hidden.length }, 'magic');
 
   // 识破结算。棋盘此刻已经全亮，「插对了几面旗」不再是泄密信息，可以放心按它发奖。
@@ -700,13 +660,28 @@ function openTile(s, i, out, opts = {}) {
   if (t.flagged) { t.flagged = false; s.flags--; }
   s.stats.revealed++;
   ev(out, 'reveal', { i, kind: t.kind });
-  awaken(s, i);
   const p = s.player;
 
   if (t.kind === 'monster' || t.kind === 'elite' || t.kind === 'boss') {
-    say(s, 'log.encounter', { mob: ref('mob.' + t.mob.id + '.name'), hp: t.mob.hp, atk: t.mob.atk }, t.kind === 'monster' ? 'warn' : 'bad');
+    if (!opts.silent) {
+      // 偷袭只发生在「你亲手掀砖」的那一刻：卷轴、识破、连锁展开都是安全探明
+      const dmg = ambushDamage(p, t.mob);
+      const mob = ref('mob.' + t.mob.id + '.name');
+      if (dmg > 0) {
+        say(s, 'log.ambush', { mob, n: dmg }, 'bad');
+        ev(out, 'ambush', { i, dmg });
+        hurt(s, dmg, out, 'mob', i, t.mob.id);
+      } else {
+        say(s, 'log.ambush.block', { mob }, 'warn');
+        ev(out, 'ambush', { i, dmg: 0 });
+      }
+      if (s.status !== 'playing') return;
+      s.pendingCombat = i;
+      s.forcedCombat = i;
+    } else {
+      say(s, 'log.encounter', { mob: ref('mob.' + t.mob.id + '.name'), hp: t.mob.hp, atk: t.mob.atk }, t.kind === 'monster' ? 'warn' : 'bad');
+    }
     ev(out, 'encounter', { i });
-    if (!opts.silent) s.pendingCombat = i;
     return;
   }
   if (t.kind === 'trap') {
@@ -810,13 +785,11 @@ export function toggleFlag(s, i) {
 export function tapTile(s, i) {
   const r = tapInner(s, i);
   if (r.spent) s.stats.turns++;
-  // 先判定识破再推进惊扰时钟：完成推理的那一次操作不该再挨一口
   finish(s, r.out);
-  if (r.spent) tickAggro(s, r.out);
   return r.out;
 }
 
-// spent 表示这次操作是否推进惊扰时钟。标记、切换模式、查看预演、无效点击一律免费，
+// spent 表示这次操作是否算一回合：标记、切换模式、查看预演、无效点击一律免费，
 // 只有真正改变棋盘的操作才算一回合。
 function tapInner(s, i) {
   const out = [];
@@ -846,8 +819,6 @@ function tapInner(s, i) {
       return { out, spent: true };
     }
     t.mob.hp = Math.max(0, t.mob.hp - dmg);
-    t.mob.awake = true;
-    if (t.mob.cd == null) t.mob.cd = t.mob.period;
     ev(out, 'mobHurt', { i, amount: dmg });
     // 固定伤害：砸得死就按正常击杀结算（经验、金币、击杀类遗物），砸不死就只削血
     if (t.mob.hp <= 0) {
@@ -856,6 +827,8 @@ function tapInner(s, i) {
       if (hasRelic(s, 'forge')) say(s, 'log.forge', { n: RELIC_FORGE_GROW, dmg: bombBase(s) }, 'magic');
       if (t.kind === 'boss') return { out: defeatBoss(s, out), spent: true };
     } else {
+      // 偷袭战里没有逃跑，炸弹只是削血：它活着，战斗面板就得继续挡在面前
+      if (s.forcedCombat === i) s.pendingCombat = i;
       say(s, 'log.bomb.wound', { mob: ref('mob.' + t.mob.id + '.name'), dmg, hp: t.mob.hp }, 'bad');
     }
     return { out, spent: true };
@@ -967,6 +940,8 @@ function killMob(s, t, out, opts = {}) {
   const p = s.player, m = t.mob;
   m.hp = 0;
   t.used = true;
+  if (s.forcedCombat === t.i) s.forcedCombat = -1;
+  if (s.pendingCombat === t.i) s.pendingCombat = -1;
   s.stats.kills++;
   const xp = Math.round(m.xp * (opts.bomb && hasRelic(s, 'fuse') ? 1 + RELIC_FUSE_XP : 1));
   ev(out, 'kill', { i: t.i, mob: m, xp });
@@ -1003,8 +978,10 @@ export function attack(s, i) {
   if (!t || !t.mob || t.mob.hp <= 0) return out;
   const p = s.player;
   const f = forecast(p, t.mob);
+  const forced = s.forcedCombat === i;
   s.pendingCombat = -1;
-  if (f.lethal) { say(s, 'log.attack.lethal', 'bad'); ev(out, 'blocked', { i }); return out; }
+  // 普通遭遇会被必死预演拦下；偷袭战无路可退，硬拼就按必死结算
+  if (f.lethal && !forced) { say(s, 'log.attack.lethal', 'bad'); ev(out, 'blocked', { i }); return out; }
   s.stats.turns++;
   ev(out, 'combat', { i, rounds: f.rounds, take: f.take, deal: f.deal });
   if (f.take > 0) hurt(s, f.take, out, 'mob', i, t.mob.id);
@@ -1014,10 +991,8 @@ export function attack(s, i) {
   if (t.kind === 'boss') {
     const beaten = defeatBoss(s, out);
     if (s.status !== 'playing') return beaten;
-    tickAggro(s, beaten);
     return finish(s, beaten);
   }
-  tickAggro(s, out);
   return finish(s, out);
 }
 
@@ -1046,6 +1021,7 @@ export function buy(s, id) {
   const item = SHOP.find((x) => x.id === id);
   if (!item) return out;
   if (id === 'relic' && s.relics.length >= RELICS.length) { say(s, 'log.relic.soldout', 'warn'); ev(out, 'deny'); return out; }
+  if (id === 'relic' && relicShopLeft(s) <= 0) { say(s, 'log.relic.cap', { n: RELIC_SHOP_CAP }, 'warn'); ev(out, 'deny'); return out; }
   const price = shopPrice(s, id);
   if (s.player.gold < price) { say(s, 'log.no.gold', 'warn'); ev(out, 'deny'); return out; }
   s.player.gold -= price;
@@ -1060,7 +1036,10 @@ export function buy(s, id) {
   if (id === 'bomb') p.bombs++;
   say(s, 'log.buy', { item: ref('shop.' + item.id + '.name'), price }, 'good');
   ev(out, 'buy', { id, price });
-  if (id === 'relic') offerRelics(s, out);
+  if (id === 'relic') {
+    const pool = RELICS.filter((r) => !hasRelic(s, r.id));
+    grantRelic(s, takeWeighted(s, pool, relicRarityWeights(s.floor)).id, out);
+  }
   return out;
 }
 
@@ -1241,6 +1220,10 @@ export function chooseRelic(s, id) {
   const out = [];
   if (s.status !== 'playing' || !s.relicChoices || !s.relicChoices.includes(id)) return out;
   s.relicChoices = null;
+  return grantRelic(s, id, out);
+}
+
+function grantRelic(s, id, out) {
   const p = s.player;
   s.relics.push(id);
   if (id === 'bloodPact') { p.atk += 4; p.maxHp = Math.max(8, p.maxHp - 8); p.hp = Math.min(p.hp, p.maxHp); }
@@ -1281,10 +1264,7 @@ export function deserialize(text) {
 
 export function tileLabel(t) {
   if (!t.revealed) return tr(t.flagged ? 'tile.flagged' : 'tile.hidden');
-  if (t.mob && t.mob.hp > 0) {
-    const name = ref('mob.' + t.mob.id + '.name');
-    return t.mob.awake && t.mob.cd != null ? tr('tile.mob.aggro', { name, cd: t.mob.cd }) : tr('tile.mob', { name });
-  }
+  if (t.mob && t.mob.hp > 0) return tr('tile.mob', { name: ref('mob.' + t.mob.id + '.name') });
   if (t.kind === 'stairs') return t.n ? tr('tile.stairs.danger', { n: t.n }) : tr('tile.stairs');
   const name = t.mob ? tr('tile.mob.cleared', { name: ref('mob.' + t.mob.id + '.name') })
     : t.kind === 'trap' ? tr(t.used ? 'tile.trap.used' : 'tile.trap')

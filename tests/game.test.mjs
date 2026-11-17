@@ -238,6 +238,7 @@ test('战斗数学：先手、回合数、反击伤害', () => {
 test('攻击致死会被拦下，不扣血', () => {
   const s = fresh('hard', 5);
   const mob = find(s, 'monster')[0];
+  mob.revealed = true; // 已探明的怪物给普通预演，没有偷袭加成
   s.player.hp = 1;
   G.tapTile(s, mob.i);
   const i = s.pendingCombat;
@@ -273,6 +274,7 @@ test('陷阱扣血、插旗格可直接点开、炸弹无伤清除', () => {
   const hp1 = s2.player.hp;
   const bombsBefore = s2.player.bombs;
   const mob = find(s2, 'monster').find((t) => !t.revealed);
+  mob.revealed = true; // 已探明才走普通预演，炸弹测试不受偷袭伤害干扰
   G.tapTile(s2, mob.i);
   G.closePending(s2);
   G.setMode(s2, 'bomb');
@@ -437,7 +439,7 @@ test('死亡与通关状态', () => {
   assert.equal(w.status, 'won');
 });
 
-test('龙王生成即现身：亮在棋盘、首步就开始计时、不计入邻格数字', () => {
+test('龙王生成即现身：亮在棋盘、不计入邻格数字、没有倒计时', () => {
   for (let seed = 1; seed <= 30; seed++) {
     const s = G.createRun('normal', seed);
     s.floor = G.MAX_FLOOR;
@@ -447,8 +449,8 @@ test('龙王生成即现身：亮在棋盘、首步就开始计时、不计入�
     const boss = find(s, 'boss')[0];
     assert.ok(boss, `seed${seed} 第 30 层应有龙王`);
     assert.equal(boss.revealed, true, '龙王不藏在砖下');
-    assert.equal(boss.mob.awake, true, '生成即苏醒');
-    assert.equal(boss.mob.cd, boss.mob.period - 1, '首点那一步已经计入倒计时');
+    assert.equal('awake' in boss.mob, false, '龙王不再有惊扰状态');
+    assert.equal('cd' in boss.mob, false, '龙王不再有攻击倒计时');
     assert.ok(![30, ...G.neighbors(30)].includes(boss.i), '现身也不侵占首点安全区');
     // 数字只数未探明的威胁：龙王已经亮着，邻格数字不该再把它算进去
     const count = (i) => G.neighbors(i).filter((j) => {
@@ -462,41 +464,38 @@ test('龙王生成即现身：亮在棋盘、首步就开始计时、不计入�
   }
 });
 
-test('龙王：在顶栏计数、倒计时归零扑咬、出手后重新计时', () => {
+test('龙王不偷袭：点开只进普通预演，可以再想想，也不扣偷袭伤害', () => {
   const s = G.createRun('normal', 9);
-  s.floor = G.MAX_FLOOR; G.buildFloor(s); G.tapTile(s, 30);
+  s.floor = G.MAX_FLOOR; G.buildFloor(s); G.ensureBoard(s, 30);
   const boss = find(s, 'boss')[0];
-  const sum = G.aggroSummary(s);
-  assert.ok(sum && sum.count >= 1, '龙王从第一步起就在骚扰队列里');
-  assert.ok(sum.next <= boss.mob.cd, '汇总的最近一口不会晚于龙王自己的倒计时');
+  const atk = boss.mob.atk;
+  const hp = s.player.hp;
+  const out = G.tapTile(s, boss.i);
+  assert.equal(s.pendingCombat, boss.i);
+  assert.equal(s.forcedCombat, -1, '龙王现身不算偷袭');
+  assert.equal(boss.mob.atk, atk, '没有偷袭加成');
+  assert.equal(s.player.hp, hp, '龙王不会先咬一口');
+  assert.ok(out.some((e) => e.type === 'encounter'));
+  G.closePending(s);
+  assert.equal(s.pendingCombat, -1, '普通预演可以退出');
 
   const back = G.deserialize(G.serialize(s));
   assert.ok(back);
-  assert.deepEqual(back.tiles[boss.i].mob, boss.mob, '倒计时与苏醒状态可存档往返');
-
-  // 找一块远离龙王的暗格改成空地，用它安全地走一回合
-  const spend = s.tiles.filter((t) => !t.revealed && t.i !== boss.i && !G.neighbors(boss.i).includes(t.i)).slice(0, 1);
-  for (const t of spend) { t.kind = 'empty'; t.mob = null; }
-  G.recalc(s);
-  boss.mob.cd = 1;
-  const hp = s.player.hp;
-  G.tapTile(s, spend[0].i);
-  assert.ok(s.player.hp < hp, '倒计时归零要掉血');
-  assert.equal(boss.mob.cd, boss.mob.period, '扑咬后重新计时');
+  assert.deepEqual(back.tiles[boss.i].mob, boss.mob, '龙王状态可存档往返');
 });
 
-test('完全识破后龙王也停止计时', () => {
+test('完全识破掀开的怪物不加攻击、不强制开战', () => {
   const s = arena();
-  putMob(s, 0, { boss: true, hp: 80, atk: 40, period: 4, awake: true, cd: 2 });
+  putMob(s, 0, { boss: true, hp: 80, atk: 40 });
   for (let i = 1; i < G.SIZE; i++) s.tiles[i].revealed = true;
   G.recalc(s);
-  assert.ok(G.aggroSummary(s), '识破前龙王在计时');
+  const atk = s.tiles[0].mob.atk;
   G.tapTile(s, 1);
   assert.equal(s.solved, true);
   assert.equal(s.tiles[0].revealed, true);
-  assert.equal(s.tiles[0].mob.awake, false);
-  assert.equal(s.tiles[0].mob.cd, null);
-  assert.equal(G.aggroSummary(s), null, '识破后不再骚扰');
+  assert.equal(s.tiles[0].mob.atk, atk, '自动揭示不是偷袭');
+  assert.equal(s.pendingCombat, -1, '识破不强行拉进战斗');
+  assert.equal(s.forcedCombat, -1);
 });
 
 test('第 10 层龙王倒下后继续探索：阶梯解封、不用钥匙、不结算', () => {
@@ -956,6 +955,7 @@ test('战斗承伤遗物：荆棘甲 / 龙鳞护符 / 玻璃炮 叠乘，预演�
   assert.equal(s.player.atk, 5 + 6, '玻璃炮应 +6 攻击');
   const f = G.forecast(s.player, m);
   assert.equal(f.take, Math.max(0, Math.round(raw() * 0.75 * 1.35) - 2));
+  mob.revealed = true; // 已探明：普通预演，偷袭的扣血不会干扰承伤对照
   G.tapTile(s, mob.i);
   const evs = G.attack(s, s.pendingCombat);
   const dmg = evs.filter((e) => e.type === 'damage').reduce((a, e) => a + e.amount, 0);
@@ -1197,7 +1197,7 @@ test('无遗物时战斗数学与旧版一致，遗物状态可存档往返', ()
   assert.equal(back.player.takeMul, p.takeMul);
   assert.equal(G.deserialize(JSON.stringify({ ...s, v: 3 })), null, '旧版本存档应被拒绝');
 });
-// ---------- 惊扰 ----------
+// ---------- 偷袭 ----------
 function arena(seed = 7) {
   const s = G.createRun('normal', seed);
   G.tapTile(s, 30);
@@ -1205,149 +1205,170 @@ function arena(seed = 7) {
     t.kind = 'empty'; t.mob = null; t.chest = null;
     t.used = false; t.revealed = false; t.flagged = false;
   }
-  s.threatTotal = 0;
   G.recalc(s);
   return s;
 }
 function putMob(s, i, over = {}) {
   const t = s.tiles[i];
   t.kind = 'monster';
-  t.mob = { id: 'bat', name: '测试蝠', icon: 'bat', flavor: '', hp: 20, maxHp: 20, atk: 10, def: 0, xp: 1, gold: 1, elite: false, boss: false, period: 16, cd: null, awake: false, ...over };
+  t.mob = { id: 'bat', name: '测试蝠', icon: 'bat', flavor: '', hp: 20, maxHp: 20, atk: 10, def: 0, xp: 1, gold: 1, elite: false, boss: false, ...over };
   G.recalc(s);
   return t;
 }
 
-test('惊扰：标记与无效点击不消耗回合，翻开才推进倒计时', () => {
+test('偷袭：手动翻到怪物即先挨一次攻击 − 防御、强制进入战斗', () => {
   const s = arena();
-  const m = putMob(s, 0);
-  G.tapTile(s, 1);
-  assert.equal(m.mob.awake, true, '相邻翻开即惊扰');
-  assert.equal(m.mob.cd, m.mob.period - 1, '惊扰的那次翻开本身算一回合');
-  const turns = s.stats.turns, cd = m.mob.cd;
-  G.setMode(s, 'flag');
-  for (let k = 0; k < 12; k++) G.tapTile(s, 5);
-  G.setMode(s, 'explore');
-  G.tapTile(s, 1);
-  assert.equal(s.stats.turns, turns, '标记 / 重复点击已探明格不消耗回合');
-  assert.equal(m.mob.cd, cd, '标记不推进倒计时');
-  G.tapTile(s, 7);
-  assert.equal(m.mob.cd, cd - 1, '翻开新格推进一回合');
-  assert.equal(s.stats.turns, turns + 1);
+  s.player.hp = s.player.maxHp = 80;
+  s.player.def = 3;
+  const m = putMob(s, 0, { atk: 10, hp: 20 });
+  const out = G.tapTile(s, 0);
+  assert.equal(m.revealed, true);
+  assert.equal(m.mob.atk, 10, '偷袭不再改变怪物攻击');
+  assert.equal(s.player.hp, 80 - (10 - 3), '偷袭＝一次普通攻击（攻击 − 防御）');
+  assert.equal(s.pendingCombat, 0);
+  assert.equal(s.forcedCombat, 0, '战斗无法回避');
+  assert.ok(out.some((e) => e.type === 'ambush' && e.i === 0 && e.dmg === 7));
+  assert.ok(out.some((e) => e.type === 'damage' && e.source === 'mob' && e.amount === 7));
+  assert.ok(out.some((e) => e.type === 'encounter' && e.i === 0));
+  assert.equal(s.log.at(-1).k, 'log.ambush');
 });
 
-test('惊扰：倒计时归零出手，伤害足够时直接致死', () => {
+test('偷袭伤害：至少 1 点，减伤遗物同样生效，也可被完全挡下', () => {
   const s = arena();
-  putMob(s, 0, { atk: 40, period: 2 });
-  s.player.def = 0; s.player.maxHp = 40; s.player.hp = 5;
-  G.tapTile(s, 1);
-  assert.equal(s.player.hp, 5, '倒计时未到不掉血');
-  G.tapTile(s, 7);
-  assert.equal(s.player.hp, 0, '骚扰不再夹到 1 血');
-  assert.equal(s.status, 'dead');
+  s.player.hp = s.player.maxHp = 80;
+  s.player.def = 20;
+  putMob(s, 0, { atk: 10 });
+  G.tapTile(s, 0);
+  assert.equal(s.player.hp, 79, '攻击低于防御时仍扣 1 点');
+
+  const s2 = arena();
+  s2.player.hp = s2.player.maxHp = 80;
+  s2.player.def = 0;
+  s2.relicChoices = ['dragonWard'];
+  G.chooseRelic(s2, 'dragonWard');
+  putMob(s2, 0, { atk: 12 });
+  G.tapTile(s2, 0);
+  assert.equal(s2.player.hp, 80 - Math.round(12 * 0.75), '减伤遗物对偷袭生效');
+
+  const s3 = arena();
+  s3.player.hp = s3.player.maxHp = 80;
+  s3.player.def = 0;
+  s3.relicChoices = ['thornMail'];
+  G.chooseRelic(s3, 'thornMail');
+  putMob(s3, 0, { atk: 2 });
+  const out = G.tapTile(s3, 0);
+  assert.equal(s3.player.hp, 80, '固定减伤可以完全挡下');
+  assert.equal(s3.log.at(-1).k, 'log.ambush.block');
+  assert.equal(s3.forcedCombat, 0, '挡下伤害仍要开战');
+  assert.ok(out.some((e) => e.type === 'ambush' && e.dmg === 0));
 });
 
-test('惊扰：伤害不足以致死时只扣血，命中后按自己的间隔重置', () => {
+test('偷袭：那一口可以直接致死，不会进入战斗', () => {
   const s = arena();
-  const m = putMob(s, 0, { atk: 40, period: 2 });
-  s.player.def = 0; s.player.maxHp = 40; s.player.hp = 30;
-  G.tapTile(s, 1);
-  G.tapTile(s, 7);
-  assert.equal(s.player.hp, 20);
-  assert.equal(s.status, 'playing');
-  assert.equal(m.mob.cd, 2, '命中后重置为自己的间隔');
-});
-
-test('惊扰：同一回合多只到点逐只结算，玩家死亡即停', () => {
-  const s = arena();
-  putMob(s, 0, { atk: 40, period: 2 });
-  putMob(s, 2, { atk: 40, period: 2 });
-  s.player.def = 0; s.player.maxHp = 40; s.player.hp = 5;
-  G.tapTile(s, 1);
-  const evs = G.tapTile(s, 7);
-  assert.equal(s.status, 'dead');
-  assert.equal(evs.filter((e) => e.type === 'aggro').length, 1, '第一口就致死，后面的不再结算');
-});
-
-test('惊扰：伤害走战斗减免，且至少 1 点', () => {
-  const s = arena();
-  const m = putMob(s, 0, { atk: 40 });
+  s.player.hp = 10;
   s.player.def = 0;
-  assert.equal(G.aggroDamage(s.player, m.mob), 10);
-  grant(s, 'dragonWard');
-  assert.equal(G.aggroDamage(s.player, m.mob), 8);
-  grant(s, 'thornMail');
-  assert.equal(G.aggroDamage(s.player, m.mob), 6);
-  m.mob.atk = 2;
-  assert.equal(G.aggroDamage(s.player, m.mob), 1, '减免后仍至少 1 点');
+  putMob(s, 0, { atk: 10 });
+  const out = G.tapTile(s, 0);
+  assert.equal(s.status, 'dead');
+  assert.ok(out.some((e) => e.type === 'death'));
+  assert.equal(s.pendingCombat, -1);
+  assert.equal(s.forcedCombat, -1);
 });
 
-test('惊扰：每只怪有自己的间隔，各按各的节奏出手', () => {
+test('偷袭：卷轴探明与识破掀开都不扣血、不强制战斗', () => {
   const s = arena();
-  const fast = putMob(s, 0, { atk: 10, period: 2 });
-  const slow = putMob(s, 2, { atk: 40, period: 4 });
-  s.player.def = 0; s.player.maxHp = 400; s.player.hp = 400;
-  G.tapTile(s, 1);
-  assert.equal(fast.mob.cd, 1);
-  assert.equal(slow.mob.cd, 3);
-  G.tapTile(s, 7);
-  assert.equal(s.player.hp, 397, '只有快的那只到点，咬 3 点');
-  assert.equal(fast.mob.cd, 2, '出手后重置为自己的间隔');
-  assert.equal(slow.mob.cd, 2, '慢的还在憋');
-  G.tapTile(s, 8);
-  assert.equal(s.player.hp, 397, '都没到点');
-  G.tapTile(s, 9);
-  assert.equal(s.player.hp, 384, '同一回合两只都到点，各咬一口');
-  assert.equal(fast.mob.cd, 2);
-  assert.equal(slow.mob.cd, 4);
-  assert.deepEqual(G.aggroSummary(s), { count: 2, next: 2 }, '汇总取最近的那一口');
-});
-
-test('惊扰：击杀后不再骚扰，下行重置', () => {
-  const s = arena();
-  const m = putMob(s, 0, { hp: 1, atk: 40, period: 2 });
-  s.player.atk = 99; s.player.maxHp = 40; s.player.hp = 30;
-  G.tapTile(s, 1);
+  s.player.hp = s.player.maxHp = 80;
+  const m = putMob(s, 0, { atk: 10 });
+  G.setMode(s, 'scroll');
+  s.player.scrolls = 1;
   G.tapTile(s, 0);
-  G.attack(s, 0);
-  assert.equal(m.mob.hp, 0);
-  assert.equal(G.aggroSummary(s), null, '最后一只被清除后汇总清空');
+  assert.equal(m.revealed, true);
+  assert.equal(m.mob.atk, 10, '卷轴不会改变怪物');
+  assert.equal(s.player.hp, 80, '卷轴是安全探明，不吃偷袭');
+  assert.equal(s.pendingCombat, -1);
+  assert.equal(s.forcedCombat, -1);
+
+  const s2 = arena();
+  s2.player.hp = s2.player.maxHp = 80;
+  const b = putMob(s2, 0, { atk: 10 });
+  for (let i = 1; i < G.SIZE; i++) s2.tiles[i].revealed = true;
+  G.recalc(s2);
+  G.tapTile(s2, 1);
+  assert.equal(s2.solved, true);
+  assert.equal(b.revealed, true);
+  assert.equal(b.mob.atk, 10, '识破自动掀开不改变怪物');
+  assert.equal(s2.player.hp, 80, '识破不扣血');
+  assert.equal(s2.forcedCombat, -1, '识破不把玩家拉进战斗');
+});
+
+test('普通遭遇：已探明怪物再点是预演，可以退出，也不会再扣血', () => {
+  const s = arena();
+  const m = putMob(s, 0, { atk: 10 });
+  G.setMode(s, 'scroll');
+  s.player.scrolls = 1;
+  G.tapTile(s, 0);
+  const atk = m.mob.atk;
   const hp = s.player.hp;
-  G.tapTile(s, 7); G.tapTile(s, 8);
-  assert.equal(s.player.hp, hp, '已清除的怪物不再骚扰');
-  s.floor = 2;
-  G.buildFloor(s);
-  assert.ok(s.tiles.every((t) => !t.mob || (!t.mob.awake && t.mob.cd == null)), '下行后惊扰与倒计时全部重置');
+  const out = G.tapTile(s, 0);
+  assert.equal(s.pendingCombat, 0);
+  assert.equal(s.forcedCombat, -1);
+  assert.equal(m.mob.atk, atk);
+  assert.equal(s.player.hp, hp, '预演不再吃偷袭伤害');
+  assert.ok(out.some((e) => e.type === 'encounter'));
+  G.closePending(s);
+  assert.equal(s.pendingCombat, -1, '普通遭遇可以再想想');
 });
 
-test('惊扰：汇总只给数量与最近一口的回合，不泄露未探明位置', () => {
+test('强制战：必死的一击照常结算死亡；普通遭遇的必死一击仍被拦下', () => {
   const s = arena();
-  const a = putMob(s, 0, { atk: 40, period: 5 });
-  putMob(s, 2, { atk: 20, period: 9 });
-  putMob(s, 6, { atk: 40, period: 5 });
-  s.player.def = 0; s.player.maxHp = 200; s.player.hp = 200;
-  assert.equal(G.aggroSummary(s), null, '未惊扰时不显示');
-  G.tapTile(s, 1);
-  const sum = G.aggroSummary(s);
-  assert.equal(sum.count, 2, '一次翻开可同时惊扰两只');
-  assert.equal(sum.next, 4, '取倒计时最小的那只');
-  assert.ok(!('i' in sum) && !('tiles' in sum) && !('dmg' in sum), '汇总不含坐标与伤害');
-  assert.equal(G.tileLabel(s.tiles[6]), '未探索', '未探明怪物不暴露身份');
-  assert.equal(G.tileLabel(a), '未探索', '被惊扰但未探明的怪物同样不暴露身份');
+  const m = putMob(s, 0, { atk: 5, hp: 999 });
+  s.player.maxHp = 40; s.player.hp = 40; s.player.def = 0;
+  G.tapTile(s, 0); // 先吃一次偷袭，剩 35
+  s.player.hp = 5;
+  assert.equal(s.forcedCombat, 0);
+  const out = G.attack(s, 0);
+  assert.equal(s.status, 'dead');
+  assert.ok(out.some((e) => e.type === 'death'));
+  assert.ok(m.mob.hp > 0, '玩家先倒下，战斗没有结算');
+
+  const s2 = arena();
+  putMob(s2, 0, { atk: 100, hp: 999 });
+  s2.player.maxHp = 40; s2.player.hp = 5; s2.player.def = 0;
+  G.setMode(s2, 'scroll');
+  s2.player.scrolls = 1;
+  G.tapTile(s2, 0);
+  G.closePending(s2);
+  const out2 = G.attack(s2, 0);
+  assert.equal(s2.status, 'playing');
+  assert.ok(out2.some((e) => e.type === 'blocked'));
+});
+
+test('强制战：炸弹没炸死仍被面板挡住，炸死才解除', () => {
+  const s = arena();
+  const m = putMob(s, 0, { hp: 100, atk: 10 });
+  s.player.bombs = 2;
   G.tapTile(s, 0);
-  assert.ok(G.tileLabel(a).includes('回合后骚扰'), '已探明怪物显示自己的倒计时');
+  G.setMode(s, 'bomb');
+  G.tapTile(s, 0);
+  assert.equal(m.mob.hp, 100 - G.BOMB_DAMAGE);
+  assert.equal(s.pendingCombat, 0, '没炸死，战斗继续');
+  assert.equal(s.forcedCombat, 0);
+  G.setMode(s, 'bomb');
+  G.tapTile(s, 0);
+  assert.equal(m.mob.hp, 0);
+  assert.equal(s.forcedCombat, -1, '击杀后解除强制');
+  assert.equal(s.pendingCombat, -1);
 });
 
-test('惊扰：每只怪的间隔与倒计时可存档往返', () => {
+test('偷袭：强制状态可存档往返', () => {
   const s = arena();
-  const m = putMob(s, 0, { period: 5 });
-  G.tapTile(s, 1);
-  G.tapTile(s, 7);
+  putMob(s, 0, { atk: 10 });
+  G.tapTile(s, 0);
   const back = G.deserialize(G.serialize(s));
   assert.ok(back);
-  assert.equal(back.tiles[0].mob.cd, m.mob.cd);
-  assert.equal(back.tiles[0].mob.period, m.mob.period);
-  assert.equal(back.tiles[0].mob.awake, true);
-  assert.deepEqual(G.aggroSummary(back), G.aggroSummary(s));
+  assert.equal(back.pendingCombat, 0);
+  assert.equal(back.forcedCombat, 0);
+  assert.equal(back.tiles[0].mob.atk, s.tiles[0].mob.atk);
 });
 
 test('钥匙守卫：非龙王层必定各有一名，独占一格且计入邻雷数', () => {
@@ -1413,7 +1434,6 @@ test('炸弹对龙王造成固定伤害：炸不死只削血，炸得死就正�
   assert.equal(boss.mob.hp, 150 - G.BOMB_DAMAGE, '固定 60 点伤害，不随生命上限浮动');
   assert.equal(s.player.bombs, bom0 - 1);
   assert.equal(boss.used, false, '没炸死时龙王仍在');
-  assert.equal(boss.mob.awake, true, '被炸的龙王立即醒着计时');
   assert.equal(s.mode, 'explore');
 
   for (let k = 0; k < 3 && boss.mob.hp > 0; k++) { G.setMode(s, 'bomb'); G.tapTile(s, boss.i); }
@@ -1527,30 +1547,39 @@ test('军械箱：获得时立刻补充六枚炸弹', () => {
   assert.equal(s.player.bombs, 1 + G.RELIC_BOMB_CACHE);
 });
 
-test('商店遗物匣：三选一、价格递增、集齐后拒绝', () => {
+test('商店遗物匣：随机一件、价格递增、本局限购 3 次、集齐后拒绝', () => {
   const s = fresh('normal', 606);
   s.player.gold = 1000;
+  assert.equal(G.RELIC_SHOP_CAP, 3);
   assert.equal(G.shopPrice(s, 'relic'), 80);
   const evs = G.buy(s, 'relic');
-  assert.ok(evs.some((e) => e.type === 'relicOffer'), '购买后应弹出三选一');
+  assert.ok(evs.some((e) => e.type === 'relicGain'), '购买后应直接获得一件遗物');
+  assert.ok(!evs.some((e) => e.type === 'relicOffer'), '商店不再弹出三选一');
+  assert.equal(s.relicChoices, null);
+  assert.equal(s.relics.length, 1);
   assert.equal(s.player.gold, 920);
-  assert.equal(s.relicChoices.length, G.RELIC_DRAW_COUNT);
-  const pick = s.relicChoices[0];
-  G.chooseRelic(s, pick);
-  assert.ok(G.hasRelic(s, pick));
+  assert.equal(s.bought.relic, 1);
 
-  assert.equal(G.shopPrice(s, 'relic'), 135, '第二次购买涨价');
+  assert.equal(G.shopPrice(s, 'relic'), 130, '第二次购买涨价 50');
   G.buy(s, 'relic');
-  assert.equal(s.player.gold, 920 - 135);
-  G.chooseRelic(s, s.relicChoices[0]);
+  assert.equal(G.shopPrice(s, 'relic'), 180, '第三次购买再涨 50');
+  G.buy(s, 'relic');
+  assert.equal(s.relics.length, 3);
+  assert.equal(new Set(s.relics).size, 3, '不会重复发已拥有的遗物');
+  assert.equal(s.player.gold, 1000 - 80 - 130 - 180);
 
-  s.relics = G.RELICS.map((r) => r.id);
-  s.relicChoices = null;
   const gold = s.player.gold, buys = s.bought.relic;
   const out = G.buy(s, 'relic');
-  assert.ok(out.some((e) => e.type === 'deny'), '集齐后拒绝');
-  assert.equal(s.player.gold, gold);
+  assert.ok(out.some((e) => e.type === 'deny'), '超过 3 次后拒绝');
+  assert.equal(s.player.gold, gold, '拒绝时不扣钱');
   assert.equal(s.bought.relic, buys, '拒绝时不计数');
+  assert.equal(s.log[s.log.length - 1].k, 'log.relic.cap');
+
+  s.relics = G.RELICS.map((r) => r.id);
+  s.bought.relic = 0;
+  const out2 = G.buy(s, 'relic');
+  assert.ok(out2.some((e) => e.type === 'deny'), '集齐后拒绝');
+  assert.equal(s.log[s.log.length - 1].k, 'log.relic.soldout');
 });
 
 test('旗数预算：上限＝难度基数，超限拒绝，拔旗后归还', () => {
@@ -1588,7 +1617,7 @@ test('旗子上限与怪物数量脱钩，且难度越高越少', () => {
     for (let seed = 1; seed <= 12; seed++) {
       const s = fresh(diff, seed);
       assert.equal(G.flagCap(s), bases[diff], `${diff} seed${seed} 上限恒定`);
-      assert.ok(s.threatTotal > G.flagCap(s), `${diff} seed${seed} 威胁应多于旗子，插旗才需要取舍`);
+      assert.ok(G.remainingThreats(s) > G.flagCap(s), `${diff} seed${seed} 威胁应多于旗子，插旗才需要取舍`);
     }
   }
   assert.ok(bases.hard < bases.normal && bases.normal < bases.easy, '炼狱 < 深渊 < 地窖');
@@ -1683,27 +1712,22 @@ function nearlySolved(diff = 'normal', seed = 21, floor = 1) {
   return { s, last };
 }
 
-test('完全识破：安全格全翻开即自动揭示，零伤害、收回旗帜、惊扰停摆', () => {
+test('完全识破：安全格全翻开即自动揭示，零伤害、收回旗帜', () => {
   for (const diff of ['easy', 'normal', 'hard']) {
     for (let seed = 1; seed <= 6; seed++) {
       const { s, last } = nearlySolved(diff, seed);
       const threats = s.tiles.filter((t) => THREATS.includes(t.kind) && !t.revealed);
       for (const t of threats.slice(0, 2)) G.toggleFlag(s, t.i);
-      const mob = threats.find((t) => t.mob && t.mob.hp > 0);
-      mob.mob.awake = true; mob.mob.cd = 1;
       const hp = s.player.hp;
       const out = G.tapTile(s, last.i);
       const tag = `${diff} seed${seed}`;
       assert.equal(s.solved, true, `${tag} 应判定为已识破`);
-      assert.equal(s.player.hp, hp, `${tag} 完成推理的那一次操作不该再挨骚扰`);
+      assert.equal(s.player.hp, hp, `${tag} 完成推理的那一次操作不该掉血`);
       assert.ok(!out.some((e) => e.type === 'damage'), `${tag} 不该有任何伤害事件`);
       assert.equal(s.tiles.filter((t) => !t.revealed).length, 0, `${tag} 剩余威胁全部揭示`);
       assert.equal(s.flags, 0, `${tag} 旗帜收回`);
       assert.equal(s.tiles.some((t) => t.flagged), false, `${tag} 棋盘无残留旗帜`);
-      assert.ok(s.tiles.every((t) => !t.mob || t.mob.cd == null), `${tag} 惊扰倒计时清空`);
-      assert.equal(G.aggroSummary(s), null, `${tag} 惊扰汇总清空`);
-      assert.equal(s.tiles.some((t) => t.mob && t.mob.awake), false, `${tag} 自动揭示的怪物不被惊扰`);
-      assert.equal(s.pendingCombat, -1, `${tag} 不强行拉进战斗`);
+      assert.equal(s.forcedCombat, -1, `${tag} 不强行拉进战斗`);
       assert.equal(out.filter((e) => e.type === 'solved').length, 1, `${tag} 恰好一次识破事件`);
     }
   }
@@ -1736,14 +1760,15 @@ test('完全识破：陷阱安全拆除，怪物仍可自愿开战', () => {
   assert.deepEqual(out, [], '已拆除的陷阱点了没反应');
 
   const mob = find(s, 'monster').find((t) => t.mob.hp > 0);
+  const atk = mob.mob.atk;
   const co = G.tapTile(s, mob.i);
   assert.equal(s.pendingCombat, mob.i, '识破后仍能主动点开怪物赚经验');
   assert.ok(co.some((e) => e.type === 'encounter'));
-  assert.ok(!co.some((e) => e.type === 'aggro'), '主动开战也不会被骚扰');
-  assert.equal(G.aggroSummary(s), null);
+  assert.equal(s.forcedCombat, -1, '主动开战不是偷袭');
+  assert.equal(mob.mob.atk, atk, '自动揭示的怪物不再吃偷袭加成');
 });
 
-test('未识破时规则不变：插旗陷阱照扣血，惊扰照走', () => {
+test('未识破时规则不变：插旗陷阱照扣血', () => {
   const s = fresh('normal', 21);
   const trap = find(s, 'trap').find((t) => !t.revealed);
   G.toggleFlag(s, trap.i);
@@ -1802,47 +1827,38 @@ test('识破状态可存档往返，旧版本存档被拒绝', () => {
   assert.equal(G.deserialize(JSON.stringify({ ...s, v: 7 })), null, 'v7 存档应被拒绝');
 });
 
-test('惊扰：插旗＝规避，被标记的怪物不再骚扰且倒计时冻结，拔旗后恢复', () => {
+test('插旗不免疫偷袭：被标记的怪物翻到时照样先扣血并强制开战', () => {
   const s = fresh('normal', 33);
   const mob = find(s, 'monster').find((t) => !t.revealed);
-  // 只留这一只活口，骚扰来源才唯一可断言
-  for (const t of s.tiles) if (t.mob && t.i !== mob.i) t.mob.hp = 0;
-  s.player.maxHp = 200; s.player.hp = 200;
-  mob.mob.awake = true; mob.mob.atk = 50; mob.mob.cd = 1;
-  const provoke = () => {
-    const t = s.tiles.find((x) => !x.revealed && x.kind === 'monster' && x.i !== mob.i);
-    return G.tapTile(s, t.i);
-  };
-
-  assert.equal(G.aggroSummary(s).count, 1);
-  assert.ok(provoke().some((e) => e.type === 'aggro' && e.i === mob.i), '未插旗时它会出手');
-
   G.toggleFlag(s, mob.i);
-  assert.equal(G.aggroSummary(s), null, '插旗后不再计入惊扰');
-  mob.mob.cd = 1;
+  const atk = mob.mob.atk;
   const hp = s.player.hp;
-  assert.ok(!provoke().some((e) => e.type === 'aggro'), '插旗期间不受骚扰');
-  assert.equal(s.player.hp, hp);
-  assert.equal(mob.mob.cd, 1, '插旗期间倒计时冻结，拔旗后从原处继续');
-
-  G.toggleFlag(s, mob.i);
-  assert.ok(provoke().some((e) => e.type === 'aggro' && e.i === mob.i), '拔旗后它又开始咬人');
-  assert.equal(G.aggroSummary(s).count, 1, '拔旗后重新计入惊扰');
+  const dmg = G.ambushDamage(s.player, mob.mob);
+  G.tapTile(s, mob.i);
+  assert.equal(mob.revealed, true);
+  assert.equal(mob.flagged, false, '点开自动拔旗');
+  assert.equal(mob.mob.atk, atk, '插旗不会改变偷袭方式');
+  assert.equal(s.player.hp, hp - dmg, '偷袭那一口照扣');
+  assert.equal(s.forcedCombat, mob.i);
 });
 
-test('插旗的怪物可以直接点开进入战斗预演，无需先手动拔旗', () => {
+test('插旗的怪物可以直接点开，但翻到它就是偷袭', () => {
   const s = fresh('normal', 41);
   const mob = find(s, 'monster').find((t) => !t.revealed);
   G.toggleFlag(s, mob.i);
   assert.equal(s.flags, 1);
+  const atk = mob.mob.atk;
+  const hp = s.player.hp;
+  const dmg = G.ambushDamage(s.player, mob.mob);
   const out = G.tapTile(s, mob.i);
   assert.equal(mob.revealed, true);
   assert.equal(mob.flagged, false, '点开时自动拔旗');
   assert.equal(s.flags, 0, '自动拔旗归还预算');
-  assert.equal(s.pendingCombat, mob.i, '直接进入战斗预演');
+  assert.equal(mob.mob.atk, atk);
+  assert.equal(s.player.hp, hp - dmg);
+  assert.equal(s.pendingCombat, mob.i, '直接进入战斗');
+  assert.equal(s.forcedCombat, mob.i, '没有退路');
   assert.ok(out.some((e) => e.type === 'encounter' && e.i === mob.i));
-  G.closePending(s);
-  assert.equal(s.pendingCombat, -1, '预演可以悄悄离开');
 });
 
 test('卷轴与冲击波掀开插旗格时，旗数预算同步归还', () => {

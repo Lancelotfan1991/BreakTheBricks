@@ -168,17 +168,9 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
 .chip-def.debt{border-color:rgba(255,171,46,.55);background:rgba(255,171,46,.13)}
 .chip-def.debt b{color:var(--amber-hi)}
 .chip-gold{color:#ffe08a}.chip-gold .ic{color:var(--gold)}
-.chip-threat{color:#e0b8ff;margin-left:auto}.chip-threat .ic{color:var(--magenta)}
-.chip-threat i{display:inline-flex;align-items:center;gap:2px}
-.chip-threat i .ic{width:9px;height:9px;color:var(--amber-hi)}
-.chip-threat.full{border-color:rgba(255,171,46,.5);background:rgba(255,171,46,.14)}
-.chip-threat.full i{color:var(--amber-hi)}
 .chip-key{color:#ffe08a;border-color:rgba(255,213,74,.4);background:rgba(255,213,74,.13);animation:keyPop .5s cubic-bezier(.2,1.6,.4,1)}
 .chip-key .ic{color:var(--gold)}
-.chip-aggro{color:#ff9aa8;border-color:rgba(255,59,92,.38);background:rgba(255,59,92,.14)}
-.chip-aggro .ic{color:var(--blood)}
-.chip-aggro.soon{animation:aggroSoon .9s ease-in-out infinite}
-@keyframes aggroSoon{0%,100%{box-shadow:0 0 0 0 rgba(255,59,92,0)}50%{box-shadow:0 0 9px 1px rgba(255,59,92,.75)}}
+.bb-atk{color:#ff9aab}.bb-atk .ic{color:var(--blood)}
 @keyframes keyPop{from{transform:scale(0);opacity:0}to{transform:scale(1);opacity:1}}
 .chip.bump{animation:bump .42s cubic-bezier(.2,1.6,.4,1)}
 .chip.bump b{animation:countPop .5s cubic-bezier(.2,1.6,.4,1)}
@@ -218,23 +210,14 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
 .bb-line{display:flex;align-items:center;gap:7px;line-height:1}
 .bb-line>b{font-family:var(--display);font-size:12.5px;letter-spacing:.12em;color:#ffd9f6;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bb-atk,.bb-cd{display:inline-flex;align-items:center;gap:3px;font-style:normal;
+.bb-atk{display:inline-flex;align-items:center;gap:3px;font-style:normal;
   font-family:var(--num);font-size:11px;font-weight:700}
-.bb-atk .ic,.bb-cd .ic{width:11px;height:11px}
+.bb-atk .ic{width:11px;height:11px}
 .bb-atk{color:#ff9aab}.bb-atk .ic{color:var(--blood)}
-/* 倒计时靠右：右侧这枚数字就是「它还有几回合扑来」 */
-.bb-cd{margin-left:auto;color:#ffc46b;padding:1px 5px;border-radius:6px;
-  background:rgba(255,59,92,.2);border:1px solid rgba(255,59,92,.45)}
-.bb-cd .ic{color:var(--amber-hi)}
-.bb-cd[hidden]{display:none}
 .bb-track{flex:none;height:11px;border-color:rgba(255,79,216,.35);background:rgba(0,0,0,.6)}
 .bb-track i{background:linear-gradient(90deg,#ff2d6f,#ff4fd8 62%,#ff9df0);box-shadow:0 0 12px rgba(255,79,216,.65) inset}
 .bb-track span{font-size:9.5px;letter-spacing:.05em}
 @keyframes bossBarIn{from{opacity:0;transform:translateY(-8px) scale(.97)}to{opacity:1;transform:none}}
-/* 临击：和格子上的红边框同一个语义，血条整条跟着心跳 */
-.boss-bar.soon{animation:bossSoon 1s ease-in-out infinite}
-@keyframes bossSoon{0%,100%{border-color:rgba(255,79,216,.4);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 0 0 0 rgba(255,59,92,0)}
-  50%{border-color:rgba(255,59,92,.9);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 0 16px -2px rgba(255,59,92,.85)}}
 .boss-bar.dying{animation:none;opacity:.55;filter:grayscale(.4);transition:opacity .7s ease-out,filter .7s ease-out}
 
 /* ── 棋盘 ───────────────────────────────── */
@@ -358,19 +341,6 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
 .tile-crown{position:absolute;top:1px;right:1px;width:calc(var(--tile)*.28);height:calc(var(--tile)*.28);color:var(--gold);
   filter:drop-shadow(0 0 3px rgba(255,213,74,.9))}
 .tile-crown .ic{width:100%;height:100%}
-.tile-awake::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
-  box-shadow:inset 0 0 0 2px rgba(255,59,92,.8);animation:awakePulse 1.7s ease-in-out infinite}
-@keyframes awakePulse{0%,100%{opacity:.3}50%{opacity:1}}
-/* 临击：倒计时 ≤2 的那一格，红边框加粗并急闪，读作「马上要挨这一口」 */
-.tile-aggro-soon::after{box-shadow:inset 0 0 0 3px rgba(255,59,92,1),0 0 12px rgba(255,59,92,.7);
-  animation:awakePulse .5s ease-in-out infinite}
-/* 每只怪自己的节奏：红色叹号 + 它自己的倒计时，读作「这只还有 N 回合扑过来」 */
-.tile-aggro{position:absolute;top:1px;left:1px;height:calc(var(--tile)*.28);padding:0 calc(var(--tile)*.05);
-  display:flex;align-items:center;gap:calc(var(--tile)*.03);border-radius:calc(var(--tile)*.09);pointer-events:none;
-  font-family:var(--num);font-weight:700;line-height:1;
-  background:var(--blood);color:#fff;box-shadow:0 0 6px rgba(255,59,92,.85)}
-.tile-aggro b{font-size:calc(var(--tile)*.22)}
-.tile-aggro i{font-style:normal;font-size:calc(var(--tile)*.19);opacity:.92}
 /* 完全识破：旗子飞回旗囊，砖面绕底边掀起淡出，露出「这一格确实是雷」。
    .tile 是 overflow:hidden，砖面只能在格内翻转，不能整块飞出去。 */
 .tile-flag.flag-retract .ic{animation:flagRetract .26s ease-in forwards}

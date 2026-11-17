@@ -14,8 +14,7 @@ const el = {
   floorNum: $('#floorNum'), floorName: $('#floorName'), floorSub: $('#floorSub'),
   hpFill: $('#hpFill'), hpText: $('#hpText'), hpBar: document.querySelector('.hp-bar'),
   atk: $('#atkVal'), def: $('#defVal'), gold: $('#goldVal'), lv: $('#lvNum'), ring: $('#xpRing'),
-  threat: $('#threatVal'), flagText: $('#flagText'), threatChip: $('#threatChip'), keyChip: $('#keyChip'),
-  aggroChip: $('#aggroChip'), aggroCount: $('#aggroCount'),
+  keyChip: $('#keyChip'),
   potion: $('#potionCount'), bomb: $('#bombCount'), scroll: $('#scrollCount'), flag: $('#flagCount'),
   descend: $('#btnDescend'), log: $('#logLine'), ticker: document.querySelector('.ticker'),
   scrim: $('#scrim'), sheet: $('#sheet'), sheetBody: $('#sheetBody'),
@@ -23,7 +22,7 @@ const el = {
   diffGrid: $('#diffGrid'), record: $('#record'), btnContinue: $('#btnContinue'), actionbar: $('#actionbar'),
   relicBar: $('#relicBar'), relicSlots: $('#relicSlots'),
   bossBar: $('#bossBar'), bossName: $('#bossName'), bossFill: $('#bossFill'),
-  bossHp: $('#bossHp'), bossAtk: $('#bossAtk'), bossCdWrap: $('#bossCdWrap'), bossCd: $('#bossCd'),
+  bossHp: $('#bossHp'), bossAtk: $('#bossAtk'),
   battle: $('#battle'), btStage: $('#btStage'), btHero: $('#btHero'), btMob: $('#btMob'),
   btMobIcon: $('#btMobIcon'), btMobName: $('#btMobName'), btHeroFill: $('#btHeroFill'),
   btHeroHp: $('#btHeroHp'), btMobFill: $('#btMobFill'), btMobHp: $('#btMobHp'),
@@ -128,12 +127,6 @@ function tileView(t) {
       + (m.def ? `<i class="ts-def">${svg('shield')}<b>${m.def}</b></i>` : '')
       + '</span></span>';
     if (t.kind !== 'monster') inner += `<span class="tile-crown">${svg(t.kind === 'boss' ? 'crown' : 'key')}</span>`;
-    if (m.awake && m.cd != null) {
-      cls += ' tile-awake';
-      if (m.cd <= 2) cls += ' tile-aggro-soon';
-      // 每只怪有自己的节奏，倒计时因此挂在每一只头上：数字最小的那只最先扑你
-      inner += `<span class="tile-aggro"><b>!</b><i>${m.cd}</i></span>`;
-    }
     label += ' ' + tr('ui.board.stats', { hp: m.hp, atk: m.atk, def: m.def });
     return { cls, inner, n, label };
   }
@@ -216,7 +209,7 @@ function resetBossUi() {
   bossDying = false;
   bossShown = false;
   el.bossBar.hidden = true;
-  el.bossBar.classList.remove('soon', 'dying');
+  el.bossBar.classList.remove('dying');
   document.body.classList.remove('boss-floor');
 }
 
@@ -230,18 +223,11 @@ function updateBossBar() {
   document.body.classList.toggle('boss-floor', !!t || bossDying);
   if (!t) return;
   const m = t.mob;
-  const cd = m.cd ?? m.period;
   el.bossName.textContent = G.mobName(m);
   el.bossFill.style.transform = `scaleX(${Math.max(0, m.hp / m.maxHp)})`;
   el.bossHp.textContent = `${m.hp} / ${m.maxHp}`;
   el.bossAtk.textContent = String(m.atk);
-  el.bossCd.textContent = String(cd);
-  // 识破后龙王会重新安静下来，倒计时藏起来比显示一个假的满值更诚实
-  el.bossCdWrap.hidden = !(m.awake && m.cd != null);
-  el.bossBar.classList.toggle('soon', m.awake && m.cd != null && cd <= 2);
-  el.bossBar.setAttribute('aria-label', m.awake && m.cd != null
-    ? tr('ui.boss.aria', { name: G.mobName(m), hp: m.hp, max: m.maxHp, atk: m.atk, cd })
-    : tr('ui.boss.aria.asleep', { name: G.mobName(m), hp: m.hp, max: m.maxHp, atk: m.atk }));
+  el.bossBar.setAttribute('aria-label', tr('ui.boss.aria', { name: G.mobName(m), hp: m.hp, max: m.maxHp, atk: m.atk }));
 }
 
 // 龙王第一次亮在棋盘上：咆哮、震屏、红光，一次把「这一层不一样」说完
@@ -265,10 +251,8 @@ function announceBoss() {
 function markBossFelled(mob) {
   bossDying = true;
   el.bossBar.classList.add('dying');
-  el.bossBar.classList.remove('soon');
   el.bossFill.style.transform = 'scaleX(0)';
   el.bossHp.textContent = `0 / ${mob.maxHp}`;
-  el.bossCdWrap.hidden = true;
   fx.flash('boss');
   fx.shake(el.game, 'heavy');
   fx.rumble(520);
@@ -294,20 +278,8 @@ function renderHud() {
     : tr('ui.hud.def', { def: p.def }));
   el.lv.textContent = p.lv;
   el.ring.style.strokeDashoffset = String(119.4 * (1 - p.xp / p.xpNext));
-  const remain = S.generated ? G.remainingThreats(S) : S.threatTotal;
-  el.threat.textContent = remain;
   const cap = G.flagCap(S);
-  el.flagText.textContent = `${S.flags}/${cap}`;
-  el.threatChip.classList.toggle('full', S.flags >= cap);
-  el.threatChip.setAttribute('aria-label', tr('ui.hud.threat.aria', { remain, used: S.flags, cap }));
   el.keyChip.hidden = !S.hasKey;
-  const ag = G.aggroSummary(S);
-  el.aggroChip.hidden = !ag;
-  if (ag) {
-    el.aggroCount.textContent = ag.count;
-    el.aggroChip.classList.toggle('soon', ag.next <= 2);
-    el.aggroChip.setAttribute('aria-label', tr('ui.hud.aggro.aria', { n: ag.count }));
-  }
   el.potion.textContent = p.potions; el.bomb.textContent = p.bombs; el.scroll.textContent = p.scrolls;
   el.potion.parentElement.classList.toggle('empty', p.potions === 0);
   el.bomb.parentElement.classList.toggle('empty', p.bombs === 0);
@@ -413,18 +385,23 @@ function openLog() {
 function openCodex() {
   const owned = S ? S.relics : [];
   const back = S && S.relicChoices ? 'relicBack' : 'close';
+  const row = (r, has) => {
+    const ra = G.RELIC_RARITY[r.rarity];
+    return `<div class="cx ${has ? 'has' : ''}" style="--rc:${ra.color}">
+      <span class="cx-ic">${svg(r.icon)}</span>
+      <span class="cx-tx">
+        <b>${G.relicName(r)}<i class="cx-rar">${G.rarityName(r.rarity)}</i>${has ? `<i class="cx-own">${tr('ui.codex.own')}</i>` : ''}</b>
+        <span class="cx-desc">${G.relicDesc(r)}</span>
+        <span class="cx-fl">${G.relicFlavor(r)}</span>
+      </span>
+    </div>`;
+  };
+  // 本局已收集按获得顺序置顶，翻图鉴先看到自己这局的构筑
+  const mine = owned.length
+    ? `<div class="help-sec"><h3 class="help-h">${tr('ui.codex.mine')}<i class="cx-count">${owned.length}</i></h3>${owned.map((id) => row(G.relicById(id), true)).join('')}</div>`
+    : '';
   const groups = G.RELIC_CATS.map((cat) => {
-    const rows = G.RELICS.filter((r) => r.cat === cat).map((r) => {
-      const ra = G.RELIC_RARITY[r.rarity], has = owned.includes(r.id);
-      return `<div class="cx ${has ? 'has' : ''}" style="--rc:${ra.color}">
-        <span class="cx-ic">${svg(r.icon)}</span>
-        <span class="cx-tx">
-          <b>${G.relicName(r)}<i class="cx-rar">${G.rarityName(r.rarity)}</i>${has ? `<i class="cx-own">${tr('ui.codex.own')}</i>` : ''}</b>
-          <span class="cx-desc">${G.relicDesc(r)}</span>
-          <span class="cx-fl">${G.relicFlavor(r)}</span>
-        </span>
-      </div>`;
-    }).join('');
+    const rows = G.RELICS.filter((r) => r.cat === cat).map((r) => row(r, owned.includes(r.id))).join('');
     const n = G.RELICS.filter((r) => r.cat === cat && owned.includes(r.id)).length;
     const total = G.RELICS.filter((r) => r.cat === cat).length;
     return `<div class="help-sec"><h3 class="help-h">${G.catName(cat)}<i class="cx-count">${n}/${total}</i></h3>${rows}</div>`;
@@ -439,14 +416,16 @@ function openCodex() {
     }).join(tr('list.sep'));
   };
   const floorNow = S ? S.floor : 1;
+  const relicItem = G.SHOP.find((x) => x.id === 'relic');
   openSheet('codex', `
     <div class="sheet-head">
       <div><h2 class="sheet-title">${tr('ui.codex.title')}</h2><p class="sheet-sub">${tr('ui.codex.sub', { total: G.RELICS.length, own: owned.length })}</p></div>
       <button class="icon-btn sheet-close" data-sheet="${back}" aria-label="${tr('ui.btn.close')}">${svg('close')}</button>
     </div>
+    ${mine}
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.codex.how')}</h3>
-      <p class="help-p">${tr('ui.codex.how.body', { draw: G.RELIC_DRAW_COUNT, total: G.RELICS.length, floor: floorNow, odds: oddsAt(floorNow), maxFloor: G.MAX_FLOOR, deepOdds: oddsAt(G.MAX_FLOOR) })}</p>
+      <p class="help-p">${tr('ui.codex.how.body', { draw: G.RELIC_DRAW_COUNT, total: G.RELICS.length, floor: floorNow, odds: oddsAt(floorNow), maxFloor: G.MAX_FLOOR, deepOdds: oddsAt(G.MAX_FLOOR), shopPrice: relicItem.base, shopStep: relicItem.step, shopCap: G.RELIC_SHOP_CAP })}</p>
     </div>
     ${groups}
     <div class="sheet-actions"><button class="btn btn-primary btn-lg" data-sheet="${back}">${S && S.relicChoices ? tr('ui.codex.back') : tr('ui.codex.close')}</button></div>`, !!(S && S.relicChoices));
@@ -463,7 +442,7 @@ const FLY = {
   weapon: { icon: 'sword', sel: '.chip-atk', cls: 'crit', color: '#ffab2e' },
   armor: { icon: 'shield', sel: '.chip-def', cls: 'cyan', color: '#3fe0ff' },
   gold: { icon: 'coin', sel: '.chip-gold', cls: 'gold', color: '#ffd54a' },
-  flag: { icon: 'flag', sel: '#threatChip', cls: 'crit', color: '#ffab2e' },
+  flag: { icon: 'flag', sel: '[data-mode="flag"]', cls: 'crit', color: '#ffab2e' },
 };
 
 function flyToBag(from, f) {
@@ -502,14 +481,19 @@ function consume(events) {
         break;
       }
       case 'encounter': audio.play('open'); fx.haptic('light'); break;
-      case 'flag': audio.play(e.on ? 'flag' : 'unflag'); fx.haptic('tick'); break;
-      case 'flagLimit': audio.play('deny'); toast(tr('log.flag.limit', { cap: e.cap }), 'bad'); break;
-      case 'aggro': {
-        if (S.tiles[e.i] && S.tiles[e.i].revealed) { const c = tileCenter(e.i); fx.ring(c.x, c.y, '#ff3b5c', 90); }
+      case 'ambush': {
+        // 偷袭是玩家自己掀开的砖：红闪落在这一格上，不给任何未探明格子的位置提示
+        const c = tileCenter(e.i);
+        fx.ring(c.x, c.y, '#ff3b5c', 120);
+        fx.shake(el.board, 'heavy');
+        fx.haptic('heavy');
+        toast(tr(e.dmg > 0 ? 'ui.toast.ambush' : 'ui.toast.ambush.block', { n: e.dmg }), e.dmg > 0 ? 'bad' : 'good');
         break;
       }
+      case 'flag': audio.play(e.on ? 'flag' : 'unflag'); fx.haptic('tick'); break;
+      case 'flagLimit': audio.play('deny'); toast(tr('log.flag.limit', { cap: e.cap }), 'bad'); break;
       case 'damage': {
-        // 骚扰可能来自未探明的怪物：特效不能落在它的格子上，否则等于透视。
+        // 伤害来源格可能已探明（陷阱 / 战斗中的怪物）；无坐标时把飘字落在血条上，避免泄露暗格
         const src = e.at >= 0 ? e.at : S.pendingCombat;
         const at = src >= 0 && S.tiles[src] && S.tiles[src].revealed ? src : -1;
         const c = at >= 0 ? tileCenter(at) : fx.center(el.hpFill);
@@ -796,12 +780,13 @@ function runBattle(i, done) {
 function openCombat(i) {
   const t = S.tiles[i], m = t.mob, p = S.player;
   const f = G.forecast(p, m);
+  const forced = S.forcedCombat === i;
   const safePct = Math.max(0, (p.hp - f.take) / p.maxHp * 100);
   const lossPct = Math.min(100, f.take / p.maxHp * 100);
   const kind = t.kind === 'boss' ? 'boss' : t.kind === 'elite' ? 'elite' : '';
   const tag = t.kind === 'boss' ? `<span class="mob-tag boss">${tr('ui.combat.tag.boss')}</span>` : t.kind === 'elite' ? `<span class="mob-tag">${tr('ui.combat.tag.elite')}</span>` : '';
   const note = f.lethal
-    ? `<p class="fc-note danger">${tr('ui.combat.note.lethal', { take: f.take, hp: p.hp })}</p>`
+    ? `<p class="fc-note danger">${tr(forced ? 'ui.combat.note.doom' : 'ui.combat.note.lethal', { take: f.take, hp: p.hp })}</p>`
     : f.take === 0
       ? `<p class="fc-note">${tr('ui.combat.note.free')}</p>`
       : `<p class="fc-note">${tr(p.thorns ? 'ui.combat.note.thorns' : 'ui.combat.note.normal', { rounds: f.rounds, counters: f.counters, recoil: f.counters * p.thorns })}</p>`;
@@ -813,22 +798,24 @@ function openCombat(i) {
   const cutNote = cutParts.length
     ? `<p class="fc-note good">${tr('ui.combat.cut', { parts: cutParts.join(tr('ui.combat.cut.sep')) })}</p>`
     : '';
-  const aggroRow = m.awake && m.cd != null
-    ? `<div class="fc-row hurt"><span>${tr('ui.combat.aggro.row', { period: m.period })}</span><b>-${G.aggroDamage(p, m)}</b></div>
-       <p class="fc-note danger">${tr('ui.combat.aggro.note', { cd: m.cd })}</p>`
+  const ambushDmg = forced ? G.ambushDamage(p, m) : 0;
+  const ambushNote = forced
+    ? `<p class="fc-note${ambushDmg > 0 ? ' danger' : ''}">${tr(ambushDmg > 0 ? 'ui.combat.ambush.note' : 'ui.combat.ambush.note.block', { n: ambushDmg })}</p>`
     : '';
   const bombRow = p.bombs > 0
     ? `<div class="fc-row"><span>${tr('ui.combat.bombDmg')}</span><b>${G.bombDamage(S, m)}</b></div>`
     : '';
+  // 偷袭战没有逃跑：不渲染关闭/再想想，面板本身也锁住，直到把它打倒
   openSheet('combat', `
     <div class="sheet-head">
-      <div><h2 class="sheet-title">${tr('ui.combat.title')}</h2><p class="sheet-sub">${tr('ui.combat.sub')}</p></div>
-      <button class="icon-btn sheet-close" data-sheet="close" aria-label="${tr('ui.btn.close')}">${svg('close')}</button>
+      <div><h2 class="sheet-title">${tr(forced ? 'ui.combat.title.ambush' : 'ui.combat.title')}</h2><p class="sheet-sub">${tr(forced ? 'ui.combat.sub.ambush' : 'ui.combat.sub')}</p></div>
+      ${forced ? '' : `<button class="icon-btn sheet-close" data-sheet="close" aria-label="${tr('ui.btn.close')}">${svg('close')}</button>`}
     </div>
     <div class="mob-card ${kind}">
       <div class="mob-portrait">${svg(m.icon)}</div>
       <div class="mob-info"><h3 class="mob-name">${G.mobName(m)}${tag}</h3><p class="mob-flavor">${G.mobFlavor(m)}</p></div>
     </div>
+    ${ambushNote}
     <div class="stat-grid">
       <div class="stat hp"><i>${tr('ui.combat.stat.hp')}</i><b>${m.hp}</b></div>
       <div class="stat atk"><i>${tr('ui.combat.stat.atk')}</i><b>${m.atk}</b></div>
@@ -843,16 +830,15 @@ function openCombat(i) {
       <div class="fc-row"><span>${tr('ui.combat.rounds')}</span><b>${f.rounds}</b></div>
       <div class="fc-row ${f.take ? 'hurt' : 'free'}"><span>${tr('ui.combat.take')}</span><b>${f.take}</b></div>
       ${bombRow}
-      ${aggroRow}
       <div class="fc-bar"><i class="fc-safe" style="width:${safePct}%"></i><i class="fc-loss" style="width:${lossPct}%"></i></div>
       ${note}
     </div>
     <div class="sheet-actions">
-      <button class="btn btn-ghost" data-sheet="close">${tr('ui.combat.again')}</button>
+      ${forced ? '' : `<button class="btn btn-ghost" data-sheet="close">${tr('ui.combat.again')}</button>`}
       ${p.potions > 0 && p.hp < p.maxHp ? `<button class="btn" data-sheet="potion" data-i="${i}">${svg('potion')}<span>${tr('ui.combat.potion')}</span></button>` : ''}
       ${p.bombs > 0 ? `<button class="btn" data-sheet="bomb" data-i="${i}">${svg('bomb')}<span>${tr('ui.combat.bomb')}</span></button>` : ''}
-      <button class="btn ${f.lethal ? 'btn-danger' : 'btn-primary'}" data-sheet="attack" data-i="${i}" ${f.lethal ? 'disabled' : ''}>${svg('sword')}<span>${f.lethal ? tr('ui.combat.attack.lethal') : tr('ui.combat.attack')}</span></button>
-    </div>`);
+      <button class="btn ${f.lethal ? 'btn-danger' : 'btn-primary'}" data-sheet="attack" data-i="${i}">${svg('sword')}<span>${tr(f.lethal ? (forced ? 'ui.combat.attack.doom' : 'ui.combat.attack.lethal') : 'ui.combat.attack')}</span></button>
+    </div>`, forced);
 }
 
 function openAltar(i) {
@@ -879,11 +865,12 @@ function openShop() {
   const p = S.player;
   const rows = G.SHOP.map((it) => {
     const price = G.shopPrice(S, it.id);
-    const can = p.gold >= price;
+    const soldout = it.id === 'relic' && G.relicShopLeft(S) <= 0;
+    const can = !soldout && p.gold >= price;
     return `<button class="opt" data-sheet="buy" data-id="${it.id}" ${can ? '' : 'disabled'}>
       <span class="opt-ic">${svg(it.icon)}</span>
       <span class="opt-tx"><b>${G.shopName(it)}</b><span>${G.shopDesc(it, S)}</span></span>
-      <span class="opt-price ${can ? '' : 'no'}">${svg('coin')}${price}</span>
+      <span class="opt-price ${can ? '' : 'no'}">${soldout ? tr('ui.shop.soldout') : `${svg('coin')}${price}`}</span>
     </button>`;
   }).join('');
   openSheet('shop', `
@@ -946,12 +933,10 @@ function openHelp() {
       <p class="help-p">${tr('ui.help.combat.bomb', P)}</p>
     </div>
     <div class="help-sec">
-      <h3 class="help-h">${tr('ui.help.aggro.h')}</h3>
-      <p class="help-p">${tr('ui.help.aggro.p1')}</p>
-      <p class="help-p">${tr('ui.help.aggro.p2')}</p>
-      <p class="help-p">${tr('ui.help.aggro.p3')}</p>
-      <p class="help-p">${tr('ui.help.aggro.p4')}</p>
-      <p class="help-p">${tr('ui.help.aggro.p5')}</p>
+      <h3 class="help-h">${tr('ui.help.ambush.h')}</h3>
+      <p class="help-p">${tr('ui.help.ambush.p1')}</p>
+      <p class="help-p">${tr('ui.help.ambush.p2')}</p>
+      <p class="help-p">${tr('ui.help.ambush.p3')}</p>
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.solve.h')}</h3>
@@ -972,7 +957,7 @@ function openHelp() {
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.relic.h')}</h3>
-      <p class="help-p">${tr('ui.help.relic.p', { every: G.RELIC_EVERY, total: G.RELICS.length, reroll: G.RELIC_REROLL_BASE, rerollStep: G.RELIC_REROLL_STEP })}</p>
+      <p class="help-p">${tr('ui.help.relic.p', { every: G.RELIC_EVERY, total: G.RELICS.length, reroll: G.RELIC_REROLL_BASE, rerollStep: G.RELIC_REROLL_STEP, shopPrice: G.SHOP.find((x) => x.id === 'relic').base, shopStep: G.SHOP.find((x) => x.id === 'relic').step, shopCap: G.RELIC_SHOP_CAP })}</p>
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.legend.h')}</h3>
@@ -1089,7 +1074,7 @@ function solveSequence(e) {
   if (!bricks.length || matchMedia('(prefers-reduced-motion: reduce)').matches) { clearSolve(); render(); return; }
   busy = true;
   const cap = G.flagCap(S);
-  const setFlagLeft = (left) => { el.flagText.textContent = `${left}/${cap}`; el.flag.textContent = String(cap - left); };
+  const setFlagLeft = (left) => { el.flag.textContent = String(cap - left); };
   toast(tr(e.perfect ? 'ui.toast.solve.perfect' : 'ui.toast.solve', { n: e.count }), 'magic');
   setFlagLeft(flags.length);
   const fStep = flags.length ? Math.max(70, Math.min(160, Math.round(560 / flags.length))) : 0;
@@ -1247,11 +1232,15 @@ el.sheetBody.addEventListener('click', (e) => {
     case 'skip': G.closePending(S); saveRun(); closeSheet(); break;
     case 'attack': {
       const i = +b.dataset.i;
-      closeSheet();
+      const forced = S.forcedCombat === i;
+      const lethal = G.forecast(S.player, S.tiles[i].mob).lethal;
+      forceClose();
+      // 偷袭战的必死一击不需要战斗演绎：演出会先「击破」怪物，与实际的一击即死相反
+      if (forced && lethal) { apply(G.attack(S, i)); break; }
       runBattle(i, () => apply(G.attack(S, i)));
       break;
     }
-    case 'bomb': { const i = +b.dataset.i; closeSheet(); G.setMode(S, 'bomb'); apply(G.tapTile(S, i)); break; }
+    case 'bomb': { const i = +b.dataset.i; forceClose(); G.setMode(S, 'bomb'); apply(G.tapTile(S, i)); break; }
     case 'potion': { const i = +b.dataset.i; consume(G.usePotion(S)); render(); saveRun(); openCombat(i); break; }
     case 'altar': { const i = +b.dataset.i; closeSheet(); apply(G.altarChoose(S, i, b.dataset.choice)); break; }
     case 'buy': {

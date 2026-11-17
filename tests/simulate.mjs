@@ -3,7 +3,7 @@
 import {
   createRun, tapTile, attack, usePotion, buy, altarChoose, tryDescend, closePending,
   forecast, neighbors, canDescend, SIZE, MAX_FLOOR, shopPrice, setMode, chooseRelic,
-  toggleFlag, flagCap, RELIC_SURVEY_CAP,
+  toggleFlag, flagCap, RELIC_SURVEY_CAP, RELIC_SHOP_CAP,
 } from '../public/src/game.js';
 
 const isMob = (t) => t.mob && t.mob.hp > 0;
@@ -75,7 +75,7 @@ function shopPass(s, build) {
     if (p.gold >= shopPrice(s, 'plate') + 20) { buy(s, 'plate'); continue; }
     if (build === 'reason' && p.scrolls < 2 && p.gold >= shopPrice(s, 'scroll') + 20) { buy(s, 'scroll'); continue; }
     if (p.potions < 2 && p.gold >= shopPrice(s, 'potion')) { buy(s, 'potion'); continue; }
-    if (p.gold >= shopPrice(s, 'relic') + 40) { buy(s, 'relic'); return; }
+    if (s.bought.relic < RELIC_SHOP_CAP && p.gold >= shopPrice(s, 'relic') + 40) { buy(s, 'relic'); return; }
     break;
   }
 }
@@ -130,9 +130,9 @@ export function playRun(difficulty, seed, verbose = false, prefer = null, build 
   const s = createRun(difficulty, seed);
   const trace = [];
   const floors = [];
-  let guard = 0, dmg = 0, healed = 0, potionsUsed = 0, blocked = 0, aggroDmg = 0, aggroHits = 0;
+  let guard = 0, dmg = 0, healed = 0, potionsUsed = 0, blocked = 0, ambushes = 0;
   let solves = 0, solveFlags = 0, perfect = 0;
-  let forced = -1, forcedSig = '';
+  let retry = -1, retrySig = '';
   let mark = { floor: 1, dmg: 0, healed: 0 };
   const snap = () => {
     floors.push({ floor: mark.floor, hp: s.player.hp, maxHp: s.player.maxHp, lv: s.player.lv, atk: s.player.atk, def: s.player.def, gold: s.player.gold, potions: s.player.potions, dmg: dmg - mark.dmg, healed: healed - mark.healed });
@@ -142,7 +142,7 @@ export function playRun(difficulty, seed, verbose = false, prefer = null, build 
     const evs = fn(s, ...a);
     for (const e of evs) {
       if (e.type === 'damage') dmg += e.amount;
-      if (e.type === 'aggro') { aggroDmg += e.amount; aggroHits++; }
+      if (e.type === 'ambush') ambushes++;
       if (e.type === 'heal') healed += e.amount;
       if (e.type === 'solved') { solves++; solveFlags += e.flagged.length; if (e.flagged.length === e.count) perfect++; }
       if (e.type === 'descend' || e.type === 'win') snap();
@@ -160,6 +160,13 @@ export function playRun(difficulty, seed, verbose = false, prefer = null, build 
     if (s.pendingCombat >= 0) {
       const t = s.tiles[s.pendingCombat];
       const f = forecast(s.player, t.mob);
+      if (s.forcedCombat === s.pendingCombat) {
+        // 偷袭战无路可退：药水把血补到能扛，炸弹削到能打，最后只能硬拼
+        if (f.lethal && s.player.potions > 0 && s.player.hp < s.player.maxHp) { run(usePotion); potionsUsed++; continue; }
+        if (f.lethal && s.player.bombs > 0) { setMode(s, 'bomb'); run(tapTile, t.i); continue; }
+        run(attack, s.pendingCombat);
+        continue;
+      }
       const must = t.kind === 'elite' || t.kind === 'boss';
       if (!f.lethal && (f.take <= s.player.hp * 0.42 || must)) {
         run(attack, s.pendingCombat);
@@ -214,8 +221,8 @@ export function playRun(difficulty, seed, verbose = false, prefer = null, build 
       // 必须主动去夺钥或通关，而不是把「没有暗格」当成无路可走。
       const must = s.tiles.find((t) => t.revealed && (t.kind === 'elite' || t.kind === 'boss') && isMob(t));
       const sig = `${p.hp}|${p.atk}|${p.def}|${p.bombs}|${p.potions}`;
-      if (must && (forced !== must.i || forcedSig !== sig)) {
-        forced = must.i; forcedSig = sig;
+      if (must && (retry !== must.i || retrySig !== sig)) {
+        retry = must.i; retrySig = sig;
         run(tapTile, must.i);
         continue;
       }
@@ -226,7 +233,7 @@ export function playRun(difficulty, seed, verbose = false, prefer = null, build 
   const res = {
     seed, difficulty, status: s.status, floor: s.floor, lv: s.player.lv, hp: s.player.hp, maxHp: s.player.maxHp,
     atk: s.player.atk, def: s.player.def, kills: s.stats.kills, turns: s.stats.turns, guard,
-    stuck: guard >= 12000, dmg, healed, potionsUsed, blocked, aggroDmg, aggroHits, trace: trace.join('>'), floors,
+    stuck: guard >= 12000, dmg, healed, potionsUsed, blocked, ambushes, trace: trace.join('>'), floors,
     relics: s.relics.slice(), whet: s.relicState.whet, solves, solveFlags, perfect,
     thorns: s.player.thorns, survey: s.relicState.survey, atkBonus: s.player.atkBonus, flagBonus: s.flagBonus,
   };
@@ -254,15 +261,14 @@ if (process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('simulate.mj
       const hist = {};
       for (const r of out) hist[r.floor] = (hist[r.floor] || 0) + 1;
       const avgRelics = out.reduce((a, r) => a + r.relics.length, 0) / out.length;
-      const avgAggro = out.reduce((a, r) => a + r.aggroDmg, 0) / out.length;
-      const avgHits = out.reduce((a, r) => a + r.aggroHits, 0) / out.length;
+      const avgAmbush = out.reduce((a, r) => a + r.ambushes, 0) / out.length;
       const avgSolves = out.reduce((a, r) => a + r.solves, 0) / out.length;
       const avgSolveFlags = out.reduce((a, r) => a + r.solveFlags, 0) / out.length;
       const perfects = out.reduce((a, r) => a + r.perfect, 0);
       const avgMaxHp = out.reduce((a, r) => a + r.maxHp, 0) / out.length;
       const avgAtk = out.reduce((a, r) => a + r.atk, 0) / out.length;
       const avgDef = out.reduce((a, r) => a + r.def, 0) / out.length;
-      console.log(`${(build || 'mixed').padEnd(6)} ${d.padEnd(7)} 胜率 ${(wins / runs * 100).toFixed(1)}%  层数 ${avgFloor.toFixed(2)}  等级 ${avgLv.toFixed(1)}  遗物 ${avgRelics.toFixed(1)}  血上限 ${avgMaxHp.toFixed(0)}  攻 ${avgAtk.toFixed(1)}  防 ${avgDef.toFixed(1)}  操作 ${avgTurns.toFixed(0)}  受伤 ${avgDmg.toFixed(0)}  骚扰 ${avgAggro.toFixed(0)}(${(avgAggro / avgDmg * 100).toFixed(0)}%,${avgHits.toFixed(0)}次)  治疗 ${avgHeal.toFixed(0)}  识破 ${avgSolves.toFixed(2)}(旗${avgSolveFlags.toFixed(1)},完美${perfects})  卡死 ${stuck}  分布 ${JSON.stringify(hist)}`);
+      console.log(`${(build || 'mixed').padEnd(6)} ${d.padEnd(7)} 胜率 ${(wins / runs * 100).toFixed(1)}%  层数 ${avgFloor.toFixed(2)}  等级 ${avgLv.toFixed(1)}  遗物 ${avgRelics.toFixed(1)}  血上限 ${avgMaxHp.toFixed(0)}  攻 ${avgAtk.toFixed(1)}  防 ${avgDef.toFixed(1)}  操作 ${avgTurns.toFixed(0)}  受伤 ${avgDmg.toFixed(0)}  偷袭 ${avgAmbush.toFixed(1)}次  治疗 ${avgHeal.toFixed(0)}  识破 ${avgSolves.toFixed(2)}(旗${avgSolveFlags.toFixed(1)},完美${perfects})  卡死 ${stuck}  分布 ${JSON.stringify(hist)}`);
     }
   }
 }
