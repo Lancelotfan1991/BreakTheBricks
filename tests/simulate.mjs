@@ -75,28 +75,32 @@ function shopPass(s, build) {
     if (p.gold >= shopPrice(s, 'plate') + 20) { buy(s, 'plate'); continue; }
     if (build === 'reason' && p.scrolls < 2 && p.gold >= shopPrice(s, 'scroll') + 20) { buy(s, 'scroll'); continue; }
     if (p.potions < 2 && p.gold >= shopPrice(s, 'potion')) { buy(s, 'potion'); continue; }
+    if (p.gold >= shopPrice(s, 'relic') + 40) { buy(s, 'relic'); return; }
     break;
   }
 }
 
 const RELIC_PREF = ['momentum', 'strataOath', 'vow', 'dragonWard', 'ironStomach', 'vampiricEdge', 'heartEater',
-  'guardianBane', 'thornMail', 'recoilMail', 'alchemist', 'whetSoul', 'vigor', 'bannerLord',
-  'bannerBearer', 'siegeBreak', 'moraleBreak', 'spikeSoles', 'carefulStep', 'mint', 'deepPockets', 'greedyHeart',
-  'altarGrace', 'warPaint', 'prospector', 'torch', 'perfectMind', 'trapSalvage', 'tally', 'blastWave',
-  'cartographer', 'bloodPact', 'glassCannon', 'chronicle', 'bonePlate', 'rations'];
+  'guardianBane', 'thornMail', 'recoilMail', 'spikedMail', 'alchemist', 'whetSoul', 'vigor', 'bloodSac',
+  'ribguard', 'bannerLord', 'bannerBearer', 'pennant', 'siegeBreak', 'moraleBreak', 'spikeSoles', 'carefulStep',
+  'mint', 'lootSack', 'deepPockets', 'greedyHeart', 'altarGrace', 'warPaint', 'whetstone', 'prospector',
+  'torch', 'perfectMind', 'trapSalvage', 'tally', 'blastWave', 'cartographer', 'bloodPact', 'glassCannon',
+  'chronicle', 'bonePlate', 'rations', 'bombBag', 'powderKeg', 'fuse', 'forge', 'blastCharge', 'siegeBlast', 'bombCache'];
 
 // 两条构筑轴各自的取舍顺序：用来验证「专投一条」是否真的能通关，而不是只测混合抓取
 const BUILD_PREF = {
-  reason: ['bannerBearer', 'siegeBreak', 'moraleBreak', 'perfectMind', 'bannerLord', 'cartographer', 'tally',
-    'trapSalvage', 'chronicle', 'momentum', 'dragonWard', 'guardianBane', 'recoilMail', 'thornMail', 'whetSoul',
-    'vigor', 'ironStomach', 'vampiricEdge', 'bonePlate', 'rations', 'alchemist', 'mint', 'deepPockets',
-    'greedyHeart', 'altarGrace', 'warPaint', 'prospector', 'spikeSoles', 'carefulStep', 'blastWave', 'torch',
-    'strataOath', 'bloodPact', 'glassCannon', 'heartEater', 'vow'],
+  reason: ['bannerBearer', 'pennant', 'siegeBreak', 'moraleBreak', 'perfectMind', 'bannerLord', 'cartographer',
+    'tally', 'trapSalvage', 'chronicle', 'momentum', 'dragonWard', 'guardianBane', 'recoilMail', 'thornMail',
+    'spikedMail', 'whetSoul', 'whetstone', 'vigor', 'ironStomach', 'vampiricEdge', 'bonePlate', 'rations',
+    'lootSack', 'alchemist', 'mint', 'deepPockets', 'greedyHeart', 'altarGrace', 'warPaint', 'prospector',
+    'spikeSoles', 'carefulStep', 'blastWave', 'torch', 'bloodSac', 'ribguard', 'strataOath', 'bloodPact',
+    'glassCannon', 'heartEater', 'vow', 'bombBag', 'powderKeg', 'fuse', 'forge', 'blastCharge', 'siegeBlast', 'bombCache'],
   body: ['strataOath', 'recoilMail', 'vigor', 'vow', 'ironStomach', 'vampiricEdge', 'heartEater', 'dragonWard',
     'thornMail', 'guardianBane', 'momentum', 'alchemist', 'whetSoul', 'altarGrace', 'warPaint', 'bloodPact',
-    'glassCannon', 'bannerLord', 'bannerBearer', 'siegeBreak', 'moraleBreak', 'spikeSoles', 'carefulStep', 'mint',
-    'deepPockets', 'greedyHeart', 'prospector', 'perfectMind', 'blastWave', 'cartographer', 'trapSalvage',
-    'bonePlate', 'rations', 'tally', 'chronicle', 'torch'],
+    'glassCannon', 'bloodSac', 'ribguard', 'spikedMail', 'whetstone', 'lootSack', 'bannerLord', 'bannerBearer',
+    'siegeBreak', 'moraleBreak', 'spikeSoles', 'carefulStep', 'mint', 'deepPockets', 'greedyHeart', 'prospector',
+    'perfectMind', 'blastWave', 'cartographer', 'trapSalvage', 'bonePlate', 'rations', 'tally', 'chronicle',
+    'torch', 'pennant', 'bombBag', 'powderKeg', 'fuse', 'forge', 'blastCharge', 'siegeBlast', 'bombCache'],
 };
 
 function pickRelic(s, prefer) {
@@ -112,7 +116,7 @@ function pickRelic(s, prefer) {
     // 表外遗物给低分而不是 indexOf(-1) 反推出的最高分，否则新增遗物会被机器人当成首选
     let v = idx < 0 ? -5 : table.length - idx;
     if (hurt && ['ironStomach', 'vampiricEdge', 'alchemist', 'dragonWard', 'altarGrace', 'chronicle', 'rations', 'vow', 'heartEater'].includes(id)) v += 12;
-    if (!hurt && ['whetSoul', 'bloodPact', 'glassCannon', 'momentum', 'warPaint', 'heartEater', 'tally', 'trapSalvage', 'torch'].includes(id)) v += 8;
+    if (!hurt && ['whetSoul', 'whetstone', 'bloodPact', 'glassCannon', 'momentum', 'warPaint', 'heartEater', 'tally', 'trapSalvage', 'torch', 'lootSack'].includes(id)) v += 8;
     if (['bannerLord', 'bannerBearer', 'siegeBreak', 'moraleBreak'].includes(id)) v += 4; // 机器人会插旗，这几条不再是白板
     return v;
   };
@@ -156,6 +160,9 @@ export function playRun(difficulty, seed, verbose = false, prefer = null, build 
       const must = t.kind === 'elite' || t.kind === 'boss';
       if (!f.lethal && (f.take <= s.player.hp * 0.42 || must)) {
         run(attack, s.pendingCombat);
+      } else if (must && f.lethal && s.player.hp < s.player.maxHp && s.player.potions > 0) {
+        // 先回血再考虑炸弹：炸弹现在是固定伤害，补不掉的血只能靠药水补
+        run(usePotion);
       } else if (must && s.player.bombs > 0) {
         closePending(s); setMode(s, 'bomb'); run(tapTile, t.i);
       } else if (must && f.lethal) {

@@ -24,6 +24,10 @@ const el = {
   relicBar: $('#relicBar'), relicSlots: $('#relicSlots'),
   bossBar: $('#bossBar'), bossName: $('#bossName'), bossFill: $('#bossFill'),
   bossHp: $('#bossHp'), bossAtk: $('#bossAtk'), bossCdWrap: $('#bossCdWrap'), bossCd: $('#bossCd'),
+  battle: $('#battle'), btStage: $('#btStage'), btHero: $('#btHero'), btMob: $('#btMob'),
+  btMobIcon: $('#btMobIcon'), btMobName: $('#btMobName'), btHeroFill: $('#btHeroFill'),
+  btHeroHp: $('#btHeroHp'), btMobFill: $('#btMobFill'), btMobHp: $('#btMobHp'),
+  btFx: $('#btFx'), btKill: $('#btKill'),
 };
 
 let S = null;
@@ -424,7 +428,7 @@ function openCodex() {
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.codex.how')}</h3>
-      <p class="help-p">${tr('ui.codex.how.body', { draw: G.RELIC_DRAW_COUNT, max: G.RELIC_MAX_DRAWS, total: G.RELICS.length, floor: floorNow, odds: oddsAt(floorNow), maxFloor: G.MAX_FLOOR, deepOdds: oddsAt(G.MAX_FLOOR) })}</p>
+      <p class="help-p">${tr('ui.codex.how.body', { draw: G.RELIC_DRAW_COUNT, total: G.RELICS.length, floor: floorNow, odds: oddsAt(floorNow), maxFloor: G.MAX_FLOOR, deepOdds: oddsAt(G.MAX_FLOOR) })}</p>
     </div>
     ${groups}
     <div class="sheet-actions"><button class="btn btn-primary btn-lg" data-sheet="${back}">${S && S.relicChoices ? tr('ui.codex.back') : tr('ui.codex.close')}</button></div>`, !!(S && S.relicChoices));
@@ -517,10 +521,16 @@ function consume(events) {
       case 'kill': {
         const c = tileCenter(e.i);
         fx.shards(c.x, c.y); fx.ring(c.x, c.y, '#ff7a3d', 54);
-        fx.float(c.x, c.y - 18, '+' + e.mob.xp + ' XP', 'xp');
+        fx.float(c.x, c.y - 18, '+' + (e.xp ?? e.mob.xp) + ' XP', 'xp');
         audio.play('kill'); fx.haptic('medium');
         if (e.mob.elite || e.mob.boss) fx.shake(el.board);
         if (e.mob.boss) markBossFelled(e.mob);
+        break;
+      }
+      case 'mobHurt': {
+        const c = tileCenter(e.i);
+        fx.float(c.x, c.y - 10, '-' + e.amount, 'dmg');
+        fx.shake(el.board, 'heavy');
         break;
       }
       case 'combat': audio.play('swing'); fx.haptic('light'); break;
@@ -649,6 +659,116 @@ function closeSheet() {
 }
 function forceClose() { sheetLock = false; closeSheet(); }
 
+/* ─────────── 横版战斗演绎 ─────────── */
+// 只演绎 forecast() 已经算好的结果：刀数、承伤、回合数都不变，动画不参与任何判定。
+const motionReduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+let battleSeq = 0;
+
+function btFloat(node, text, cls) {
+  const s = el.btStage.getBoundingClientRect(), r = node.getBoundingClientRect();
+  const span = document.createElement('span');
+  span.className = 'bt-float ' + cls;
+  span.textContent = text;
+  span.style.left = `${r.left - s.left + r.width / 2}px`;
+  span.style.top = `${Math.max(0, r.top - s.top + r.height * 0.18)}px`;
+  el.btFx.appendChild(span);
+  setTimeout(() => span.remove(), 700);
+}
+
+function btReplay(node, cls) {
+  node.classList.remove(cls);
+  void node.offsetWidth;
+  node.classList.add(cls);
+}
+
+function runBattle(i, done) {
+  const t = S.tiles[i], m = t.mob, p = S.player;
+  const f = G.forecast(p, m);
+  if (motionReduced()) { done(); return; }
+  const seq = ++battleSeq;
+  const bo = el.battle;
+  busy = true;
+  bo.hidden = false;
+  bo.classList.toggle('boss', t.kind === 'boss');
+  el.btHero.className = 'fighter hero';
+  el.btMob.className = 'fighter mob' + (t.kind === 'boss' ? ' boss' : t.kind === 'elite' ? ' elite' : '');
+  el.btMobIcon.setAttribute('href', '#i-' + m.icon);
+  el.btMobName.textContent = G.mobName(m);
+  el.btKill.classList.remove('on');
+  el.btFx.innerHTML = '';
+  let heroHp = p.hp, mobHp = m.hp;
+  const paintHero = () => {
+    el.btHeroFill.style.transform = `scaleX(${Math.max(0, heroHp / p.maxHp)})`;
+    el.btHeroHp.textContent = `${Math.max(0, Math.round(heroHp))} / ${p.maxHp}`;
+  };
+  const paintMob = () => {
+    el.btMobFill.style.transform = `scaleX(${Math.max(0, mobHp / m.maxHp)})`;
+    el.btMobHp.textContent = `${Math.max(0, Math.round(mobHp))} / ${m.maxHp}`;
+  };
+  paintHero(); paintMob();
+  if (t.kind === 'boss') audio.play('boss'); else audio.play('swing');
+
+  const timers = [];
+  let finished = false;
+  const alive = () => !finished && seq === battleSeq && !bo.hidden;
+  const wait = (ms, fn) => timers.push(setTimeout(() => { if (alive()) fn(); }, ms));
+  const skip = () => { if (alive()) end(true); };
+  const end = (instant) => {
+    if (finished) return;
+    finished = true;
+    timers.forEach(clearTimeout);
+    bo.removeEventListener('pointerdown', skip);
+    if (instant) {
+      mobHp = 0;
+      heroHp = Math.max(0, p.hp - f.take);
+      paintMob(); paintHero();
+    }
+    bo.hidden = true;
+    busy = false;
+    done();
+  };
+  bo.addEventListener('pointerdown', skip);
+
+  const counters = Math.max(0, f.counters);
+  const shares = [];
+  for (let c = 1, acc = 0; c <= counters; c++) {
+    const upto = Math.round(f.take * c / counters);
+    shares.push(upto - acc);
+    acc = upto;
+  }
+  const rounds = Math.max(1, f.rounds);
+  const step = Math.max(110, Math.min(240, 1500 / (rounds * 2)));
+  let at = 60;
+  for (let r = 1; r <= rounds; r++) {
+    wait(at, () => btReplay(el.btHero, 'lunge-r'));
+    wait(at + 70, () => {
+      mobHp = r === rounds ? 0 : Math.max(0, mobHp - f.deal);
+      paintMob();
+      if (f.deal > 0) btFloat(el.btMob, '-' + f.deal, 'dmg');
+      if (r % 2 === 1) audio.play('swing');
+    });
+    if (r <= counters) {
+      const dmg = shares[r - 1] || 0;
+      wait(at + step, () => btReplay(el.btMob, 'lunge-l'));
+      if (dmg > 0) wait(at + step + 60, () => {
+        heroHp = Math.max(0, heroHp - dmg);
+        paintHero();
+        btFloat(el.btHero, '-' + dmg, 'hero-hit');
+        audio.play('hit');
+      });
+    }
+    at += step * 2;
+  }
+  wait(at + 30, () => {
+    btReplay(el.btMob, 'dying');
+    el.btKill.classList.add('on');
+    audio.play('kill');
+    fx.haptic('medium');
+    if (t.kind === 'boss' || t.kind === 'elite') fx.shake(el.board, t.kind === 'boss' ? 'heavy' : '');
+    wait(560, () => end(false));
+  });
+}
+
 function openCombat(i) {
   const t = S.tiles[i], m = t.mob, p = S.player;
   const f = G.forecast(p, m);
@@ -673,6 +793,9 @@ function openCombat(i) {
     ? `<div class="fc-row hurt"><span>${tr('ui.combat.aggro.row', { period: m.period })}</span><b>-${G.aggroDamage(p, m)}</b></div>
        <p class="fc-note danger">${tr('ui.combat.aggro.note', { cd: m.cd })}</p>`
     : '';
+  const bombRow = p.bombs > 0
+    ? `<div class="fc-row"><span>${tr('ui.combat.bombDmg')}</span><b>${G.bombDamage(S, m)}</b></div>`
+    : '';
   openSheet('combat', `
     <div class="sheet-head">
       <div><h2 class="sheet-title">${tr('ui.combat.title')}</h2><p class="sheet-sub">${tr('ui.combat.sub')}</p></div>
@@ -695,6 +818,7 @@ function openCombat(i) {
       ${thornRow}
       <div class="fc-row"><span>${tr('ui.combat.rounds')}</span><b>${f.rounds}</b></div>
       <div class="fc-row ${f.take ? 'hurt' : 'free'}"><span>${tr('ui.combat.take')}</span><b>${f.take}</b></div>
+      ${bombRow}
       ${aggroRow}
       <div class="fc-bar"><i class="fc-safe" style="width:${safePct}%"></i><i class="fc-loss" style="width:${lossPct}%"></i></div>
       ${note}
@@ -734,7 +858,7 @@ function openShop() {
     const can = p.gold >= price;
     return `<button class="opt" data-sheet="buy" data-id="${it.id}" ${can ? '' : 'disabled'}>
       <span class="opt-ic">${svg(it.icon)}</span>
-      <span class="opt-tx"><b>${G.shopName(it)}</b><span>${G.shopDesc(it)}</span></span>
+      <span class="opt-tx"><b>${G.shopName(it)}</b><span>${G.shopDesc(it, S)}</span></span>
       <span class="opt-price ${can ? '' : 'no'}">${svg('coin')}${price}</span>
     </button>`;
   }).join('');
@@ -769,6 +893,7 @@ function openHelp() {
     defCut: G.SOLVE_DEF_CUT, flagGold: G.SOLVE_FLAG_GOLD, perfectXp: G.SOLVE_PERFECT_XP,
     siege: G.RELIC_SIEGE_CAP, mindXp: G.RELIC_MIND_XP, mindDef: G.RELIC_MIND_DEF, survey: G.RELIC_SURVEY_CAP,
     elixir: G.SHOP_ELIXIR_HP, vigorStep: G.RELIC_VIGOR_STEP, strataDef: G.STRATA_DEF, strataHp: G.STRATA_HP,
+    bombDmg: G.BOMB_DAMAGE, powderDmg: G.RELIC_POWDER_DMG, forgeDmg: G.RELIC_FORGE_GROW,
   };
   openSheet('help', `
     <div class="sheet-head">
@@ -793,6 +918,7 @@ function openHelp() {
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.combat.h')}</h3>
       <p class="help-p">${tr('ui.help.combat.p', P)}</p>
+      <p class="help-p">${tr('ui.help.combat.bomb', P)}</p>
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.aggro.h')}</h3>
@@ -821,7 +947,7 @@ function openHelp() {
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.relic.h')}</h3>
-      <p class="help-p">${tr('ui.help.relic.p', { every: G.RELIC_EVERY, draws: G.RELIC_MAX_DRAWS, total: G.RELICS.length })}</p>
+      <p class="help-p">${tr('ui.help.relic.p', { every: G.RELIC_EVERY, total: G.RELICS.length })}</p>
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.legend.h')}</h3>
@@ -1087,11 +1213,21 @@ el.sheetBody.addEventListener('click', (e) => {
   switch (k) {
     case 'close': closeSheet(); break;
     case 'skip': G.closePending(S); saveRun(); closeSheet(); break;
-    case 'attack': { const i = +b.dataset.i; closeSheet(); apply(G.attack(S, i)); break; }
+    case 'attack': {
+      const i = +b.dataset.i;
+      closeSheet();
+      runBattle(i, () => apply(G.attack(S, i)));
+      break;
+    }
     case 'bomb': { const i = +b.dataset.i; closeSheet(); G.setMode(S, 'bomb'); apply(G.tapTile(S, i)); break; }
     case 'potion': { const i = +b.dataset.i; consume(G.usePotion(S)); render(); saveRun(); openCombat(i); break; }
     case 'altar': { const i = +b.dataset.i; closeSheet(); apply(G.altarChoose(S, i, b.dataset.choice)); break; }
-    case 'buy': { const evs = G.buy(S, b.dataset.id); consume(evs); render(); saveRun(); openShop(); break; }
+    case 'buy': {
+      const evs = G.buy(S, b.dataset.id);
+      if (S.relicChoices) apply(evs);
+      else { consume(evs); render(); saveRun(); openShop(); }
+      break;
+    }
     case 'relic': { const id = b.dataset.id; forceClose(); apply(G.chooseRelic(S, id)); break; }
     case 'codex': openCodex(); break;
     case 'relicBack': if (S && S.relicChoices) openRelicDraw(); else forceClose(); break;
@@ -1162,6 +1298,6 @@ window.__game = {
   tap: doTap, flag: doFlag,
   start: startRun, resume: resumeRun, toTitle,
   sheet: () => sheetKind,
-  closeSheet, openShop, openHelp, openCodex, openRelicDraw,
+  closeSheet, openShop, openHelp, openCodex, openRelicDraw, openCombat, battle: runBattle,
   setDifficulty: (d) => { difficulty = d; renderTitle(); },
 };

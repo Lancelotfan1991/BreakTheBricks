@@ -23,6 +23,7 @@ export const difficultyDesc = (d) => tr('difficulty.' + d.id + '.desc');
 // 两条构筑轴：推理流把「插对的旗」换成战力，体魄流把「生命上限」换成战力。
 // 所有加成都是确定性的加减，预演数字仍然等于实际结算。
 export const SHOP_ELIXIR_HP = 6;
+export const BOMB_DAMAGE = 60;         // 炸弹基础固定伤害：前期杂兵一发带走，后期精英与龙王炸不死
 export const SOLVE_DEF_CUT = 1;        // 识破基础收益：本层全体怪物防御 −1
 export const SOLVE_FLAG_GOLD = 4;      // 每面插对的旗换 4 金币
 export const SOLVE_PERFECT_XP = 15;    // 剩余威胁全部插旗（完美识破）的额外经验
@@ -44,10 +45,12 @@ export const SHOP = [
   { id: 'pouch', icon: 'flag', base: 25, step: 10 },
   { id: 'scroll', icon: 'scroll', base: 22, step: 6 },
   { id: 'bomb', icon: 'bomb', base: 40, step: 10 },
+  { id: 'relic', icon: 'relic', base: 80, step: 55 },
 ];
-const SHOP_PARAMS = { elixir: { hp: SHOP_ELIXIR_HP } };
+const SHOP_PARAMS = { elixir: { hp: SHOP_ELIXIR_HP }, bomb: { dmg: BOMB_DAMAGE } };
 export const shopName = (it) => tr('shop.' + it.id + '.name');
-export const shopDesc = (it) => tr('shop.' + it.id + '.desc', SHOP_PARAMS[it.id]);
+export const shopDesc = (it, s) =>
+  tr('shop.' + it.id + '.desc', it.id === 'bomb' && s ? { dmg: bombBase(s) } : SHOP_PARAMS[it.id]);
 
 // period＝这只怪自己的骚扰间隔（按操作回合数）。快而弱的咬得勤，慢而重的憋得久，
 // 于是「先杀谁」不再只是比伤害大小，而是比谁的节奏更迫近。
@@ -92,7 +95,19 @@ export const RELIC_CHRONICLE_HEAL = 0.15; // 编年史：完美识破回复生�
 export const RELIC_HEART_GAIN = 2;      // 噬心：每次击杀的生命上限成长
 export const RELIC_HEART_CAP = 10;      // 噬心：击杀累积的次数上限
 export const RELIC_PAINT_ATK = 2;       // 战纹：攻击加成
-export const RELIC_PAINT_DEF = 1;       // 战纹：防御代价
+export const RELIC_PAINT_HP = 4;        // 战纹：生命上限代价
+export const RELIC_WHETSTONE_ATK = 1;   // 磨刀石：永久攻击
+export const RELIC_RIB_DEF = 2;         // 护心骨：永久防御
+export const RELIC_BLOOD_SAC_HP = 8;    // 血囊：永久生命上限
+export const RELIC_SPIKED_THORNS = 2;   // 尖甲：反弹伤害
+export const RELIC_PENNANT_FLAGS = 2;   // 号旗：旗子上限
+export const RELIC_LOOT_SACK_GOLD = 3;  // 战利品袋：每次击杀额外金币
+export const RELIC_POWDER_DMG = 30;     // 火药桶：炸弹伤害 +30
+export const RELIC_BLAST_MUL = 2;       // 烈性炸药：炸弹伤害翻倍
+export const RELIC_SIEGE_MUL = 2;       // 破城雷管：对精英与龙王的炸弹伤害翻倍
+export const RELIC_FUSE_XP = 0.5;       // 引信：炸弹击杀额外经验
+export const RELIC_FORGE_GROW = 5;      // 锻膛：每次炸弹击杀，炸弹基础伤害永久 +5
+export const RELIC_BOMB_CACHE = 6;      // 军械箱：获得时立刻补充 6 枚炸弹
 export const RELIC_RATION_HEAL = 0.07;  // 干粮：下行额外回复
 export const RELIC_TORCH_GOLD = 15;     // 火把：炸弹清除目标的额外金币
 export const RELIC_TORCH_SHOP = 0.5;    // 火把：炸弹售价倍率
@@ -105,6 +120,7 @@ export const GREEDY_HEART_SHOP = 1.2;   // 贪婪之心：商店价格倍率
 
 // 越深越容易遇到高品质遗物。权重随层数连续漂移：
 // 第 1 层 60/30/10，第 30 层 30/45/30，中间平滑过渡。
+// 抽档与抽件分开掷，池子里增减同档遗物只改同类出场率，不会带偏整体曲线。
 export function relicRarityWeights(floor = 1) {
   const t = Math.max(0, Math.min(1, (floor - 1) / (MAX_FLOOR - 1)));
   return {
@@ -116,10 +132,11 @@ export function relicRarityWeights(floor = 1) {
 
 export const RELICS = [
   { id: 'spikeSoles', icon: 'boot', cat: 'explore', rarity: 'common' },
-  { id: 'carefulStep', icon: 'hand', cat: 'explore', rarity: 'rare' },
+  { id: 'carefulStep', icon: 'hand', cat: 'explore', rarity: 'common' },
   { id: 'trapSalvage', icon: 'coin', cat: 'explore', rarity: 'common' },
   { id: 'tally', icon: 'tally', cat: 'explore', rarity: 'common' },
-  { id: 'blastWave', icon: 'bomb', cat: 'explore', rarity: 'rare' },
+  { id: 'pennant', icon: 'flag', cat: 'explore', rarity: 'common' },
+  { id: 'blastWave', icon: 'bomb', cat: 'explore', rarity: 'common' },
   { id: 'bannerLord', icon: 'flag', cat: 'explore', rarity: 'rare' },
   { id: 'bannerBearer', icon: 'flag', cat: 'explore', rarity: 'rare' },
   { id: 'cartographer', icon: 'scroll', cat: 'explore', rarity: 'rare' },
@@ -127,11 +144,16 @@ export const RELICS = [
   { id: 'perfectMind', icon: 'eye', cat: 'explore', rarity: 'epic' },
 
   { id: 'thornMail', icon: 'shield', cat: 'combat', rarity: 'common' },
+  { id: 'whetstone', icon: 'sword', cat: 'combat', rarity: 'common' },
+  { id: 'ribguard', icon: 'shield', cat: 'combat', rarity: 'common' },
+  { id: 'bloodSac', icon: 'heart', cat: 'combat', rarity: 'common' },
+  { id: 'spikedMail', icon: 'shield', cat: 'combat', rarity: 'common' },
   { id: 'dragonWard', icon: 'dragon', cat: 'combat', rarity: 'rare' },
   { id: 'guardianBane', icon: 'key', cat: 'combat', rarity: 'rare' },
   { id: 'vampiricEdge', icon: 'fang', cat: 'combat', rarity: 'common' },
-  { id: 'heartEater', icon: 'fang', cat: 'combat', rarity: 'common' },
-  { id: 'warPaint', icon: 'paint', cat: 'combat', rarity: 'rare' },
+  { id: 'heartEater', icon: 'fang', cat: 'combat', rarity: 'rare' },
+  { id: 'fuse', icon: 'fuse', cat: 'combat', rarity: 'rare' },
+  { id: 'warPaint', icon: 'paint', cat: 'combat', rarity: 'common' },
   { id: 'momentum', icon: 'sparkle', cat: 'combat', rarity: 'epic' },
   { id: 'bonePlate', icon: 'shield', cat: 'combat', rarity: 'epic' },
   { id: 'whetSoul', icon: 'sword', cat: 'combat', rarity: 'rare' },
@@ -143,11 +165,18 @@ export const RELICS = [
   { id: 'ironStomach', icon: 'flask', cat: 'supply', rarity: 'common' },
   { id: 'alchemist', icon: 'potion', cat: 'supply', rarity: 'rare' },
   { id: 'mint', icon: 'coin', cat: 'supply', rarity: 'common' },
+  { id: 'lootSack', icon: 'coin', cat: 'supply', rarity: 'common' },
   { id: 'deepPockets', icon: 'chest', cat: 'supply', rarity: 'common' },
   { id: 'torch', icon: 'torch', cat: 'supply', rarity: 'common' },
   { id: 'altarGrace', icon: 'altar', cat: 'supply', rarity: 'rare' },
-  { id: 'rations', icon: 'bread', cat: 'supply', rarity: 'rare' },
+  { id: 'rations', icon: 'bread', cat: 'supply', rarity: 'common' },
   { id: 'prospector', icon: 'eye', cat: 'supply', rarity: 'common' },
+  { id: 'powderKeg', icon: 'keg', cat: 'supply', rarity: 'common' },
+  { id: 'bombBag', icon: 'bag', cat: 'supply', rarity: 'common' },
+  { id: 'bombCache', icon: 'chest', cat: 'supply', rarity: 'common' },
+  { id: 'blastCharge', icon: 'bomb', cat: 'supply', rarity: 'rare' },
+  { id: 'siegeBlast', icon: 'flask', cat: 'supply', rarity: 'epic' },
+  { id: 'forge', icon: 'flame', cat: 'supply', rarity: 'rare' },
 
   { id: 'bloodPact', icon: 'heart', cat: 'pact', rarity: 'epic' },
   { id: 'glassCannon', icon: 'crown', cat: 'pact', rarity: 'epic' },
@@ -174,7 +203,19 @@ const RELIC_PARAMS = {
   recoilMail: { n: RELIC_RECOIL },
   vigor: { step: RELIC_VIGOR_STEP },
   heartEater: { gain: RELIC_HEART_GAIN, hp: RELIC_HEART_GAIN * RELIC_HEART_CAP },
-  warPaint: { atk: RELIC_PAINT_ATK, def: RELIC_PAINT_DEF },
+  warPaint: { atk: RELIC_PAINT_ATK, hp: RELIC_PAINT_HP },
+  whetstone: { atk: RELIC_WHETSTONE_ATK },
+  ribguard: { def: RELIC_RIB_DEF },
+  bloodSac: { hp: RELIC_BLOOD_SAC_HP },
+  spikedMail: { n: RELIC_SPIKED_THORNS },
+  pennant: { n: RELIC_PENNANT_FLAGS },
+  lootSack: { gold: RELIC_LOOT_SACK_GOLD },
+  powderKeg: { dmg: RELIC_POWDER_DMG },
+  blastCharge: { mul: RELIC_BLAST_MUL },
+  siegeBlast: { mul: RELIC_SIEGE_MUL },
+  bombCache: { n: RELIC_BOMB_CACHE },
+  fuse: { pct: Math.round(RELIC_FUSE_XP * 100) },
+  forge: { n: RELIC_FORGE_GROW },
   bonePlate: { step: RELIC_PLATE_STEP, cap: RELIC_PLATE_CAP },
   torch: { gold: RELIC_TORCH_GOLD },
   rations: { pct: Math.round(RELIC_RATION_HEAL * 100) },
@@ -313,7 +354,7 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
     bought: {},
     relics: [],
     relicChoices: null,
-    relicState: { whet: 0, firstKill: false, trapWard: 0, survey: 0, heart: 0 },
+    relicState: { whet: 0, firstKill: false, trapWard: 0, survey: 0, heart: 0, bombForge: 0 },
     hasKey: false,
     stairsFound: false,
     stairsIndex: -1,
@@ -782,35 +823,35 @@ function tapInner(s, i) {
 
   if (s.mode === 'bomb') {
     if (!t.revealed || !isThreat(t) || t.used) { say(s, 'log.bomb.invalid', 'warn'); return free; }
+    // 固定伤害打在所有会挡住路的威胁上：血少的杂兵一发带走，精英与龙王要好几枚
+    const wasMob = !!t.mob && t.mob.hp > 0;
+    const dmg = wasMob ? bombDamage(s, t.mob) : 0;
     s.player.bombs--;
     s.mode = 'explore';
-    t.used = true;
-    const wasMob = !!t.mob && t.mob.hp > 0;
-    if (t.mob) t.mob.hp = 0;
     ev(out, 'bomb', { i });
-    say(s, 'log.bomb.hit', { target: wasMob ? ref('mob.' + t.mob.id + '.name') : ref('tile.trap') }, 'magic');
     if (hasRelic(s, 'torch')) {
       const got = addGold(s, RELIC_TORCH_GOLD, out);
       say(s, 'log.torch', { gold: got }, 'good');
     }
-    if (hasRelic(s, 'blastWave')) {
-      let swept = 0;
-      for (const j of neighbors(i)) {
-        const nt = s.tiles[j];
-        if (nt.kind !== 'trap' || nt.used) continue;
-        if (nt.flagged) { nt.flagged = false; s.flags--; }
-        nt.used = true; nt.revealed = true; swept++;
-        ev(out, 'disarm', { i: j });
-      }
-      if (swept) say(s, 'log.bomb.wave', { n: swept }, 'magic');
+    if (hasRelic(s, 'blastWave')) sweepTraps(s, i, out);
+    if (!wasMob) {
+      t.used = true;
+      say(s, 'log.bomb.hit', { target: ref('tile.trap') }, 'magic');
+      return { out, spent: true };
     }
-    if (t.kind === 'elite') {
-      s.hasKey = true;
-      say(s, 'log.bomb.key', 'good');
-      ev(out, 'key', { i });
-      if (isRelicFloor(s.floor)) offerRelics(s, out);
+    t.mob.hp = Math.max(0, t.mob.hp - dmg);
+    t.mob.awake = true;
+    if (t.mob.cd == null) t.mob.cd = t.mob.period;
+    ev(out, 'mobHurt', { i, amount: dmg });
+    // 固定伤害：砸得死就按正常击杀结算（经验、金币、击杀类遗物），砸不死就只削血
+    if (t.mob.hp <= 0) {
+      const xp = killMob(s, t, out, { bomb: true });
+      say(s, 'log.bomb.kill', { mob: ref('mob.' + t.mob.id + '.name'), xp }, 'good');
+      if (hasRelic(s, 'forge')) say(s, 'log.forge', { n: RELIC_FORGE_GROW, dmg: bombBase(s) }, 'magic');
+      if (t.kind === 'boss') return { out: defeatBoss(s, out), spent: true };
+    } else {
+      say(s, 'log.bomb.wound', { mob: ref('mob.' + t.mob.id + '.name'), dmg, hp: t.mob.hp }, 'bad');
     }
-    if (t.kind === 'boss') return { out: defeatBoss(s, out), spent: false };
     return { out, spent: true };
   }
 
@@ -887,26 +928,45 @@ export function chord(s, i) {
   return finish(s, out);
 }
 
-export function attack(s, i) {
-  const out = [];
-  if (s.status !== 'playing') return out;
-  const t = s.tiles[i];
-  if (!t || !t.mob || t.mob.hp <= 0) return out;
-  const p = s.player;
-  const f = forecast(p, t.mob);
-  s.pendingCombat = -1;
-  if (f.lethal) { say(s, 'log.attack.lethal', 'bad'); ev(out, 'blocked', { i }); return out; }
-  s.stats.turns++;
-  ev(out, 'combat', { i, rounds: f.rounds, take: f.take, deal: f.deal });
-  if (f.take > 0) hurt(s, f.take, out, 'mob', i, t.mob.id);
-  if (s.status !== 'playing') return out;
-  t.mob.hp = 0;
+// 冲击波遗物：炸开一处后，连带掀掉四周还没触发的陷坑。
+function sweepTraps(s, i, out) {
+  let swept = 0;
+  for (const j of neighbors(i)) {
+    const nt = s.tiles[j];
+    if (nt.kind !== 'trap' || nt.used) continue;
+    if (nt.flagged) { nt.flagged = false; s.flags--; }
+    nt.used = true; nt.revealed = true; swept++;
+    ev(out, 'disarm', { i: j });
+  }
+  if (swept) say(s, 'log.bomb.wave', { n: swept }, 'magic');
+}
+
+// 炸弹的固定伤害：基础 60（锻膛可永久成长），遗物按「加算在前、乘算在后」叠。
+// 杂兵血量低时一发带走；精英与龙王血厚，只能一枚枚削。
+export function bombBase(s) {
+  return BOMB_DAMAGE + (hasRelic(s, 'forge') ? s.relicState.bombForge || 0 : 0);
+}
+
+export function bombDamage(s, mob) {
+  let dmg = bombBase(s);
+  if (hasRelic(s, 'powderKeg')) dmg += RELIC_POWDER_DMG;
+  if (hasRelic(s, 'blastCharge')) dmg *= RELIC_BLAST_MUL;
+  if ((mob.elite || mob.boss) && hasRelic(s, 'siegeBlast')) dmg *= RELIC_SIEGE_MUL;
+  return dmg;
+}
+
+// 击杀结算集中在一处：普攻与炸弹共用同一套经验、金币与击杀类遗物，
+// 炸弹杀死的敌人不会变成「不算击杀」的黑洞。
+function killMob(s, t, out, opts = {}) {
+  const p = s.player, m = t.mob;
+  m.hp = 0;
   t.used = true;
   s.stats.kills++;
-  say(s, 'log.kill', { mob: ref('mob.' + t.mob.id + '.name'), rounds: f.rounds, take: f.take, xp: t.mob.xp }, 'good');
-  ev(out, 'kill', { i, mob: t.mob });
-  addGold(s, t.mob.gold, out);
-  gainXp(s, t.mob.xp, out);
+  const xp = Math.round(m.xp * (opts.bomb && hasRelic(s, 'fuse') ? 1 + RELIC_FUSE_XP : 1));
+  ev(out, 'kill', { i: t.i, mob: m, xp });
+  if (opts.bomb && hasRelic(s, 'forge')) s.relicState.bombForge = (s.relicState.bombForge || 0) + RELIC_FORGE_GROW;
+  addGold(s, m.gold + (hasRelic(s, 'lootSack') ? RELIC_LOOT_SACK_GOLD : 0), out);
+  gainXp(s, xp, out);
   if (hasRelic(s, 'momentum') && !s.relicState.firstKill) { s.relicState.firstKill = true; syncRelicMods(s); }
   if (hasRelic(s, 'vampiricEdge')) heal(s, 4, out);
   if (hasRelic(s, 'heartEater') && s.relicState.heart < RELIC_HEART_CAP) {
@@ -924,9 +984,27 @@ export function attack(s, i) {
   if (t.kind === 'elite') {
     s.hasKey = true;
     say(s, 'log.key', 'magic');
-    ev(out, 'key', { i });
+    ev(out, 'key', { i: t.i });
     if (isRelicFloor(s.floor)) offerRelics(s, out);
   }
+  return xp;
+}
+
+export function attack(s, i) {
+  const out = [];
+  if (s.status !== 'playing') return out;
+  const t = s.tiles[i];
+  if (!t || !t.mob || t.mob.hp <= 0) return out;
+  const p = s.player;
+  const f = forecast(p, t.mob);
+  s.pendingCombat = -1;
+  if (f.lethal) { say(s, 'log.attack.lethal', 'bad'); ev(out, 'blocked', { i }); return out; }
+  s.stats.turns++;
+  ev(out, 'combat', { i, rounds: f.rounds, take: f.take, deal: f.deal });
+  if (f.take > 0) hurt(s, f.take, out, 'mob', i, t.mob.id);
+  if (s.status !== 'playing') return out;
+  const xp = killMob(s, t, out);
+  say(s, 'log.kill', { mob: ref('mob.' + t.mob.id + '.name'), rounds: f.rounds, take: f.take, xp }, 'good');
   if (t.kind === 'boss') {
     const beaten = defeatBoss(s, out);
     if (s.status !== 'playing') return beaten;
@@ -961,6 +1039,7 @@ export function buy(s, id) {
   if (s.status !== 'playing') return out;
   const item = SHOP.find((x) => x.id === id);
   if (!item) return out;
+  if (id === 'relic' && s.relics.length >= RELICS.length) { say(s, 'log.relic.soldout', 'warn'); ev(out, 'deny'); return out; }
   const price = shopPrice(s, id);
   if (s.player.gold < price) { say(s, 'log.no.gold', 'warn'); ev(out, 'deny'); return out; }
   s.player.gold -= price;
@@ -975,6 +1054,7 @@ export function buy(s, id) {
   if (id === 'bomb') p.bombs++;
   say(s, 'log.buy', { item: ref('shop.' + item.id + '.name'), price }, 'good');
   ev(out, 'buy', { id, price });
+  if (id === 'relic') offerRelics(s, out);
   return out;
 }
 
@@ -1054,6 +1134,7 @@ export function tryDescend(s) {
     }
   }
   if (hasRelic(s, 'alchemist') && s.floor % 2 === 0) { s.player.potions++; say(s, 'log.alchemist', 'good'); ev(out, 'item', { item: 'potion' }); }
+  if (hasRelic(s, 'bombBag')) { s.player.bombs++; say(s, 'log.bombBag', 'good'); ev(out, 'item', { item: 'bomb' }); }
   if (hasRelic(s, 'strataOath')) {
     s.player.def += STRATA_DEF;
     s.player.maxHp += STRATA_HP;
@@ -1095,7 +1176,7 @@ function syncRelicMods(s) {
     + (hasRelic(s, 'bonePlate') ? Math.min(RELIC_PLATE_CAP, Math.floor(p.maxHp / RELIC_PLATE_STEP)) : 0);
   p.eliteTakeMul = hasRelic(s, 'guardianBane') ? 0.6 : 1;
   p.freeKill = hasRelic(s, 'momentum') && !s.relicState.firstKill;
-  p.thorns = hasRelic(s, 'recoilMail') ? RELIC_RECOIL : 0;
+  p.thorns = (hasRelic(s, 'recoilMail') ? RELIC_RECOIL : 0) + (hasRelic(s, 'spikedMail') ? RELIC_SPIKED_THORNS : 0);
   // 血气方刚是派生值：按 maxHp 重算目标加成，只写回差额，重复同步才不会越叠越多
   const want = hasRelic(s, 'vigor') ? Math.floor(p.maxHp / RELIC_VIGOR_STEP) : 0;
   p.atk += want - p.atkBonus;
@@ -1103,10 +1184,15 @@ function syncRelicMods(s) {
 }
 
 function takeWeighted(s, pool, weights) {
-  const total = pool.reduce((a, r) => a + weights[r.rarity], 0);
+  // 先按稀有度掷一次档位，再在档内等概率取件：
+  // 这样增减同档遗物只影响同类内部出场率，不会把整体稀有度曲线带偏。
+  const tiers = ['common', 'rare', 'epic'].filter((r) => pool.some((x) => x.rarity === r));
+  const ws = tiers.map((r) => weights[r]);
+  const total = ws.reduce((a, b) => a + b, 0);
   let x = rand(s) * total, k = 0;
-  while (k < pool.length - 1 && x >= weights[pool[k].rarity]) { x -= weights[pool[k].rarity]; k++; }
-  return pool.splice(k, 1)[0];
+  while (k < tiers.length - 1 && x >= ws[k]) { x -= ws[k]; k++; }
+  const cand = pool.filter((r) => r.rarity === tiers[k]);
+  return pool.splice(pool.indexOf(cand[Math.floor(rand(s) * cand.length)]), 1)[0];
 }
 
 function rollRelicChoices(s) {
@@ -1133,7 +1219,11 @@ export function chooseRelic(s, id) {
   s.relics.push(id);
   if (id === 'bloodPact') { p.atk += 4; p.maxHp = Math.max(8, p.maxHp - 8); p.hp = Math.min(p.hp, p.maxHp); }
   if (id === 'glassCannon') p.atk += 6;
-  if (id === 'warPaint') { p.atk += RELIC_PAINT_ATK; p.def = Math.max(0, p.def - RELIC_PAINT_DEF); }
+  if (id === 'warPaint') { p.atk += RELIC_PAINT_ATK; p.maxHp = Math.max(8, p.maxHp - RELIC_PAINT_HP); p.hp = Math.min(p.hp, p.maxHp); }
+  if (id === 'whetstone') p.atk += RELIC_WHETSTONE_ATK;
+  if (id === 'ribguard') p.def += RELIC_RIB_DEF;
+  if (id === 'bloodSac') { p.maxHp += RELIC_BLOOD_SAC_HP; p.hp = Math.min(p.maxHp, p.hp + RELIC_BLOOD_SAC_HP); }
+  if (id === 'pennant') s.flagBonus += RELIC_PENNANT_FLAGS;
   if (id === 'vow') {
     p.maxHp += RELIC_VOW_HP;
     p.hp = Math.min(p.maxHp, p.hp + RELIC_VOW_HP);
@@ -1142,6 +1232,10 @@ export function chooseRelic(s, id) {
   }
   if (id === 'carefulStep') s.relicState.trapWard = RELIC_WARD_CHARGES;
   if (id === 'bannerBearer') s.flagBonus += RELIC_FLAG_BONUS;
+  if (id === 'bombCache') {
+    p.bombs += RELIC_BOMB_CACHE;
+    say(s, 'log.bombCache', { n: RELIC_BOMB_CACHE }, 'good');
+  }
   syncRelicMods(s);
   const r = relicById(id);
   say(s, 'log.relic.gain', { name: ref('relic.' + r.id + '.name'), desc: ref('relic.' + r.id + '.desc', RELIC_PARAMS[r.id]) }, 'magic');

@@ -628,12 +628,12 @@ function grant(s, id) {
 const hiddenThreats = (s) => s.tiles.filter((t) => !t.revealed && ['monster', 'elite', 'trap', 'boss'].includes(t.kind));
 function atFloor(s, f) { s.floor = f; G.buildFloor(s); G.tapTile(s, 30); G.closePending(s); return s; }
 
-test('遗物表完整：36 件、id 唯一、分类与稀有度合法', () => {
-  assert.equal(G.RELICS.length, 36);
-  assert.equal(new Set(G.RELICS.map((r) => r.id)).size, 36);
+test('遗物表完整：49 件、id 唯一、分类与稀有度合法', () => {
+  assert.equal(G.RELICS.length, 49);
+  assert.equal(new Set(G.RELICS.map((r) => r.id)).size, 49);
   const byRarity = {};
   for (const r of G.RELICS) byRarity[r.rarity] = (byRarity[r.rarity] || 0) + 1;
-  assert.deepEqual(byRarity, { common: 11, rare: 18, epic: 7 }, '三档稀有度都要有足够的池子');
+  assert.deepEqual(byRarity, { common: 23, rare: 18, epic: 8 }, '稀有度应呈普通多、史诗少的金字塔');
   for (const r of G.RELICS) {
     assert.ok(G.RELIC_CATS.includes(r.cat), `${r.id} 分类非法`);
     assert.ok(G.RELIC_RARITY[r.rarity], `${r.id} 稀有度非法`);
@@ -666,6 +666,26 @@ test('稀有度随深度漂移：越深越容易抽到高品质遗物', () => {
   };
   const shallow = epicShare(1), deep = epicShare(G.MAX_FLOOR);
   assert.ok(deep > shallow * 1.6, `深层史诗比例应显著更高（${deep.toFixed(3)} vs ${shallow.toFixed(3)}）`);
+});
+
+test('稀有度按档位权重抽取：实际比例贴合 60/30/10，而不是被各档件数带偏', () => {
+  const shareAt = (floor) => {
+    const bag = { common: 0, rare: 0, epic: 0 };
+    let all = 0;
+    for (let seed = 1; seed <= 200; seed++) {
+      const s = G.createRun('normal', seed);
+      s.floor = floor;
+      G.offerRelics(s, []);
+      for (const id of s.relicChoices) { bag[G.relicById(id).rarity]++; all++; }
+    }
+    return { common: bag.common / all, rare: bag.rare / all, epic: bag.epic / all };
+  };
+  // 普通有 20 件、稀有 15 件：若按件数加权，普通占比会被抬到 70% 左右
+  const s1 = shareAt(1);
+  assert.ok(Math.abs(s1.common - 0.6) < 0.05, `浅层普通占比应接近 60%（实际 ${(s1.common * 100).toFixed(1)}%）`);
+  assert.ok(Math.abs(s1.rare - 0.3) < 0.05, `浅层稀有占比应接近 30%（实际 ${(s1.rare * 100).toFixed(1)}%）`);
+  const s30 = shareAt(G.MAX_FLOOR);
+  assert.ok(Math.abs(s30.epic - 0.3) < 0.06, `深层史诗占比应接近 30%（实际 ${(s30.epic * 100).toFixed(1)}%）`);
 });
 
 test('结绳：识破时每面插对的旗额外换经验', () => {
@@ -715,12 +735,59 @@ test('噬心：击杀累积生命上限，封顶后不再增长', () => {
   assert.equal(s.player.maxHp, max0 + G.RELIC_HEART_GAIN * G.RELIC_HEART_CAP);
 });
 
-test('战纹：攻击 +2、防御 −1', () => {
+test('战纹：攻击 +2，生命上限 −4', () => {
   const s = fresh('normal', 107);
-  const atk0 = s.player.atk, def0 = s.player.def;
+  const atk0 = s.player.atk, max0 = s.player.maxHp;
   grant(s, 'warPaint');
   assert.equal(s.player.atk, atk0 + G.RELIC_PAINT_ATK);
-  assert.equal(s.player.def, def0 - G.RELIC_PAINT_DEF);
+  assert.equal(s.player.maxHp, max0 - G.RELIC_PAINT_HP);
+  assert.ok(s.player.hp <= s.player.maxHp, '当前生命不能超过新上限');
+});
+
+test('普通平地件：磨刀石 +1 攻、护心骨 +1 防、血囊 +6 生命上限', () => {
+  const s = fresh('normal', 109);
+  const atk0 = s.player.atk, def0 = s.player.def;
+  s.player.hp = s.player.maxHp - 10;
+  const max0 = s.player.maxHp, cur0 = s.player.hp;
+  grant(s, 'whetstone');
+  grant(s, 'ribguard');
+  grant(s, 'bloodSac');
+  assert.equal(s.player.atk, atk0 + G.RELIC_WHETSTONE_ATK);
+  assert.equal(s.player.def, def0 + G.RELIC_RIB_DEF);
+  assert.equal(s.player.maxHp, max0 + G.RELIC_BLOOD_SAC_HP);
+  assert.equal(s.player.hp, cur0 + G.RELIC_BLOOD_SAC_HP, '血囊同时回满新增的上限');
+});
+
+test('尖甲：反弹 1 点，与反震甲线性叠加', () => {
+  const s = fresh('normal', 110);
+  grant(s, 'spikedMail');
+  assert.equal(s.player.thorns, G.RELIC_SPIKED_THORNS);
+  grant(s, 'recoilMail');
+  assert.equal(s.player.thorns, G.RELIC_RECOIL + G.RELIC_SPIKED_THORNS);
+});
+
+test('号旗：旗子上限 +1，可与旗手纹章叠加', () => {
+  const s = fresh('normal', 111);
+  const base = G.flagCap(s);
+  grant(s, 'pennant');
+  assert.equal(G.flagCap(s), base + G.RELIC_PENNANT_FLAGS);
+  grant(s, 'bannerBearer');
+  assert.equal(G.flagCap(s), base + G.RELIC_PENNANT_FLAGS + G.RELIC_FLAG_BONUS);
+});
+
+test('战利品袋：每次击杀额外获得固定金币', () => {
+  const s = fresh('normal', 112);
+  grant(s, 'lootSack');
+  s.player.atk = 9999;
+  atFloor(s, 3);
+  const t = find(s, 'monster')[0];
+  s.player.hp = s.player.maxHp;
+  G.tapTile(s, t.i);
+  const gold0 = s.player.gold;
+  const evs = G.attack(s, s.pendingCombat);
+  const gained = evs.filter((e) => e.type === 'gold').reduce((a, e) => a + e.amount, 0);
+  assert.equal(gained, t.mob.gold + G.RELIC_LOOT_SACK_GOLD);
+  assert.equal(s.player.gold, gold0 + gained);
 });
 
 test('骨甲：按生命上限派生固定减伤，封顶后不再增长', () => {
@@ -763,8 +830,9 @@ test('火把：炸弹清除目标额外获得金币，炸弹售价减半', () =>
   s.player.bombs = 1;
   G.setMode(s, 'bomb');
   const gold0 = s.player.gold;
+  const loot = t.mob.gold;
   G.tapTile(s, t.i);
-  assert.equal(s.player.gold, gold0 + G.RELIC_TORCH_GOLD);
+  assert.equal(s.player.gold, gold0 + loot + G.RELIC_TORCH_GOLD, '火把额外金币之外，击杀金币照常结算');
 });
 
 test('静默誓约：生命上限 +30、防御 +3、攻击 −2，不再惩罚治疗', () => {
@@ -1288,6 +1356,7 @@ test('钥匙守卫：攻击与炸弹两条路径都必定掉钥匙，不存在�
 
       const b = mk();
       b.player.bombs = 3;
+      b.relics.push('powderKeg', 'blastCharge', 'siegeBlast');
       b.tiles[gi].revealed = true;
       G.setMode(b, 'bomb');
       G.tapTile(b, gi);
@@ -1295,6 +1364,159 @@ test('钥匙守卫：攻击与炸弹两条路径都必定掉钥匙，不存在�
       assert.equal(G.remainingThreats(a), G.remainingThreats(b), '两条路径清掉的威胁数一致');
     }
   }
+});
+
+test('炸弹对龙王造成固定伤害：炸不死只削血，炸得死就正常击杀', () => {
+  const s = atFloor(G.createRun('normal', 303), 10);
+  const boss = find(s, 'boss')[0];
+  boss.mob.hp = boss.mob.maxHp = 150;
+  s.player.hp = s.player.maxHp = 99999;
+  s.player.bombs = 9;
+  G.setMode(s, 'bomb');
+
+  const bom0 = s.player.bombs;
+  G.tapTile(s, boss.i);
+  assert.equal(boss.mob.hp, 150 - G.BOMB_DAMAGE, '固定 60 点伤害，不随生命上限浮动');
+  assert.equal(s.player.bombs, bom0 - 1);
+  assert.equal(boss.used, false, '没炸死时龙王仍在');
+  assert.equal(boss.mob.awake, true, '被炸的龙王立即醒着计时');
+  assert.equal(s.mode, 'explore');
+
+  for (let k = 0; k < 3 && boss.mob.hp > 0; k++) { G.setMode(s, 'bomb'); G.tapTile(s, boss.i); }
+  assert.equal(boss.mob.hp, 0, '固定伤害可以累计炸死龙王');
+  assert.equal(boss.used, true);
+  assert.equal(s.bossDown, true, '炸死龙王同样解封阶梯');
+});
+
+test('炸弹遗物：+30、翻倍、对精英与龙王翻倍', () => {
+  const s = G.createRun('normal', 303);
+  const mob = { hp: 500, maxHp: 500, elite: false, boss: false };
+  const elite = { ...mob, elite: true };
+  const boss = { ...mob, boss: true };
+  assert.equal(G.bombDamage(s, mob), G.BOMB_DAMAGE);
+  s.relics.push('powderKeg');
+  assert.equal(G.bombDamage(s, mob), G.BOMB_DAMAGE + G.RELIC_POWDER_DMG, '火药桶 +30');
+  s.relics.push('blastCharge');
+  assert.equal(G.bombDamage(s, mob), (G.BOMB_DAMAGE + G.RELIC_POWDER_DMG) * G.RELIC_BLAST_MUL, '烈性炸药翻倍');
+  assert.equal(G.bombDamage(s, elite), (G.BOMB_DAMAGE + G.RELIC_POWDER_DMG) * G.RELIC_BLAST_MUL, '未持破城雷管时精英不翻倍');
+  s.relics.push('siegeBlast');
+  assert.equal(G.bombDamage(s, elite), (G.BOMB_DAMAGE + G.RELIC_POWDER_DMG) * G.RELIC_BLAST_MUL * G.RELIC_SIEGE_MUL, '破城雷管对精英翻倍');
+  assert.equal(G.bombDamage(s, boss), (G.BOMB_DAMAGE + G.RELIC_POWDER_DMG) * G.RELIC_BLAST_MUL * G.RELIC_SIEGE_MUL, '破城雷管对龙王翻倍');
+  assert.equal(G.bombDamage(s, mob), (G.BOMB_DAMAGE + G.RELIC_POWDER_DMG) * G.RELIC_BLAST_MUL, '破城雷管不影响普通怪');
+});
+
+test('炸弹对普通怪也只造成固定伤害', () => {
+  const s = atFloor(G.createRun('normal', 808), 19);
+  s.player.hp = s.player.maxHp = 99999;
+  s.player.bombs = 3;
+
+  const mob = find(s, 'monster')[0];
+  mob.mob.hp = mob.mob.maxHp = 999;
+  mob.revealed = true;
+  G.setMode(s, 'bomb');
+  G.tapTile(s, mob.i);
+  assert.equal(mob.used, false, '血厚的普通怪一发炸不死');
+  assert.equal(mob.mob.hp, 999 - G.bombDamage(s, mob.mob), '普通怪同样只吃固定伤害');
+
+  mob.mob.hp = 10;
+  G.setMode(s, 'bomb');
+  G.tapTile(s, mob.i);
+  assert.equal(mob.used, true, '血量低于伤害时照常一发带走');
+});
+
+test('锻膛：炸弹击杀永久提高基础伤害，普攻击杀不涨', () => {
+  const s = atFloor(G.createRun('normal', 919), 5);
+  grant(s, 'forge');
+  const mob = find(s, 'monster')[0];
+  mob.revealed = true;
+  s.player.hp = s.player.maxHp = 99999;
+  s.player.bombs = 3;
+  const base0 = G.bombDamage(s, mob.mob);
+  G.setMode(s, 'bomb');
+  G.tapTile(s, mob.i);
+  assert.equal(mob.used, true);
+  assert.equal(G.bombDamage(s, mob.mob), base0 + G.RELIC_FORGE_GROW, '炸弹击杀后基础伤害 +5');
+
+  const next = s.tiles.find((t) => t.kind === 'monster' && t.mob && t.mob.hp > 0);
+  next.mob.hp = 1;
+  s.player.atk = 9999;
+  G.attack(s, next.i);
+  assert.equal(G.bombDamage(s, next.mob), base0 + G.RELIC_FORGE_GROW, '普攻击杀不涨');
+});
+
+test('炸弹击杀照常结算经验与金币，引信再加五成经验', () => {
+  const mk = () => {
+    const s = atFloor(G.createRun('normal', 404), 5);
+    const m = find(s, 'monster')[0];
+    m.revealed = true;
+    s.player.hp = 99999;
+    s.player.bombs = 1;
+    G.setMode(s, 'bomb');
+    return { s, m };
+  };
+  const plain = mk();
+  const kills0 = plain.s.stats.kills, lv0 = plain.s.player.lv, xp0 = plain.s.player.xp, gold0 = plain.s.player.gold;
+  const evs = G.tapTile(plain.s, plain.m.i);
+  const k = evs.find((e) => e.type === 'kill');
+  assert.ok(k, '炸弹击杀应发出 kill 事件');
+  assert.equal(k.xp, plain.m.mob.xp);
+  assert.equal(plain.s.stats.kills, kills0 + 1, '炸弹击杀计入击杀数');
+  assert.ok(plain.s.player.gold > gold0 || plain.s.player.lv > lv0, '炸弹击杀照常给金币或经验');
+  assert.ok(plain.s.player.xp > xp0 || plain.s.player.lv > lv0);
+  assert.equal(plain.m.used, true);
+
+  const fused = mk();
+  grant(fused.s, 'fuse');
+  const ev2 = G.tapTile(fused.s, fused.m.i);
+  const k2 = ev2.find((e) => e.type === 'kill');
+  assert.equal(k2.xp, Math.round(fused.m.mob.xp * (1 + G.RELIC_FUSE_XP)), '引信提高炸弹击杀经验');
+});
+
+test('弹药袋：每下行一层补一枚炸弹', () => {
+  const s = atFloor(G.createRun('normal', 505), 3);
+  grant(s, 'bombBag');
+  for (let f = 4; f <= 6; f++) {
+    s.stairsFound = true; s.hasKey = true;
+    const b0 = s.player.bombs;
+    G.tryDescend(s);
+    assert.equal(s.floor, f);
+    assert.equal(s.player.bombs, b0 + 1, `第 ${f} 层下行触发补给`);
+  }
+});
+
+test('军械箱：获得时立刻补充六枚炸弹', () => {
+  const s = fresh('normal', 707);
+  s.player.bombs = 1;
+  s.relicChoices = ['bombCache'];
+  G.chooseRelic(s, 'bombCache');
+  assert.ok(s.relics.includes('bombCache'));
+  assert.equal(s.player.bombs, 1 + G.RELIC_BOMB_CACHE);
+});
+
+test('商店遗物匣：三选一、价格递增、集齐后拒绝', () => {
+  const s = fresh('normal', 606);
+  s.player.gold = 1000;
+  assert.equal(G.shopPrice(s, 'relic'), 80);
+  const evs = G.buy(s, 'relic');
+  assert.ok(evs.some((e) => e.type === 'relicOffer'), '购买后应弹出三选一');
+  assert.equal(s.player.gold, 920);
+  assert.equal(s.relicChoices.length, G.RELIC_DRAW_COUNT);
+  const pick = s.relicChoices[0];
+  G.chooseRelic(s, pick);
+  assert.ok(G.hasRelic(s, pick));
+
+  assert.equal(G.shopPrice(s, 'relic'), 135, '第二次购买涨价');
+  G.buy(s, 'relic');
+  assert.equal(s.player.gold, 920 - 135);
+  G.chooseRelic(s, s.relicChoices[0]);
+
+  s.relics = G.RELICS.map((r) => r.id);
+  s.relicChoices = null;
+  const gold = s.player.gold, buys = s.bought.relic;
+  const out = G.buy(s, 'relic');
+  assert.ok(out.some((e) => e.type === 'deny'), '集齐后拒绝');
+  assert.equal(s.player.gold, gold);
+  assert.equal(s.bought.relic, buys, '拒绝时不计数');
 });
 
 test('旗数预算：上限＝难度基数，超限拒绝，拔旗后归还', () => {

@@ -634,6 +634,61 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
 .fly.heal{color:#8dff63}.fly.gold{color:#ffd54a}.fly.crit{color:#ffab2e}.fly.cyan{color:#3fe0ff}
 @keyframes countPop{0%{transform:scale(1)}35%{transform:scale(1.6)}100%{transform:scale(1)}}
 
+/* ── 横版战斗演绎 ───────────────────────────────── */
+.battle{position:fixed;inset:0;z-index:92;display:flex;flex-direction:column;justify-content:space-between;
+  padding:calc(14px + env(safe-area-inset-top)) 14px calc(12px + env(safe-area-inset-bottom));
+  background:radial-gradient(120% 80% at 50% 18%,#2b1836 0%,#120c1a 58%,#07040c 100%);
+  animation:btFadeIn .18s ease-out both;overflow:hidden}
+@keyframes btFadeIn{from{opacity:0}to{opacity:1}}
+.battle-vignette{position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(80% 60% at 50% 58%,transparent 40%,rgba(5,3,9,.85) 100%)}
+.battle.boss{background:radial-gradient(120% 80% at 50% 18%,#3a1030 0%,#180a1c 58%,#07040c 100%)}
+.battle.boss .battle-vignette{background:radial-gradient(80% 60% at 50% 58%,transparent 32%,rgba(255,20,60,.2) 72%,rgba(5,3,9,.92) 100%)}
+.battle-top{position:relative;z-index:2;display:flex;align-items:flex-start;gap:10px}
+.bt-side{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.bt-side.right{align-items:flex-end}
+.bt-name{max-width:100%;font-size:12px;letter-spacing:.12em;color:var(--ink-2);text-shadow:0 1px 4px #000;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bt-bar{width:100%;height:13px}
+.bt-bar span{font-size:10px}
+.bt-bar.mob i{background:linear-gradient(90deg,#ff2d55,#ff7a3d 60%,#ffd54a)}
+.bt-vs{padding-top:14px;font-family:var(--num);font-size:13px;font-weight:700;letter-spacing:.12em;color:var(--ink-3)}
+.battle-stage{position:relative;z-index:1;flex:1;min-height:0}
+.bt-floor{position:absolute;left:4%;right:4%;bottom:14%;height:2px;
+  background:linear-gradient(90deg,transparent,rgba(255,171,46,.5),transparent);box-shadow:0 0 18px rgba(255,171,46,.3)}
+.fighter{position:absolute;bottom:14%;display:grid;place-items:center;width:96px;height:96px;border-radius:22px;
+  background:radial-gradient(circle at 50% 40%,rgba(255,255,255,.1),rgba(0,0,0,.42) 72%);
+  border:1px solid rgba(255,255,255,.1);box-shadow:0 18px 40px -18px #000,inset 0 0 22px rgba(0,0,0,.6)}
+.fighter .ic{width:62px;height:62px}
+.fighter.hero{left:6%;color:#ffd27a;--eye:#1a1022}
+.fighter.mob{right:6%;color:#ff7a9a;--eye:#1a1022}
+.fighter.mob.elite .ic{color:#ffab2e;filter:drop-shadow(0 0 12px rgba(255,171,46,.6))}
+.fighter.mob.boss{width:122px;height:122px}
+.fighter.mob.boss .ic{width:86px;height:86px;color:#ff4fd8;filter:drop-shadow(0 0 16px rgba(255,79,216,.7))}
+.fighter.lunge-r{animation:btLungeR .18s ease-out}
+.fighter.lunge-l{animation:btLungeL .18s ease-out}
+@keyframes btLungeR{40%{transform:translateX(30px) scale(1.06)}}
+@keyframes btLungeL{40%{transform:translateX(-30px) scale(1.06)}}
+.fighter.mob.dying{animation:btDie .5s ease-in forwards}
+@keyframes btDie{30%{transform:translateY(-6px) scale(1.08);filter:brightness(2.8)}
+  100%{transform:translateY(28px) rotate(10deg) scale(.7);opacity:0;filter:brightness(.4)}}
+.battle-fx{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+.bt-float{position:absolute;font-family:var(--num);font-weight:700;font-size:22px;white-space:nowrap;
+  text-shadow:0 2px 6px rgba(0,0,0,.95),0 0 14px currentColor;animation:btFloat .62s cubic-bezier(.2,.8,.3,1) forwards}
+.bt-float.dmg{color:#ff5a78}.bt-float.hero-hit{color:#ff8a5a}
+@keyframes btFloat{0%{transform:translate(-50%,0) scale(.5);opacity:0}
+  20%{transform:translate(-50%,-10px) scale(1.2);opacity:1}
+  100%{transform:translate(-50%,-58px) scale(.9);opacity:0}}
+.bt-kill{position:absolute;left:50%;top:34%;transform:translate(-50%,-50%);opacity:0;
+  font-family:var(--display);font-size:34px;letter-spacing:.24em;text-indent:.24em;color:var(--gold);
+  text-shadow:0 0 24px rgba(255,213,74,.8)}
+.bt-kill.on{animation:btKill .55s cubic-bezier(.2,1.4,.4,1) forwards}
+@keyframes btKill{0%{opacity:0;transform:translate(-50%,-50%) scale(.5)}
+  30%{opacity:1;transform:translate(-50%,-50%) scale(1.12)}
+  100%{opacity:0;transform:translate(-50%,-72%) scale(1)}}
+.battle-skip{position:relative;z-index:2;margin:0;text-align:center;font-size:11px;letter-spacing:.14em;
+  color:var(--ink-3);opacity:.7}
+
 /* ── 滚动条 ───────────────────────────────── */
 *{scrollbar-width:thin;scrollbar-color:#7a4fa0 rgba(0,0,0,.3)}
 ::-webkit-scrollbar{width:8px;height:8px}
