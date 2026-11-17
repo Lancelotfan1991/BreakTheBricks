@@ -52,6 +52,7 @@ export const shopName = (it) => tr('shop.' + it.id + '.name');
 export const relicShopLeft = (s) => Math.max(0, RELIC_SHOP_CAP - ((s && s.bought && s.bought.relic) || 0));
 export const shopDesc = (it, s) => {
   if (it.id === 'relic') return tr('shop.relic.desc', { cap: RELIC_SHOP_CAP, left: relicShopLeft(s) });
+  if (it.id === 'pouch') return tr('shop.pouch.desc', { have: Math.min(FLAG_BONUS_CAP, (s && s.flagBonus) || 0), cap: FLAG_BONUS_CAP });
   return tr('shop.' + it.id + '.desc', it.id === 'bomb' && s ? { dmg: bombBase(s) } : SHOP_PARAMS[it.id]);
 };
 
@@ -91,6 +92,9 @@ export const RELIC_BANNER_CAP = 12;
 export const RELIC_WARD_CHARGES = 3;
 export const RELIC_FLAG_BONUS = 3;
 export const ALTAR_FLAG_BONUS = 2;
+// 旗子成长加成封顶：没有这个上限，金币够多就能一路加下去，旗数迟早超过单层威胁总量。
+// +9 配合难度基数得到 13/12/11 面，深渊与炼狱仍低于各层威胁数；地窖从第 4 层起会追平或略超。
+export const FLAG_BONUS_CAP = 9;
 export const RELIC_TALLY_XP = 5;        // 结绳：每面插对的旗换经验
 export const RELIC_TRAP_FLAG_GOLD = 8;  // 拾荒爪：每面插对的陷阱换金币
 export const RELIC_CHRONICLE_HEAL = 0.15; // 编年史：完美识破回复生命上限的 15%
@@ -197,7 +201,7 @@ export const RELIC_MAX_DRAWS = Array.from({ length: MAX_FLOOR }, (_, k) => k + 1
 
 // 描述里出现的平衡数字由这里注入，改数值不必改译文，翻译不必碰数字
 const RELIC_PARAMS = {
-  bannerBearer: { n: RELIC_FLAG_BONUS },
+  bannerBearer: { n: RELIC_FLAG_BONUS, cap: FLAG_BONUS_CAP },
   cartographer: { cap: RELIC_SURVEY_CAP },
   perfectMind: { xp: RELIC_MIND_XP, def: RELIC_MIND_DEF },
   tally: { xp: RELIC_TALLY_XP },
@@ -214,7 +218,7 @@ const RELIC_PARAMS = {
   ribguard: { def: RELIC_RIB_DEF },
   bloodSac: { hp: RELIC_BLOOD_SAC_HP },
   spikedMail: { n: RELIC_SPIKED_THORNS },
-  pennant: { n: RELIC_PENNANT_FLAGS },
+  pennant: { n: RELIC_PENNANT_FLAGS, cap: FLAG_BONUS_CAP },
   lootSack: { gold: RELIC_LOOT_SACK_GOLD },
   powderKeg: { dmg: RELIC_POWDER_DMG },
   blastCharge: { mul: RELIC_BLAST_MUL },
@@ -504,10 +508,11 @@ const ev = (list, type, data = {}) => { list.push({ type, ...data }); return lis
 export function remainingThreats(s) {
   return s.tiles.filter((t) => isThreat(t) && !t.used && !(t.mob && t.mob.hp <= 0)).length;
 }
-// 旗子上限＝难度固定基数 + 事件投资，刻意与敌人数量脱钩：
-// 旗子是稀缺资源，要花钱买上限，每层只发固定几面。
+// 旗子上限＝难度固定基数 + 事件投资。投资本身封顶，否则金币够多就能把旗插满整层。
+export const flagBonusLeft = (s) =>
+  Math.max(0, FLAG_BONUS_CAP - Math.min(FLAG_BONUS_CAP, s.flagBonus || 0));
 export function flagCap(s) {
-  return DIFFICULTIES[s.difficulty].flags + s.flagBonus;
+  return DIFFICULTIES[s.difficulty].flags + Math.min(FLAG_BONUS_CAP, s.flagBonus || 0);
 }
 // 剩余暗格全是威胁＝安全格已全部翻开，等价于扫雷已经解出。
 // 这时还让玩家自己踩陷阱，是在惩罚一次成功的推理。
@@ -772,7 +777,7 @@ export function toggleFlag(s, i) {
   // 上限是稀缺资源，拒绝时直接指出三条抬高上限的路，否则玩家只会觉得被卡住
   const cap = flagCap(s);
   if (!t.flagged && s.flags >= cap) {
-    say(s, 'log.flag.limit', { cap }, 'warn');
+    say(s, flagBonusLeft(s) > 0 ? 'log.flag.limit' : 'log.flag.limit.max', { cap }, 'warn');
     ev(out, 'flagLimit', { cap });
     return out;
   }
@@ -1020,8 +1025,9 @@ export function buy(s, id) {
   if (s.status !== 'playing') return out;
   const item = SHOP.find((x) => x.id === id);
   if (!item) return out;
-  if (id === 'relic' && s.relics.length >= RELICS.length) { say(s, 'log.relic.soldout', 'warn'); ev(out, 'deny'); return out; }
   if (id === 'relic' && relicShopLeft(s) <= 0) { say(s, 'log.relic.cap', { n: RELIC_SHOP_CAP }, 'warn'); ev(out, 'deny'); return out; }
+  if (id === 'relic' && !relicPool(s).length) { say(s, 'log.relic.soldout', 'warn'); ev(out, 'deny'); return out; }
+  if (id === 'pouch' && flagBonusLeft(s) <= 0) { say(s, 'log.flag.cap', { n: FLAG_BONUS_CAP }, 'warn'); ev(out, 'deny'); return out; }
   const price = shopPrice(s, id);
   if (s.player.gold < price) { say(s, 'log.no.gold', 'warn'); ev(out, 'deny'); return out; }
   s.player.gold -= price;
@@ -1036,10 +1042,7 @@ export function buy(s, id) {
   if (id === 'bomb') p.bombs++;
   say(s, 'log.buy', { item: ref('shop.' + item.id + '.name'), price }, 'good');
   ev(out, 'buy', { id, price });
-  if (id === 'relic') {
-    const pool = RELICS.filter((r) => !hasRelic(s, r.id));
-    grantRelic(s, takeWeighted(s, pool, relicRarityWeights(s.floor)).id, out);
-  }
+  if (id === 'relic') grantRelic(s, takeWeighted(s, relicPool(s), relicRarityWeights(s.floor)).id, out);
   return out;
 }
 
@@ -1054,11 +1057,11 @@ const ALTAR_PARAMS = {
   blood: { hp: BAL.bloodCost, atk: BAL.bloodAtk },
   pray: { pct: Math.round(BAL.prayPct * 100) },
   greed: { gold: ALTAR_GREED_GOLD },
-  banner: { n: ALTAR_FLAG_BONUS },
+  banner: { n: ALTAR_FLAG_BONUS, cap: FLAG_BONUS_CAP },
 };
 export const altarName = (o) => tr('altar.' + o.id + '.name');
 export const altarDesc = (o) => tr('altar.' + o.id + '.desc', ALTAR_PARAMS[o.id]);
-export const altarWhy = (id) => tr('altar.why.' + id);
+export const altarWhy = (id, params) => tr('altar.why.' + id, params);
 
 export function altarChoose(s, i, choice) {
   const out = [];
@@ -1068,6 +1071,8 @@ export function altarChoose(s, i, choice) {
   const p = s.player;
   if (choice === 'blood' && p.hp <= BAL.bloodCost) { say(s, 'log.altar.no.blood', 'warn'); return out; }
   if (choice === 'greed' && p.def <= 0) { say(s, 'log.altar.no.def', 'warn'); return out; }
+  // 加不满就别消耗祭坛：半截加成既浪费选择，也会让上限变成按 1 点跳的谜之数字
+  if (choice === 'banner' && flagBonusLeft(s) < ALTAR_FLAG_BONUS) { say(s, 'log.altar.no.flag', { n: FLAG_BONUS_CAP }, 'warn'); return out; }
   t.used = true;
   s.pendingAltar = -1;
   if (choice === 'blood') {
@@ -1168,6 +1173,16 @@ function syncRelicMods(s) {
   p.atkBonus = want;
 }
 
+function flagRelicNeed(r) {
+  if (r.id === 'pennant') return RELIC_PENNANT_FLAGS;
+  if (r.id === 'bannerBearer') return RELIC_FLAG_BONUS;
+  return 0;
+}
+// 加不满的旗子遗物不进池子：拿到手却只加一点，和直接扣掉一次三选一没区别
+export function relicPool(s) {
+  return RELICS.filter((r) => !hasRelic(s, r.id) && flagRelicNeed(r) <= flagBonusLeft(s));
+}
+
 function takeWeighted(s, pool, weights) {
   // 先按稀有度掷一次档位，再在档内等概率取件：
   // 这样增减同档遗物只影响同类内部出场率，不会把整体稀有度曲线带偏。
@@ -1181,7 +1196,7 @@ function takeWeighted(s, pool, weights) {
 }
 
 function rollRelicChoices(s, exclude = []) {
-  const all = RELICS.filter((r) => !hasRelic(s, r.id));
+  const all = relicPool(s);
   const fresh = all.filter((r) => !exclude.includes(r.id));
   const pool = fresh.length >= RELIC_DRAW_COUNT ? fresh : all;
   const weights = relicRarityWeights(s.floor);
@@ -1219,6 +1234,9 @@ export function rerollRelics(s) {
 export function chooseRelic(s, id) {
   const out = [];
   if (s.status !== 'playing' || !s.relicChoices || !s.relicChoices.includes(id)) return out;
+  // 三选一开出后才把上限买满的极端情况：拒绝而不是白扣一件遗物
+  const r = relicById(id);
+  if (r && flagRelicNeed(r) > flagBonusLeft(s)) { say(s, 'log.relic.flag.cap', { n: FLAG_BONUS_CAP }, 'warn'); return out; }
   s.relicChoices = null;
   return grantRelic(s, id, out);
 }
@@ -1232,7 +1250,7 @@ function grantRelic(s, id, out) {
   if (id === 'whetstone') p.atk += RELIC_WHETSTONE_ATK;
   if (id === 'ribguard') p.def += RELIC_RIB_DEF;
   if (id === 'bloodSac') { p.maxHp += RELIC_BLOOD_SAC_HP; p.hp = Math.min(p.maxHp, p.hp + RELIC_BLOOD_SAC_HP); }
-  if (id === 'pennant') s.flagBonus += RELIC_PENNANT_FLAGS;
+  if (id === 'pennant') s.flagBonus = Math.min(FLAG_BONUS_CAP, s.flagBonus + RELIC_PENNANT_FLAGS);
   if (id === 'vow') {
     p.maxHp += RELIC_VOW_HP;
     p.hp = Math.min(p.maxHp, p.hp + RELIC_VOW_HP);
@@ -1240,7 +1258,7 @@ function grantRelic(s, id, out) {
     p.atk = Math.max(1, p.atk - RELIC_VOW_ATK);
   }
   if (id === 'carefulStep') s.relicState.trapWard = RELIC_WARD_CHARGES;
-  if (id === 'bannerBearer') s.flagBonus += RELIC_FLAG_BONUS;
+  if (id === 'bannerBearer') s.flagBonus = Math.min(FLAG_BONUS_CAP, s.flagBonus + RELIC_FLAG_BONUS);
   if (id === 'bombCache') {
     p.bombs += RELIC_BOMB_CACHE;
     say(s, 'log.bombCache', { n: RELIC_BOMB_CACHE }, 'good');

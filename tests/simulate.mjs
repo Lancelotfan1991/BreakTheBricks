@@ -3,7 +3,7 @@
 import {
   createRun, tapTile, attack, usePotion, buy, altarChoose, tryDescend, closePending,
   forecast, neighbors, canDescend, SIZE, MAX_FLOOR, shopPrice, setMode, chooseRelic,
-  toggleFlag, flagCap, RELIC_SURVEY_CAP, RELIC_SHOP_CAP,
+  toggleFlag, flagCap, flagBonusLeft, ALTAR_FLAG_BONUS, RELIC_SURVEY_CAP, RELIC_SHOP_CAP,
 } from '../public/src/game.js';
 
 const isMob = (t) => t.mob && t.mob.hp > 0;
@@ -69,7 +69,7 @@ function shopPass(s, build) {
   let guard = 0;
   while (guard++ < 12) {
     if (p.hp < p.maxHp * 0.5 && p.potions === 0 && p.gold >= shopPrice(s, 'potion')) { buy(s, 'potion'); continue; }
-    if (build === 'reason' && p.gold >= shopPrice(s, 'pouch') + 20) { buy(s, 'pouch'); continue; }
+    if (build === 'reason' && flagBonusLeft(s) > 0 && p.gold >= shopPrice(s, 'pouch') + 20) { buy(s, 'pouch'); continue; }
     if (build === 'body' && p.gold >= shopPrice(s, 'elixir') + 20) { buy(s, 'elixir'); continue; }
     if (p.gold >= shopPrice(s, 'whet') + 20) { buy(s, 'whet'); continue; }
     if (p.gold >= shopPrice(s, 'plate') + 20) { buy(s, 'plate'); continue; }
@@ -153,7 +153,10 @@ export function playRun(difficulty, seed, verbose = false, prefer = null, build 
     if (s.relicChoices) { run(chooseRelic, pickRelic(s, build || prefer)); continue; }
     if (s.pendingAltar >= 0) {
       const p = s.player;
-      const choice = p.hp < p.maxHp * 0.6 ? 'pray' : build === 'reason' ? 'banner' : p.hp > 20 ? 'blood' : p.def > 0 ? 'greed' : 'pray';
+      // 加满上限后旗帜祝福会被拒绝且不消耗祭坛，必须换一个选项，否则 pendingAltar 永远关不掉
+      const choice = p.hp < p.maxHp * 0.6 ? 'pray'
+        : build === 'reason' && flagBonusLeft(s) >= ALTAR_FLAG_BONUS ? 'banner'
+          : p.hp > 20 ? 'blood' : p.def > 0 ? 'greed' : 'pray';
       run(altarChoose, s.pendingAltar, choice);
       continue;
     }

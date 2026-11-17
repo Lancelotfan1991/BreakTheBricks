@@ -856,8 +856,12 @@ function openCombat(i) {
 function openAltar(i) {
   const p = S.player;
   const opts = G.ALTAR_OPTIONS.map((o) => {
-    const dis = (o.id === 'blood' && p.hp <= G.BAL.bloodCost) || (o.id === 'greed' && p.def <= 0);
-    const why = o.id === 'blood' ? G.altarWhy('blood') : G.altarWhy('greed');
+    const dis = (o.id === 'blood' && p.hp <= G.BAL.bloodCost) || (o.id === 'greed' && p.def <= 0)
+      || (o.id === 'banner' && G.flagBonusLeft(S) < G.ALTAR_FLAG_BONUS);
+    const why = o.id === 'blood' ? G.altarWhy('blood')
+      : o.id === 'greed' ? G.altarWhy('greed')
+        : o.id === 'banner' ? G.altarWhy('banner', { left: G.flagBonusLeft(S), n: G.ALTAR_FLAG_BONUS })
+          : '';
     return `<button class="opt" data-sheet="altar" data-i="${i}" data-choice="${o.id}" ${dis ? 'disabled' : ''}>
       <span class="opt-ic">${svg(o.icon)}</span>
       <span class="opt-tx"><b>${G.altarName(o)}</b><span>${G.altarDesc(o)}${dis ? why : ''}</span></span>
@@ -877,12 +881,14 @@ function openShop() {
   const p = S.player;
   const rows = G.SHOP.map((it) => {
     const price = G.shopPrice(S, it.id);
-    const soldout = it.id === 'relic' && G.relicShopLeft(S) <= 0;
+    const soldout = it.id === 'relic'
+      ? G.relicShopLeft(S) <= 0 || G.relicPool(S).length === 0
+      : it.id === 'pouch' && G.flagBonusLeft(S) <= 0;
     const can = !soldout && p.gold >= price;
     return `<button class="opt" data-sheet="buy" data-id="${it.id}" ${can ? '' : 'disabled'}>
       <span class="opt-ic">${svg(it.icon)}</span>
       <span class="opt-tx"><b>${G.shopName(it)}</b><span>${G.shopDesc(it, S)}</span></span>
-      <span class="opt-price ${can ? '' : 'no'}">${soldout ? tr('ui.shop.soldout') : `${svg('coin')}${price}`}</span>
+      <span class="opt-price ${can ? '' : 'no'}">${soldout ? tr(it.id === 'pouch' ? 'ui.shop.full' : 'ui.shop.soldout') : `${svg('coin')}${price}`}</span>
     </button>`;
   }).join('');
   openSheet('shop', `
@@ -912,7 +918,7 @@ function openHelp() {
   const nums = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => `<span data-n="${n}" class="tile" style="position:relative"><span class="tile-num" style="font-size:14px;color:${['', '#5fe3ff', '#8bff63', '#ffd54a', '#ff9f3a', '#ff6b4a', '#ff3b5c', '#ff4fd8', '#e6dcff'][n]}">${n}</span></span>`).join('');
   const P = {
     flagBases,
-    altar: G.ALTAR_FLAG_BONUS, relic: G.RELIC_FLAG_BONUS, recoil: G.RELIC_RECOIL,
+    altar: G.ALTAR_FLAG_BONUS, relic: G.RELIC_FLAG_BONUS, flagCap: G.FLAG_BONUS_CAP, recoil: G.RELIC_RECOIL,
     defCut: G.SOLVE_DEF_CUT, flagGold: G.SOLVE_FLAG_GOLD, perfectXp: G.SOLVE_PERFECT_XP,
     siege: G.RELIC_SIEGE_CAP, mindXp: G.RELIC_MIND_XP, mindDef: G.RELIC_MIND_DEF, survey: G.RELIC_SURVEY_CAP,
     elixir: G.SHOP_ELIXIR_HP, vigorStep: G.RELIC_VIGOR_STEP, strataDef: G.STRATA_DEF, strataHp: G.STRATA_HP,

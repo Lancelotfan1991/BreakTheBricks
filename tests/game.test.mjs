@@ -701,9 +701,8 @@ test('编年史：完美识破回复生命上限的 15%，非完美不触发', (
     const { s, last } = nearlySolved('normal', 21, 4);
     grant(s, 'chronicle');
     const threats = s.tiles.filter((t) => THREATS.includes(t.kind) && !t.revealed);
-    s.flagBonus = 60;
     const n = flags === 'all' ? threats.length : flags;
-    for (const t of threats.slice(0, n)) G.toggleFlag(s, t.i);
+    plantFlags(s, threats.slice(0, n));
     s.player.hp = s.player.maxHp - 20;
     const out = G.tapTile(s, last.i);
     const healed = out.filter((e) => e.type === 'heal').reduce((a, e) => a + e.amount, 0);
@@ -1610,7 +1609,7 @@ test('旗数预算：上限＝难度基数，超限拒绝，拔旗后归还', ()
   assert.equal(G.flagCap(s), cap, '下行不改变上限');
 });
 
-test('旗子上限与怪物数量脱钩，且难度越高越少', () => {
+test('旗子上限＝难度基数，且难度越高越少', () => {
   const bases = {};
   for (const diff of ['easy', 'normal', 'hard']) {
     bases[diff] = G.DIFFICULTIES[diff].flags;
@@ -1635,6 +1634,14 @@ test('商店旗囊：+1 上限，价格递增，可反复购买', () => {
   }
   assert.ok(prices[1] > prices[0] && prices[2] > prices[1], '旗囊越买越贵');
   assert.equal(s.flags, 0, '买上限不会凭空插旗');
+
+  for (let k = 0; k < G.FLAG_BONUS_CAP; k++) G.buy(s, 'pouch');
+  assert.equal(G.flagCap(s), base + G.FLAG_BONUS_CAP, '成长加成封顶');
+  const gold = s.player.gold;
+  const capped = G.buy(s, 'pouch');
+  assert.ok(capped.some((e) => e.type === 'deny'), '封顶后拒绝');
+  assert.equal(s.player.gold, gold, '封顶拒绝时不扣钱');
+  assert.equal(s.log[s.log.length - 1].k, 'log.flag.cap', '提示上限已封顶');
 
   const poor = fresh('normal', 21);
   poor.player.gold = 0;
@@ -1675,13 +1682,13 @@ test('三条渠道可叠加，加成跨层保留而旗子每层收回', () => {
   s.floor = 3; G.buildFloor(s); G.ensureBoard(s, 30);
   const base = G.DIFFICULTIES.normal.flags;
   s.player.gold = 999;
-  G.buy(s, 'pouch');
-  G.buy(s, 'pouch');
+  for (let k = 0; k < 4; k++) G.buy(s, 'pouch');
   const altar = find(s, 'altar')[0];
   G.altarChoose(s, altar.i, 'banner');
   s.relicChoices = ['bannerBearer'];
   G.chooseRelic(s, 'bannerBearer');
-  const cap = base + 2 + G.ALTAR_FLAG_BONUS + G.RELIC_FLAG_BONUS;
+  const cap = base + 4 + G.ALTAR_FLAG_BONUS + G.RELIC_FLAG_BONUS;
+  assert.equal(cap, base + G.FLAG_BONUS_CAP, '三条渠道恰好把加成加满');
   assert.equal(G.flagCap(s), cap, '三条渠道线性叠加');
 
   const hidden = s.tiles.filter((t) => !t.revealed);
@@ -1698,8 +1705,36 @@ test('三条渠道可叠加，加成跨层保留而旗子每层收回', () => {
   assert.equal(G.flagCap(s), cap, '加成是整局永久的');
 });
 
+test('旗子加成封顶：祭坛加不满不消耗，放不下的旗子遗物退出池子', () => {
+  const s = fresh('normal', 21);
+  s.floor = 3; G.buildFloor(s); G.ensureBoard(s, 30);
+  s.flagBonus = G.FLAG_BONUS_CAP - 1; // 还差 1 点，+2 的旗帜祝福放不下
+  const altar = find(s, 'altar')[0];
+  const cap = G.flagCap(s);
+  assert.equal(G.flagBonusLeft(s), 1);
+  assert.deepEqual(G.altarChoose(s, altar.i, 'banner'), [], '加不满时拒绝');
+  assert.equal(altar.used, false, '祭坛不该被白白消耗');
+  assert.equal(G.flagCap(s), cap, '上限不变');
+  assert.ok(G.altarChoose(s, altar.i, 'pray').some((e) => e.type === 'altarUsed'), '换个选项仍能献祭');
+
+  s.flagBonus = 60; // 旧存档或异常值也只按上限算
+  assert.equal(G.flagBonusLeft(s), 0);
+  assert.equal(G.flagCap(s), G.DIFFICULTIES.normal.flags + G.FLAG_BONUS_CAP, '加成封顶');
+  const pool = G.relicPool(s).map((r) => r.id);
+  assert.ok(!pool.includes('pennant') && !pool.includes('bannerBearer'), '放不下的旗子遗物不进池');
+  assert.ok(pool.includes('whetstone'), '其他遗物不受影响');
+
+  s.relicChoices = ['bannerBearer'];
+  assert.deepEqual(G.chooseRelic(s, 'bannerBearer'), [], '直接选也拒绝');
+  assert.deepEqual(s.relicChoices, ['bannerBearer'], '选项保留，玩家还能改选');
+});
+
 // ---------- 完全识破 ----------
 const THREATS = ['monster', 'elite', 'trap', 'boss'];
+// 结算类用例只验证识破结果，不走旗数预算：直接布旗
+function plantFlags(s, tiles) {
+  for (const t of tiles) { if (!t.flagged) { t.flagged = true; s.flags++; } }
+}
 // 把一层做到「只剩最后一个安全格」，翻开它就等价于扫雷解出整层
 function nearlySolved(diff = 'normal', seed = 21, floor = 1) {
   const s = fresh(diff, seed);
@@ -1938,11 +1973,10 @@ const grantAll = (s, ...ids) => ids.forEach((id) => grant(s, id));
 function solveWith(flags, relics = [], diff = 'normal', seed = 21, floor = 1) {
   const { s, last } = nearlySolved(diff, seed, floor);
   grantAll(s, ...relics);
-  s.flagBonus = 60; // 完美识破要求旗数够插满剩余威胁，这里放开预算只测结算
   const threats = s.tiles.filter((t) => THREATS.includes(t.kind) && !t.revealed);
   const pre = threats.map((t) => (t.mob ? { def: t.mob.def, atk: t.mob.atk, hp: t.mob.hp } : null));
   const n = flags === 'all' ? threats.length : flags;
-  for (const t of threats.slice(0, n)) G.toggleFlag(s, t.i);
+  plantFlags(s, threats.slice(0, n)); // 结算类用例不走旗数预算
   const before = { gold: s.player.gold, lv: s.player.lv };
   const out = G.tapTile(s, last.i);
   return { s, out, sv: out.find((e) => e.type === 'solved'), threats, pre, before, last };
@@ -2023,10 +2057,9 @@ test('识破削弱只作用本层，下行后新怪物不带削减记录', () =>
 
 test('识破收益只在解出时结算：插旗本身不发金币', () => {
   const { s, last } = nearlySolved();
-  s.flagBonus = 60;
   const threats = s.tiles.filter((t) => THREATS.includes(t.kind) && !t.revealed);
   const gold0 = s.player.gold;
-  for (const t of threats) G.toggleFlag(s, t.i);
+  plantFlags(s, threats);
   assert.equal(s.player.gold, gold0, '插旗不消耗回合也不发钱');
   assert.equal(s.solved, false);
   G.tapTile(s, last.i);
