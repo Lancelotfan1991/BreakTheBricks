@@ -108,6 +108,9 @@ export const RELIC_SIEGE_MUL = 2;       // 破城雷管：对精英与龙王的�
 export const RELIC_FUSE_XP = 0.5;       // 引信：炸弹击杀额外经验
 export const RELIC_FORGE_GROW = 5;      // 锻膛：每次炸弹击杀，炸弹基础伤害永久 +5
 export const RELIC_BOMB_CACHE = 6;      // 军械箱：获得时立刻补充 6 枚炸弹
+export const RELIC_REROLL_BASE = 5;     // 遗物重置：本批首次重置的金币
+export const RELIC_REROLL_STEP = 5;     // 遗物重置：每次重置的涨价
+export const RELIC_REROLL_DISCOUNT = 5;// 典当票：每次重置减价
 export const RELIC_RATION_HEAL = 0.07;  // 干粮：下行额外回复
 export const RELIC_TORCH_GOLD = 15;     // 火把：炸弹清除目标的额外金币
 export const RELIC_TORCH_SHOP = 0.5;    // 火把：炸弹售价倍率
@@ -177,6 +180,7 @@ export const RELICS = [
   { id: 'blastCharge', icon: 'bomb', cat: 'supply', rarity: 'rare' },
   { id: 'siegeBlast', icon: 'flask', cat: 'supply', rarity: 'epic' },
   { id: 'forge', icon: 'flame', cat: 'supply', rarity: 'rare' },
+  { id: 'pawnTicket', icon: 'coin', cat: 'supply', rarity: 'common' },
 
   { id: 'bloodPact', icon: 'heart', cat: 'pact', rarity: 'epic' },
   { id: 'glassCannon', icon: 'crown', cat: 'pact', rarity: 'epic' },
@@ -216,6 +220,7 @@ const RELIC_PARAMS = {
   bombCache: { n: RELIC_BOMB_CACHE },
   fuse: { pct: Math.round(RELIC_FUSE_XP * 100) },
   forge: { n: RELIC_FORGE_GROW },
+  pawnTicket: { gold: RELIC_REROLL_DISCOUNT },
   bonePlate: { step: RELIC_PLATE_STEP, cap: RELIC_PLATE_CAP },
   torch: { gold: RELIC_TORCH_GOLD },
   rations: { pct: Math.round(RELIC_RATION_HEAL * 100) },
@@ -354,6 +359,7 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
     bought: {},
     relics: [],
     relicChoices: null,
+    relicReroll: 0,
     relicState: { whet: 0, firstKill: false, trapWard: 0, survey: 0, heart: 0, bombForge: 0 },
     hasKey: false,
     stairsFound: false,
@@ -1195,8 +1201,10 @@ function takeWeighted(s, pool, weights) {
   return pool.splice(pool.indexOf(cand[Math.floor(rand(s) * cand.length)]), 1)[0];
 }
 
-function rollRelicChoices(s) {
-  const pool = RELICS.filter((r) => !hasRelic(s, r.id));
+function rollRelicChoices(s, exclude = []) {
+  const all = RELICS.filter((r) => !hasRelic(s, r.id));
+  const fresh = all.filter((r) => !exclude.includes(r.id));
+  const pool = fresh.length >= RELIC_DRAW_COUNT ? fresh : all;
   const weights = relicRarityWeights(s.floor);
   const out = [];
   while (out.length < RELIC_DRAW_COUNT && pool.length) out.push(takeWeighted(s, pool, weights).id);
@@ -1207,8 +1215,26 @@ export function offerRelics(s, out) {
   const ids = rollRelicChoices(s);
   if (!ids.length) return out;
   s.relicChoices = ids;
+  s.relicReroll = 0;
   say(s, 'log.relic.offer', 'magic');
   return ev(out, 'relicOffer', { ids });
+}
+
+// 不满意这批就去当铺重掷：每批从 5 金币起，重掷一次涨 5，典当票再减 5。
+export const relicRerollCost = (s) =>
+  Math.max(0, RELIC_REROLL_BASE + RELIC_REROLL_STEP * (s.relicReroll || 0)
+    - (hasRelic(s, 'pawnTicket') ? RELIC_REROLL_DISCOUNT : 0));
+
+export function rerollRelics(s) {
+  const out = [];
+  if (s.status !== 'playing' || !s.relicChoices) return out;
+  const cost = relicRerollCost(s);
+  if (s.player.gold < cost) { say(s, 'log.no.gold', 'warn'); return ev(out, 'deny'); }
+  s.player.gold -= cost;
+  s.relicReroll = (s.relicReroll || 0) + 1;
+  const prev = s.relicChoices;
+  s.relicChoices = rollRelicChoices(s, prev);
+  return ev(out, 'reroll', { cost });
 }
 
 export function chooseRelic(s, id) {

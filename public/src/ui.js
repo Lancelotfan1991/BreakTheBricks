@@ -382,6 +382,8 @@ function openRelicDraw() {
       <span class="rcard-flavor">${G.relicFlavor(r)}</span>
     </button>`;
   }).join('');
+  const rerollCost = G.relicRerollCost(S);
+  const rerollTx = rerollCost > 0 ? tr('ui.relic.reroll', { gold: rerollCost }) : tr('ui.relic.reroll.free');
   openSheet('relic', `
     <div class="sheet-head">
       <div><h2 class="sheet-title">${tr('ui.relic.draw.title')}</h2><p class="sheet-sub">${tr('ui.relic.draw.sub', { n: S.relics.length })}</p></div>
@@ -389,7 +391,10 @@ function openRelicDraw() {
     </div>
     <div class="rcards">${cards}</div>
     <p class="rcard-hint">${tr('ui.relic.draw.hint')}</p>
-    <div class="sheet-actions"><button class="btn btn-ghost" data-sheet="codex">${svg('relic')}<span>${tr('ui.relic.codex.btn')}</span></button></div>`, true);
+    <div class="sheet-actions">
+      <button class="btn btn-primary" data-sheet="reroll" ${S.player.gold >= rerollCost ? '' : 'disabled'}>${svg('coin')}<span>${rerollTx}</span></button>
+      <button class="btn btn-ghost" data-sheet="codex">${svg('relic')}<span>${tr('ui.relic.codex.btn')}</span></button>
+    </div>`, true);
 }
 
 function openCodex() {
@@ -567,6 +572,12 @@ function consume(events) {
       case 'bomb': { const c = tileCenter(e.i); fx.boom(c.x, c.y); fx.shake(el.board); audio.play('bomb'); fx.haptic('heavy'); break; }
       case 'disarm': { if (solveSet.has(e.i)) break; const c = tileCenter(e.i); fx.dust(c.x, c.y); break; }
       case 'scroll': { const c = tileCenter(e.i); fx.magic(c.x, c.y); fx.ring(c.x, c.y, '#3fe0ff', 110); audio.play('scroll'); break; }
+      case 'reroll': {
+        const r = el.gold.getBoundingClientRect();
+        fx.float(r.left + r.width / 2, r.top - 6, '-' + e.cost, 'gold');
+        audio.play('coin');
+        break;
+      }
       case 'buy': audio.play('coin'); break;
       case 'relicOffer': audio.play('altar'); break;
       case 'relicGain': {
@@ -894,6 +905,7 @@ function openHelp() {
     siege: G.RELIC_SIEGE_CAP, mindXp: G.RELIC_MIND_XP, mindDef: G.RELIC_MIND_DEF, survey: G.RELIC_SURVEY_CAP,
     elixir: G.SHOP_ELIXIR_HP, vigorStep: G.RELIC_VIGOR_STEP, strataDef: G.STRATA_DEF, strataHp: G.STRATA_HP,
     bombDmg: G.BOMB_DAMAGE, powderDmg: G.RELIC_POWDER_DMG, forgeDmg: G.RELIC_FORGE_GROW,
+    reroll: G.RELIC_REROLL_BASE, rerollStep: G.RELIC_REROLL_STEP,
   };
   openSheet('help', `
     <div class="sheet-head">
@@ -947,7 +959,7 @@ function openHelp() {
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.relic.h')}</h3>
-      <p class="help-p">${tr('ui.help.relic.p', { every: G.RELIC_EVERY, total: G.RELICS.length })}</p>
+      <p class="help-p">${tr('ui.help.relic.p', { every: G.RELIC_EVERY, total: G.RELICS.length, reroll: G.RELIC_REROLL_BASE, rerollStep: G.RELIC_REROLL_STEP })}</p>
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.legend.h')}</h3>
@@ -1229,6 +1241,7 @@ el.sheetBody.addEventListener('click', (e) => {
       break;
     }
     case 'relic': { const id = b.dataset.id; forceClose(); apply(G.chooseRelic(S, id)); break; }
+    case 'reroll': apply(G.rerollRelics(S)); break;
     case 'codex': openCodex(); break;
     case 'relicBack': if (S && S.relicChoices) openRelicDraw(); else forceClose(); break;
     case 'sound': audio.toggle(); syncSound(); openMenu(); break;

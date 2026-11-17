@@ -628,12 +628,12 @@ function grant(s, id) {
 const hiddenThreats = (s) => s.tiles.filter((t) => !t.revealed && ['monster', 'elite', 'trap', 'boss'].includes(t.kind));
 function atFloor(s, f) { s.floor = f; G.buildFloor(s); G.tapTile(s, 30); G.closePending(s); return s; }
 
-test('遗物表完整：49 件、id 唯一、分类与稀有度合法', () => {
-  assert.equal(G.RELICS.length, 49);
-  assert.equal(new Set(G.RELICS.map((r) => r.id)).size, 49);
+test('遗物表完整：50 件、id 唯一、分类与稀有度合法', () => {
+  assert.equal(G.RELICS.length, 50);
+  assert.equal(new Set(G.RELICS.map((r) => r.id)).size, 50);
   const byRarity = {};
   for (const r of G.RELICS) byRarity[r.rarity] = (byRarity[r.rarity] || 0) + 1;
-  assert.deepEqual(byRarity, { common: 23, rare: 18, epic: 8 }, '稀有度应呈普通多、史诗少的金字塔');
+  assert.deepEqual(byRarity, { common: 24, rare: 18, epic: 8 }, '稀有度应呈普通多、史诗少的金字塔');
   for (const r of G.RELICS) {
     assert.ok(G.RELIC_CATS.includes(r.cat), `${r.id} 分类非法`);
     assert.ok(G.RELIC_RARITY[r.rarity], `${r.id} 稀有度非法`);
@@ -890,6 +890,40 @@ test('炸毁钥匙守卫同样按遗物层掉落，且整局不会抽到已拥�
   }
   assert.equal(s.relics.length, 2);
   assert.equal(new Set(s.relics).size, 2);
+});
+
+test('遗物重置：每批 5 金币起、每次 +5，典当票减 5 且不会为负', () => {
+  const s = fresh('normal', 95);
+  s.player.gold = 40;
+  G.offerRelics(s, []);
+  const first = s.relicChoices.slice();
+  assert.equal(G.relicRerollCost(s), 5);
+  const evs = G.rerollRelics(s);
+  assert.ok(evs.some((e) => e.type === 'reroll' && e.cost === 5));
+  assert.equal(s.player.gold, 35);
+  assert.equal(s.relicReroll, 1);
+  assert.equal(s.relicChoices.length, G.RELIC_DRAW_COUNT);
+  for (const id of s.relicChoices) {
+    assert.ok(!s.relics.includes(id), '重置不会给到已拥有的遗物');
+    assert.ok(!first.includes(id), '重置应换一批新选项');
+  }
+  assert.equal(G.relicRerollCost(s), 10);
+
+  s.player.gold = 9;
+  const before = s.relicChoices.slice();
+  assert.ok(G.rerollRelics(s).some((e) => e.type === 'deny'), '金币不够时拒绝重置');
+  assert.deepEqual(s.relicChoices, before);
+  assert.equal(s.player.gold, 9, '拒绝时不能扣钱');
+
+  grant(s, 'pawnTicket');
+  G.offerRelics(s, []);
+  assert.equal(G.relicRerollCost(s), 0, '典当票让每批首次重置免费');
+  s.player.gold = 20;
+  G.rerollRelics(s);
+  assert.equal(s.player.gold, 20);
+  assert.equal(G.relicRerollCost(s), 5);
+
+  assert.deepEqual(G.rerollRelics(G.createRun('normal', 1)), [], '没有挂起的抽取时不能重置');
 });
 
 test('遗物抽取可复现：同种子同选项', () => {

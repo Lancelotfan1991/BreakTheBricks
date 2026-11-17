@@ -85,7 +85,8 @@ const RELIC_PREF = ['momentum', 'strataOath', 'vow', 'dragonWard', 'ironStomach'
   'ribguard', 'bannerLord', 'bannerBearer', 'pennant', 'siegeBreak', 'moraleBreak', 'spikeSoles', 'carefulStep',
   'mint', 'lootSack', 'deepPockets', 'greedyHeart', 'altarGrace', 'warPaint', 'whetstone', 'prospector',
   'torch', 'perfectMind', 'trapSalvage', 'tally', 'blastWave', 'cartographer', 'bloodPact', 'glassCannon',
-  'chronicle', 'bonePlate', 'rations', 'bombBag', 'powderKeg', 'fuse', 'forge', 'blastCharge', 'siegeBlast', 'bombCache'];
+  'chronicle', 'bonePlate', 'rations', 'bombBag', 'powderKeg', 'fuse', 'forge', 'blastCharge', 'siegeBlast', 'bombCache',
+  'pawnTicket'];
 
 // 两条构筑轴各自的取舍顺序：用来验证「专投一条」是否真的能通关，而不是只测混合抓取
 const BUILD_PREF = {
@@ -94,13 +95,15 @@ const BUILD_PREF = {
     'spikedMail', 'whetSoul', 'whetstone', 'vigor', 'ironStomach', 'vampiricEdge', 'bonePlate', 'rations',
     'lootSack', 'alchemist', 'mint', 'deepPockets', 'greedyHeart', 'altarGrace', 'warPaint', 'prospector',
     'spikeSoles', 'carefulStep', 'blastWave', 'torch', 'bloodSac', 'ribguard', 'strataOath', 'bloodPact',
-    'glassCannon', 'heartEater', 'vow', 'bombBag', 'powderKeg', 'fuse', 'forge', 'blastCharge', 'siegeBlast', 'bombCache'],
+    'glassCannon', 'heartEater', 'vow', 'bombBag', 'powderKeg', 'fuse', 'forge', 'blastCharge', 'siegeBlast', 'bombCache',
+    'pawnTicket'],
   body: ['strataOath', 'recoilMail', 'vigor', 'vow', 'ironStomach', 'vampiricEdge', 'heartEater', 'dragonWard',
     'thornMail', 'guardianBane', 'momentum', 'alchemist', 'whetSoul', 'altarGrace', 'warPaint', 'bloodPact',
     'glassCannon', 'bloodSac', 'ribguard', 'spikedMail', 'whetstone', 'lootSack', 'bannerLord', 'bannerBearer',
     'siegeBreak', 'moraleBreak', 'spikeSoles', 'carefulStep', 'mint', 'deepPockets', 'greedyHeart', 'prospector',
     'perfectMind', 'blastWave', 'cartographer', 'trapSalvage', 'bonePlate', 'rations', 'tally', 'chronicle',
-    'torch', 'pennant', 'bombBag', 'powderKeg', 'fuse', 'forge', 'blastCharge', 'siegeBlast', 'bombCache'],
+    'torch', 'pennant', 'bombBag', 'powderKeg', 'fuse', 'forge', 'blastCharge', 'siegeBlast', 'bombCache',
+    'pawnTicket'],
 };
 
 function pickRelic(s, prefer) {
