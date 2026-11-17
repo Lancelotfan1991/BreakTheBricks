@@ -126,6 +126,10 @@ export const RELIC_VOW_HP = 30;         // 静默誓约：生命上限加成
 export const RELIC_VOW_DEF = 3;         // 静默誓约：防御加成
 export const RELIC_VOW_ATK = 2;         // 静默誓约：攻击代价
 export const GREEDY_HEART_SHOP = 1.2;   // 贪婪之心：商店价格倍率
+export const RELIC_BOUNTY_GOLD = 5;     // 赏金令：每次击杀额外金币
+export const RELIC_MIDAS_STEP = 30;     // 点金手：每 30 金币换 1 攻击与 1 防御
+export const RELIC_DEED_GOLD = 30;      // 矿脉契：每次下行的金币
+export const RELIC_INTEREST_RATE = 0.1; // 高利贷：每次下行按当前金币结算的利息
 
 // 越深越容易遇到高品质遗物。权重随层数连续漂移：
 // 第 1 层 60/30/10，第 30 层 30/45/30，中间平滑过渡。
@@ -175,6 +179,9 @@ export const RELICS = [
   { id: 'alchemist', icon: 'potion', cat: 'supply', rarity: 'rare' },
   { id: 'mint', icon: 'coin', cat: 'supply', rarity: 'common' },
   { id: 'lootSack', icon: 'coin', cat: 'supply', rarity: 'common' },
+  { id: 'bounty', icon: 'coin', cat: 'supply', rarity: 'rare' },
+  { id: 'deed', icon: 'scroll', cat: 'supply', rarity: 'common' },
+  { id: 'usury', icon: 'skull', cat: 'supply', rarity: 'rare' },
   { id: 'deepPockets', icon: 'chest', cat: 'supply', rarity: 'common' },
   { id: 'torch', icon: 'torch', cat: 'supply', rarity: 'common' },
   { id: 'altarGrace', icon: 'altar', cat: 'supply', rarity: 'rare' },
@@ -191,6 +198,7 @@ export const RELICS = [
   { id: 'bloodPact', icon: 'heart', cat: 'pact', rarity: 'epic' },
   { id: 'glassCannon', icon: 'crown', cat: 'pact', rarity: 'epic' },
   { id: 'greedyHeart', icon: 'skull', cat: 'pact', rarity: 'rare' },
+  { id: 'midas', icon: 'crown', cat: 'pact', rarity: 'epic' },
   { id: 'strataOath', icon: 'altar', cat: 'pact', rarity: 'epic' },
   { id: 'vow', icon: 'lock', cat: 'pact', rarity: 'epic' },
 ];
@@ -220,6 +228,10 @@ const RELIC_PARAMS = {
   spikedMail: { n: RELIC_SPIKED_THORNS },
   pennant: { n: RELIC_PENNANT_FLAGS, cap: FLAG_BONUS_CAP },
   lootSack: { gold: RELIC_LOOT_SACK_GOLD },
+  bounty: { gold: RELIC_BOUNTY_GOLD },
+  midas: { step: RELIC_MIDAS_STEP },
+  deed: { gold: RELIC_DEED_GOLD },
+  usury: { pct: Math.round(RELIC_INTEREST_RATE * 100) },
   powderKeg: { dmg: RELIC_POWDER_DMG },
   blastCharge: { mul: RELIC_BLAST_MUL },
   siegeBlast: { mul: RELIC_SIEGE_MUL },
@@ -323,7 +335,7 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
     floor: 1,
     tiles: [],
     generated: false,
-    player: { hp: d.hp, maxHp: d.hp, atk: 5, def: 1, lv: 1, xp: 0, xpNext: 12, gold: d.gold, potions: 2, bombs: 1, scrolls: 1, takeMul: 1, takeFlat: 0, eliteTakeMul: 1, freeKill: false, thorns: 0, atkBonus: 0 },
+    player: { hp: d.hp, maxHp: d.hp, atk: 5, def: 1, lv: 1, xp: 0, xpNext: 12, gold: d.gold, potions: 2, bombs: 1, scrolls: 1, takeMul: 1, takeFlat: 0, eliteTakeMul: 1, freeKill: false, thorns: 0, atkBonus: 0, goldBonus: 0 },
     bought: {},
     relics: [],
     relicChoices: null,
@@ -629,6 +641,7 @@ function addGold(s, amount, out) {
   const real = Math.round(amount * (hasRelic(s, 'mint') ? 1.5 : 1));
   s.player.gold += real;
   s.stats.goldEarned += real;
+  syncRelicMods(s);
   ev(out, 'gold', { amount: real });
   return real;
 }
@@ -951,7 +964,8 @@ function killMob(s, t, out, opts = {}) {
   const xp = Math.round(m.xp * (opts.bomb && hasRelic(s, 'fuse') ? 1 + RELIC_FUSE_XP : 1));
   ev(out, 'kill', { i: t.i, mob: m, xp });
   if (opts.bomb && hasRelic(s, 'forge')) s.relicState.bombForge = (s.relicState.bombForge || 0) + RELIC_FORGE_GROW;
-  addGold(s, m.gold + (hasRelic(s, 'lootSack') ? RELIC_LOOT_SACK_GOLD : 0), out);
+  addGold(s, m.gold + (hasRelic(s, 'lootSack') ? RELIC_LOOT_SACK_GOLD : 0)
+    + (hasRelic(s, 'bounty') ? RELIC_BOUNTY_GOLD : 0), out);
   gainXp(s, xp, out);
   if (hasRelic(s, 'momentum') && !s.relicState.firstKill) { s.relicState.firstKill = true; syncRelicMods(s); }
   if (hasRelic(s, 'vampiricEdge')) heal(s, 4, out);
@@ -1032,6 +1046,7 @@ export function buy(s, id) {
   if (s.player.gold < price) { say(s, 'log.no.gold', 'warn'); ev(out, 'deny'); return out; }
   s.player.gold -= price;
   s.bought[id] = (s.bought[id] || 0) + 1;
+  syncRelicMods(s);
   const p = s.player;
   if (id === 'potion') p.potions++;
   if (id === 'whet') p.atk += BAL.shopWhet;
@@ -1110,7 +1125,16 @@ export function tryDescend(s) {
   if (!s.stairsFound) { say(s, 'log.no.stairs', 'warn'); return out; }
   if (isBossFloor(s.floor) && !s.bossDown) { say(s, 'log.stairs.boss', 'warn'); ev(out, 'locked', { boss: true }); return out; }
   if (!isBossFloor(s.floor) && s.floor > 1 && !s.hasKey) { say(s, 'log.stairs.locked', 'warn'); ev(out, 'locked'); return out; }
-  const bonus = addGold(s, (10 + s.floor * 3) * (hasRelic(s, 'prospector') ? 2 : 1), out);
+  // 利息按下楼那一刻手里的金币结算，不滚入本层的通关奖励
+  if (hasRelic(s, 'usury')) {
+    const interest = Math.floor(s.player.gold * RELIC_INTEREST_RATE);
+    if (interest > 0) {
+      addGold(s, interest, out);
+      say(s, 'log.usury', { n: interest }, 'good');
+    }
+  }
+  const bonus = addGold(s, (10 + s.floor * 3) * (hasRelic(s, 'prospector') ? 2 : 1)
+    + (hasRelic(s, 'deed') ? RELIC_DEED_GOLD : 0), out);
   heal(s, Math.ceil(s.player.maxHp * BAL.descendPct), out);
   if (hasRelic(s, 'rations')) {
     const h = heal(s, Math.ceil(s.player.maxHp * RELIC_RATION_HEAL), out);
@@ -1171,6 +1195,12 @@ function syncRelicMods(s) {
   const want = hasRelic(s, 'vigor') ? Math.floor(p.maxHp / RELIC_VIGOR_STEP) : 0;
   p.atk += want - p.atkBonus;
   p.atkBonus = want;
+  // 点金手同理：金币随时会被花掉，按当前持有量重算差额，花掉就收回加成
+  const goldWant = hasRelic(s, 'midas') ? Math.floor(p.gold / RELIC_MIDAS_STEP) : 0;
+  const goldDiff = goldWant - (p.goldBonus || 0);
+  p.atk += goldDiff;
+  p.def += goldDiff;
+  p.goldBonus = goldWant;
 }
 
 function flagRelicNeed(r) {
@@ -1225,6 +1255,7 @@ export function rerollRelics(s) {
   const cost = relicRerollCost(s);
   if (s.player.gold < cost) { say(s, 'log.no.gold', 'warn'); return ev(out, 'deny'); }
   s.player.gold -= cost;
+  syncRelicMods(s);
   s.relicReroll = (s.relicReroll || 0) + 1;
   const prev = s.relicChoices;
   s.relicChoices = rollRelicChoices(s, prev);

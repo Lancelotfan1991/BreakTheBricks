@@ -81,9 +81,10 @@ function shopPass(s, build) {
 }
 
 const RELIC_PREF = ['momentum', 'strataOath', 'vow', 'dragonWard', 'ironStomach', 'vampiricEdge', 'heartEater',
-  'guardianBane', 'thornMail', 'recoilMail', 'spikedMail', 'alchemist', 'whetSoul', 'vigor', 'bloodSac',
+  'guardianBane', 'thornMail', 'recoilMail', 'spikedMail', 'alchemist', 'whetSoul', 'vigor', 'midas', 'bloodSac',
   'ribguard', 'bannerLord', 'bannerBearer', 'pennant', 'siegeBreak', 'moraleBreak', 'spikeSoles', 'carefulStep',
-  'mint', 'lootSack', 'deepPockets', 'greedyHeart', 'altarGrace', 'warPaint', 'whetstone', 'prospector',
+  'mint', 'lootSack', 'bounty', 'deed', 'usury', 'deepPockets', 'greedyHeart', 'altarGrace', 'warPaint', 'whetstone',
+  'prospector',
   'torch', 'perfectMind', 'trapSalvage', 'tally', 'blastWave', 'cartographer', 'bloodPact', 'glassCannon',
   'chronicle', 'bonePlate', 'rations', 'bombBag', 'powderKeg', 'fuse', 'forge', 'blastCharge', 'siegeBlast', 'bombCache',
   'pawnTicket'];
@@ -93,16 +94,16 @@ const BUILD_PREF = {
   reason: ['bannerBearer', 'pennant', 'siegeBreak', 'moraleBreak', 'perfectMind', 'bannerLord', 'cartographer',
     'tally', 'trapSalvage', 'chronicle', 'momentum', 'dragonWard', 'guardianBane', 'recoilMail', 'thornMail',
     'spikedMail', 'whetSoul', 'whetstone', 'vigor', 'ironStomach', 'vampiricEdge', 'bonePlate', 'rations',
-    'lootSack', 'alchemist', 'mint', 'deepPockets', 'greedyHeart', 'altarGrace', 'warPaint', 'prospector',
+    'lootSack', 'bounty', 'deed', 'usury', 'midas', 'alchemist', 'mint', 'deepPockets', 'greedyHeart', 'altarGrace', 'warPaint', 'prospector',
     'spikeSoles', 'carefulStep', 'blastWave', 'torch', 'bloodSac', 'ribguard', 'strataOath', 'bloodPact',
     'glassCannon', 'heartEater', 'vow', 'bombBag', 'powderKeg', 'fuse', 'forge', 'blastCharge', 'siegeBlast', 'bombCache',
     'pawnTicket'],
   body: ['strataOath', 'recoilMail', 'vigor', 'vow', 'ironStomach', 'vampiricEdge', 'heartEater', 'dragonWard',
-    'thornMail', 'guardianBane', 'momentum', 'alchemist', 'whetSoul', 'altarGrace', 'warPaint', 'bloodPact',
+    'thornMail', 'guardianBane', 'momentum', 'midas', 'alchemist', 'whetSoul', 'altarGrace', 'warPaint', 'bloodPact',
     'glassCannon', 'bloodSac', 'ribguard', 'spikedMail', 'whetstone', 'lootSack', 'bannerLord', 'bannerBearer',
     'siegeBreak', 'moraleBreak', 'spikeSoles', 'carefulStep', 'mint', 'deepPockets', 'greedyHeart', 'prospector',
     'perfectMind', 'blastWave', 'cartographer', 'trapSalvage', 'bonePlate', 'rations', 'tally', 'chronicle',
-    'torch', 'pennant', 'bombBag', 'powderKeg', 'fuse', 'forge', 'blastCharge', 'siegeBlast', 'bombCache',
+    'torch', 'pennant', 'bounty', 'deed', 'usury', 'bombBag', 'powderKeg', 'fuse', 'forge', 'blastCharge', 'siegeBlast', 'bombCache',
     'pawnTicket'],
 };
 

@@ -627,12 +627,12 @@ function grant(s, id) {
 const hiddenThreats = (s) => s.tiles.filter((t) => !t.revealed && ['monster', 'elite', 'trap', 'boss'].includes(t.kind));
 function atFloor(s, f) { s.floor = f; G.buildFloor(s); G.tapTile(s, 30); G.closePending(s); return s; }
 
-test('遗物表完整：50 件、id 唯一、分类与稀有度合法', () => {
-  assert.equal(G.RELICS.length, 50);
-  assert.equal(new Set(G.RELICS.map((r) => r.id)).size, 50);
+test('遗物表完整：54 件、id 唯一、分类与稀有度合法', () => {
+  assert.equal(G.RELICS.length, 54);
+  assert.equal(new Set(G.RELICS.map((r) => r.id)).size, 54);
   const byRarity = {};
   for (const r of G.RELICS) byRarity[r.rarity] = (byRarity[r.rarity] || 0) + 1;
-  assert.deepEqual(byRarity, { common: 24, rare: 18, epic: 8 }, '稀有度应呈普通多、史诗少的金字塔');
+  assert.deepEqual(byRarity, { common: 25, rare: 20, epic: 9 }, '稀有度应呈普通多、史诗少的金字塔');
   for (const r of G.RELICS) {
     assert.ok(G.RELIC_CATS.includes(r.cat), `${r.id} 分类非法`);
     assert.ok(G.RELIC_RARITY[r.rarity], `${r.id} 稀有度非法`);
@@ -786,6 +786,78 @@ test('战利品袋：每次击杀额外获得固定金币', () => {
   const gained = evs.filter((e) => e.type === 'gold').reduce((a, e) => a + e.amount, 0);
   assert.equal(gained, t.mob.gold + G.RELIC_LOOT_SACK_GOLD);
   assert.equal(s.player.gold, gold0 + gained);
+});
+
+test('赏金令：每次击杀额外 5 金币，与战利品袋叠加', () => {
+  const s = fresh('normal', 112);
+  grant(s, 'bounty'); grant(s, 'lootSack');
+  s.player.atk = 9999;
+  atFloor(s, 3);
+  const t = find(s, 'monster')[0];
+  s.player.hp = s.player.maxHp;
+  G.tapTile(s, t.i);
+  const gold0 = s.player.gold;
+  const evs = G.attack(s, s.pendingCombat);
+  const gained = evs.filter((e) => e.type === 'gold').reduce((a, e) => a + e.amount, 0);
+  assert.equal(gained, t.mob.gold + G.RELIC_BOUNTY_GOLD + G.RELIC_LOOT_SACK_GOLD);
+  assert.equal(s.player.gold, gold0 + gained);
+});
+
+test('点金手：攻防随持有金币升降，花掉即收回且不重复叠加', () => {
+  const s = fresh('normal', 114);
+  s.player.gold = 95;
+  grant(s, 'midas');
+  assert.equal(s.player.goldBonus, 3);
+  assert.equal(s.player.atk, 5 + 3);
+  assert.equal(s.player.def, 1 + 3);
+
+  atFloor(s, 3);
+  assert.equal(s.player.atk, 5 + 3, '反复同步不应越叠越多');
+  assert.equal(s.player.def, 1 + 3);
+
+  const ch = find(s, 'chest')[0];
+  ch.chest = { type: 'gold', amount: 60 }; ch.revealed = true; ch.used = false;
+  G.tapTile(s, ch.i);
+  assert.equal(s.player.goldBonus, 5, '155 金币 = 5 点');
+  assert.equal(s.player.atk, 5 + 5);
+  assert.equal(s.player.def, 1 + 5);
+
+  s.player.gold = 29;
+  G.buy(s, 'scroll');
+  assert.equal(s.player.goldBonus, 0, '花到 30 以下，加成收回');
+  assert.equal(s.player.atk, 5);
+  assert.equal(s.player.def, 1);
+
+  const back = G.deserialize(G.serialize(s));
+  assert.equal(back.player.goldBonus, 0, '存档往返保留派生值');
+  G.buildFloor(back);
+  assert.equal(back.player.atk, 5, '读档后重算不重复计入');
+});
+
+test('矿脉契与高利贷：下行固定金币与按当时金币取整的利息', () => {
+  const s = fresh('normal', 115);
+  grant(s, 'deed'); grant(s, 'usury');
+  s.player.gold = 245;
+  s.stairsFound = true;
+  const g0 = s.player.gold;
+  G.tryDescend(s);
+  const base = 10 + 1 * 3;
+  assert.equal(s.player.gold - g0, Math.floor(245 * G.RELIC_INTEREST_RATE) + base + G.RELIC_DEED_GOLD);
+  assert.ok(s.log.some((l) => l.k === 'log.usury' && l.p.n === 24), '利息按 245 金币结算并向下取整');
+
+  const b = fresh('normal', 116);
+  grant(b, 'deed'); grant(b, 'prospector');
+  b.stairsFound = true;
+  const gb = b.player.gold;
+  G.tryDescend(b);
+  assert.equal(b.player.gold - gb, (10 + 3) * 2 + G.RELIC_DEED_GOLD, '探矿罗盘只翻倍通关奖励');
+
+  const c = fresh('normal', 117);
+  grant(c, 'usury');
+  c.player.gold = 0;
+  c.stairsFound = true;
+  G.tryDescend(c);
+  assert.ok(!c.log.some((l) => l.k === 'log.usury'), '没有金币就不刷利息日志');
 });
 
 test('骨甲：按生命上限派生固定减伤，封顶后不再增长', () => {
