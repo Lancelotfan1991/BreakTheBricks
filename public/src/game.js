@@ -38,12 +38,12 @@ export const STRATA_DEF = 1;           // 层岩誓约：每下行一层的防�
 export const STRATA_HP = 3;            // 层岩誓约：每下行一层的生命上限成长
 
 export const SHOP = [
-  { id: 'potion', icon: 'potion', base: 30, step: 12 },
-  { id: 'whet', icon: 'sword', base: 30, step: 14 },
-  { id: 'plate', icon: 'shield', base: 30, step: 16 },
-  { id: 'elixir', icon: 'flask', base: 45, step: 18 },
+  { id: 'potion', icon: 'potion', base: 30, step: 10 },
+  { id: 'whet', icon: 'sword', base: 30, step: 15 },
+  { id: 'plate', icon: 'shield', base: 30, step: 15 },
+  { id: 'elixir', icon: 'flask', base: 45, step: 20 },
   { id: 'pouch', icon: 'flag', base: 25, step: 10 },
-  { id: 'scroll', icon: 'scroll', base: 22, step: 6 },
+  { id: 'scroll', icon: 'scroll', base: 20, step: 5 },
   { id: 'bomb', icon: 'bomb', base: 40, step: 10 },
   { id: 'relic', icon: 'relic', base: 80, step: 50 },
 ];
@@ -117,9 +117,12 @@ export const RELIC_BOMB_CACHE = 6;      // 军械箱：获得时立刻补充 6 �
 export const RELIC_REROLL_BASE = 5;     // 遗物重置：本批首次重置的金币
 export const RELIC_REROLL_STEP = 5;     // 遗物重置：每次重置的涨价
 export const RELIC_REROLL_DISCOUNT = 5;// 典当票：每次重置减价
-export const RELIC_RATION_HEAL = 0.07;  // 干粮：下行额外回复
+export const RELIC_RATION_HEAL = 0.1;   // 干粮：下行额外回复
 export const RELIC_TORCH_GOLD = 15;     // 火把：炸弹清除目标的额外金币
 export const RELIC_TORCH_SHOP = 0.5;    // 火把：炸弹售价倍率
+export const RELIC_WARD_DEF = 8;        // 龙鳞护符：防御
+export const RELIC_ELITE_DMG = 100;     // 破守者：对钥匙守卫与龙王的伤害加成
+export const RELIC_TRAP_MUL = 0.5;      // 钉底靴：陷阱伤害倍率
 export const RELIC_PLATE_STEP = 40;     // 骨甲：每 40 生命上限换 1 点固定减伤
 export const RELIC_PLATE_CAP = 4;       // 骨甲：固定减伤上限
 export const RELIC_VOW_HP = 30;         // 静默誓约：生命上限加成
@@ -325,6 +328,8 @@ const RELIC_PARAMS = {
   treasureBell: { n: RELIC_BELL_CHEST },
   hunterFlask: { pct: Math.round(RELIC_KILL_POTION_CHANCE * 100) },
   richBrew: { n: RELIC_POTION_FLAT },
+  dragonWard: { def: RELIC_WARD_DEF },
+  guardianBane: { n: RELIC_ELITE_DMG },
 };
 export const relicName = (r) => tr('relic.' + r.id + '.name');
 export const relicDesc = (r) => tr('relic.' + r.id + '.desc', RELIC_PARAMS[r.id]);
@@ -387,12 +392,12 @@ export function atkOf(s) {
 // 偷袭就是白挨一次普通攻击：攻击 − 防御，并按战斗同一套减伤结算。
 export function ambushDamage(p, mob) {
   const perHit = hitDamage(mob.atk, p.def);
-  const mul = (mob.elite || mob.boss ? p.eliteTakeMul : 1) * p.takeMul * (p.ambushMul ?? 1);
+  const mul = p.takeMul * (p.ambushMul ?? 1);
   return Math.max(0, Math.round(perHit * mul) - p.takeFlat);
 }
 // atk 允许传入“当前有效攻击”（角斗士翻倍）；默认仍读面板，老调用不需要改。
 export function forecast(p, mob, atk = p.atk) {
-  const deal = hitDamage(atk, mob.def);
+  const deal = hitDamage(atk, mob.def) + (mob.elite || mob.boss ? (p.eliteAtkBonus || 0) : 0);
   const T = p.thorns;
   // 反震跟着反击走：第 r 回合玩家打 deal，怪物若没死就反击一次并吃 T 点反震。
   // 于是它可能死在第 r 次挥剑，也可能死在第 r 次反击的反震上——后者玩家仍要挨这一口。
@@ -402,7 +407,6 @@ export function forecast(p, mob, atk = p.atk) {
   const counters = rounds - 1 + (byThorns ? 1 : 0);
   const perHit = hitDamage(mob.atk, p.def);
   let take = counters * perHit;
-  if (mob.elite || mob.boss) take *= p.eliteTakeMul;
   take = Math.max(0, Math.round(take * p.takeMul) - p.takeFlat);
   if (p.freeKill) take = 0;
   return { deal, rounds, counters, take, lethal: take >= p.hp, perHit };
@@ -424,7 +428,7 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
     floor: 1,
     tiles: [],
     generated: false,
-    player: { hp: d.hp, maxHp: d.hp, atk: 5, def: 1, lv: 1, xp: 0, xpNext: 12, gold: d.gold, potions: 2, bombs: 1, scrolls: 1, takeMul: 1, takeFlat: 0, eliteTakeMul: 1, ambushMul: 1, freeKill: false, thorns: 0, atkBonus: 0, goldBonus: 0, killHeal: 0 },
+    player: { hp: d.hp, maxHp: d.hp, atk: 5, def: 1, lv: 1, xp: 0, xpNext: 12, gold: d.gold, potions: 2, bombs: 1, scrolls: 1, takeMul: 1, takeFlat: 0, eliteAtkBonus: 0, ambushMul: 1, freeKill: false, thorns: 0, atkBonus: 0, goldBonus: 0, wardBonus: 0, killHeal: 0 },
     talent: null,
     talentPending: true,
     bought: {},
@@ -597,9 +601,7 @@ export function ensureBoard(s, safeIndex) {
 }
 
 function rollChest(s, f, d) {
-  const p = s.player;
   const bag = ['gold', 'gold', 'potion', 'weapon', 'armor', 'scroll', 'scroll', 'bomb', 'bomb'];
-  if (p.hp < p.maxHp * 0.45) bag.push('potion', 'potion');
   if (d.loot > 1) bag.push('potion', 'gold');
   const type = pick(s, bag);
   if (type === 'gold') return { type, amount: Math.round((BAL.chestGold + BAL.chestGoldF * f) * d.loot) + ri(s, 0, 6) };
@@ -690,7 +692,8 @@ export function shopPrice(s, id) {
   const mult = (hasRelic(s, 'deepPockets') ? 0.75 : 1)
     * (hasRelic(s, 'greedyHeart') ? GREEDY_HEART_SHOP : 1)
     * (id === 'bomb' && hasRelic(s, 'torch') ? RELIC_TORCH_SHOP : 1);
-  return Math.max(1, Math.round(base * mult));
+  // 折扣/涨价可能带出小数，统一取整到 5，避免 23、54 这类零碎价格
+  return Math.max(5, Math.round(base * mult / 5) * 5);
 }
 
 // 角斗士：每次永久获得攻击力都额外 +1；失去攻击力（如静默誓约）不返还。
@@ -896,7 +899,7 @@ function openTile(s, i, out, opts = {}) {
     } else {
       t.used = true;
       let dmg = Math.max(2, Math.round(BAL.trapBase + BAL.trapF * depthOf(s.floor) - Math.floor(p.def / 2)));
-      if (hasRelic(s, 'spikeSoles')) dmg = Math.max(1, Math.round(dmg * 0.7));
+      if (hasRelic(s, 'spikeSoles')) dmg = Math.max(1, Math.round(dmg * RELIC_TRAP_MUL));
       if (s.relicState.trapWard > 0) {
         s.relicState.trapWard--;
         say(s, 'log.trap.ward', { n: s.relicState.trapWard }, 'good');
@@ -1417,11 +1420,15 @@ export const hasRelic = (s, id) => s.relics.includes(id);
 // 预演与结算读到的永远是同一份数字。
 function syncRelicMods(s) {
   const p = s.player;
-  p.takeMul = (hasRelic(s, 'dragonWard') ? 0.75 : 1) * (hasRelic(s, 'glassCannon') ? 1.35 : 1);
+  p.takeMul = hasRelic(s, 'glassCannon') ? 2 : 1;
   p.takeFlat = (hasRelic(s, 'thornMail') ? 2 : 0)
     + (hasRelic(s, 'bonePlate') ? Math.min(RELIC_PLATE_CAP, Math.floor(p.maxHp / RELIC_PLATE_STEP)) : 0);
-  p.eliteTakeMul = hasRelic(s, 'guardianBane') ? 0.6 : 1;
+  p.eliteAtkBonus = hasRelic(s, 'guardianBane') ? RELIC_ELITE_DMG : 0;
   p.ambushMul = hasRelic(s, 'steadyNerve') ? RELIC_AMBUSH_HALF : 1;
+  // 龙鳞护符按派生字段写回防御：老存档加载时也能补上，重复同步不会叠加
+  const wardWant = hasRelic(s, 'dragonWard') ? RELIC_WARD_DEF : 0;
+  p.def += wardWant - (p.wardBonus || 0);
+  p.wardBonus = wardWant;
   p.freeKill = hasRelic(s, 'momentum') && !s.relicState.firstKill;
   p.thorns = (hasRelic(s, 'recoilMail') ? RELIC_RECOIL : 0) + (hasRelic(s, 'spikedMail') ? RELIC_SPIKED_THORNS : 0);
   // 血气方刚是派生值：按 maxHp 重算目标加成，只写回差额，重复同步才不会越叠越多
@@ -1562,8 +1569,16 @@ export function deserialize(text) {
     s.talent = talentById(s.talent) ? s.talent : null;
     s.talentPending = !!s.talentPending && !s.talent;
     s.player.killHeal = Number.isFinite(s.player.killHeal) ? Math.max(0, s.player.killHeal) : 0;
-    // 偷袭减免是后加的派生字段：老存档补 1，拿到对应遗物后由 syncRelicMods 覆盖。
-    s.player.ambushMul = Number.isFinite(s.player.ambushMul) ? s.player.ambushMul : 1;
+    // 承伤/增伤从百分比改为具体数值：这些派生字段一律按遗物重建，
+    // 老存档里的 0.75 倍承伤、0.6 倍精英承伤都已作废。龙鳞护符改成防御，按差额补上。
+    const owned = Array.isArray(s.relics) ? s.relics : [];
+    const relic = (id) => owned.includes(id);
+    s.player.takeMul = relic('glassCannon') ? 2 : 1;
+    s.player.eliteAtkBonus = relic('guardianBane') ? RELIC_ELITE_DMG : 0;
+    s.player.ambushMul = relic('steadyNerve') ? RELIC_AMBUSH_HALF : 1;
+    const wardWant = relic('dragonWard') ? RELIC_WARD_DEF : 0;
+    s.player.def += wardWant - (Number.isFinite(s.player.wardBonus) ? s.player.wardBonus : 0);
+    s.player.wardBonus = wardWant;
     s.stats = s.stats && typeof s.stats === 'object' ? s.stats : {};
     s.stats.chests = Number.isFinite(s.stats.chests) ? Math.max(0, s.stats.chests) : 0;
     s.stats.chestRelics = Number.isFinite(s.stats.chestRelics) ? Math.max(0, s.stats.chestRelics) : 0;

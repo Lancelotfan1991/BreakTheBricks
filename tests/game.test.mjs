@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import * as G from '../public/src/game.js';
 
 const find = (s, kind) => s.tiles.filter((t) => t.kind === kind);
+// 商店价格统一取整到 5，折扣后的期望值也照此换算
+const r5 = (n) => Math.max(5, Math.round(n / 5) * 5);
 const firstHidden = (s) => s.tiles.find((t) => !t.revealed).i;
 const hero = (o) => Object.assign(G.createRun('normal', 1).player, o);
 
@@ -1176,24 +1178,26 @@ test('遗物抽取可复现：同种子同选项', () => {
   assert.equal(run(4242), run(4242));
 });
 
-test('战斗承伤遗物：荆棘甲 / 龙鳞护符 / 玻璃炮 叠乘，预演等于实际结算', () => {
+test('战斗承伤遗物：荆棘甲固定减伤、龙鳞护符 +8 防御、玻璃炮承伤翻倍，预演等于实际结算', () => {
   const s = fresh('normal', 93);
   atFloor(s, 6);
   s.player.maxHp = 400; s.player.hp = 400;
+  const def0 = s.player.def;
   const mob = find(s, 'monster').find((t) => G.forecast(s.player, t.mob).take >= 8);
   assert.ok(mob, '需要一个承伤足够高的样本');
   const m = mob.mob;
+  // 按当前攻防重算原始承伤：龙鳞护符会改防御，不能沿用旧值
   const raw = () => (Math.ceil(m.hp / Math.max(1, s.player.atk - m.def)) - 1) * Math.max(1, m.atk - s.player.def);
-  const base = raw();
   grant(s, 'thornMail');
   assert.equal(s.player.takeFlat, 2);
-  assert.equal(G.forecast(s.player, m).take, base - 2);
+  assert.equal(G.forecast(s.player, m).take, raw() - 2);
   grant(s, 'dragonWard');
-  assert.equal(G.forecast(s.player, m).take, Math.round(base * 0.75) - 2);
+  assert.equal(s.player.def, def0 + G.RELIC_WARD_DEF, '龙鳞护符应 +8 防御');
+  assert.equal(G.forecast(s.player, m).take, raw() - 2, '防御加成已体现在每击伤害里，不再额外减免');
   grant(s, 'glassCannon');
   assert.equal(s.player.atk, 5 + 6, '玻璃炮应 +6 攻击');
   const f = G.forecast(s.player, m);
-  assert.equal(f.take, Math.max(0, Math.round(raw() * 0.75 * 1.35) - 2));
+  assert.equal(f.take, Math.max(0, Math.round(raw() * 2) - 2), '玻璃炮承伤翻倍');
   mob.revealed = true; // 已探明：普通预演，偷袭的扣血不会干扰承伤对照
   G.tapTile(s, mob.i);
   const evs = G.attack(s, s.pendingCombat);
@@ -1201,16 +1205,18 @@ test('战斗承伤遗物：荆棘甲 / 龙鳞护符 / 玻璃炮 叠乘，预演�
   assert.equal(dmg, f.take, '实际扣血必须等于预演');
 });
 
-test('破守者只对精英与龙王生效', () => {
+test('破守者：对精英与龙王造成的伤害 +100，普通怪物不变', () => {
   const s = fresh('normal', 94);
   atFloor(s, 6);
   const elite = find(s, 'elite')[0];
-  const small = find(s, 'monster').find((t) => G.forecast(s.player, t.mob).take >= 6);
-  const e0 = G.forecast(s.player, elite.mob).take;
-  const m0 = G.forecast(s.player, small.mob).take;
+  const small = find(s, 'monster')[0];
+  const e0 = G.forecast(s.player, elite.mob);
+  const m0 = G.forecast(s.player, small.mob);
   grant(s, 'guardianBane');
-  assert.equal(G.forecast(s.player, elite.mob).take, Math.round(e0 * 0.6));
-  assert.equal(G.forecast(s.player, small.mob).take, m0, '小怪承伤不应变化');
+  assert.equal(G.forecast(s.player, elite.mob).deal, e0.deal + G.RELIC_ELITE_DMG, '精英每击 +100');
+  assert.ok(G.forecast(s.player, elite.mob).rounds < e0.rounds || e0.rounds === 1, '精英应更快被打死');
+  assert.equal(G.forecast(s.player, small.mob).deal, m0.deal, '小怪伤害不应变化');
+  assert.equal(G.forecast(s.player, small.mob).take, m0.take, '小怪承伤不应变化');
 });
 
 test('势如破竹：每层首杀免伤、之后恢复、下行重置', () => {
@@ -1232,7 +1238,7 @@ test('势如破竹：每层首杀免伤、之后恢复、下行重置', () => {
   assert.equal(s.relicState.firstKill, false);
 });
 
-test('陷阱遗物：钉底靴减伤 30%、猫步 3 次充能免伤、拾荒爪按陷阱旗给金币', () => {
+test('陷阱遗物：钉底靴伤害减半、猫步 3 次充能免伤、拾荒爪按陷阱旗给金币', () => {
   const base = fresh('normal', 96);
   atFloor(base, 3);
   base.player.hp = base.player.maxHp;
@@ -1242,7 +1248,7 @@ test('陷阱遗物：钉底靴减伤 30%、猫步 3 次充能免伤、拾荒爪�
   atFloor(soles, 3);
   grant(soles, 'spikeSoles');
   soles.player.hp = soles.player.maxHp;
-  assert.equal(G.tapTile(soles, find(soles, 'trap')[0].i).find((e) => e.type === 'damage').amount, Math.max(1, Math.round(raw * 0.7)));
+  assert.equal(G.tapTile(soles, find(soles, 'trap')[0].i).find((e) => e.type === 'damage').amount, Math.max(1, Math.round(raw * G.RELIC_TRAP_MUL)));
 
   const cat = fresh('normal', 96);
   atFloor(cat, 6);
@@ -1312,10 +1318,11 @@ test('补给遗物：铁胃 / 铸币印 / 深口袋 / 神恩', () => {
   const d = fresh('normal', 98);
   const before = G.shopPrice(d, 'whet');
   grant(d, 'deepPockets');
-  assert.equal(G.shopPrice(d, 'whet'), Math.round(before * 0.75));
+  assert.equal(G.shopPrice(d, 'whet'), r5(before * 0.75));
   d.player.gold = 999;
   G.buy(d, 'whet');
-  assert.equal(G.shopPrice(d, 'whet'), Math.round((before + 14) * 0.75), '涨价后仍应打折');
+  const step = G.SHOP.find((x) => x.id === 'whet').step;
+  assert.equal(G.shopPrice(d, 'whet'), r5((before + step) * 0.75), '涨价后仍应打折');
 
   const e = fresh('normal', 98);
   atFloor(e, 3);
@@ -1359,7 +1366,7 @@ test('贪婪之心：宝箱金币翻倍，商店价格提高', () => {
   const s = fresh('normal', 100);
   const price0 = G.shopPrice(s, 'potion');
   grant(s, 'greedyHeart');
-  assert.equal(G.shopPrice(s, 'potion'), Math.round(price0 * G.GREEDY_HEART_SHOP));
+  assert.equal(G.shopPrice(s, 'potion'), r5(price0 * G.GREEDY_HEART_SHOP));
   const chests = find(s, 'chest');
   assert.ok(chests.length >= 2);
   chests[0].chest = { type: 'gold', amount: 20 }; chests[0].revealed = true; chests[0].used = false;
@@ -1406,7 +1413,7 @@ test('无遗物时战斗数学与旧版一致，遗物状态可存档往返', ()
   const p = s.player;
   const legacy = (Math.ceil(mob.mob.hp / Math.max(1, p.atk - mob.mob.def)) - 1) * Math.max(1, mob.mob.atk - p.def);
   assert.equal(G.forecast(p, mob.mob).take, legacy);
-  assert.equal(p.takeMul, 1); assert.equal(p.takeFlat, 0); assert.equal(p.eliteTakeMul, 1); assert.equal(p.freeKill, false);
+  assert.equal(p.takeMul, 1); assert.equal(p.takeFlat, 0); assert.equal(p.eliteAtkBonus, 0); assert.equal(p.wardBonus, 0); assert.equal(p.freeKill, false);
 
   atFloor(s, 2);
   const elite = find(s, 'elite')[0];
@@ -1471,7 +1478,7 @@ test('偷袭伤害：至少 1 点，减伤遗物同样生效，也可被完全�
   G.chooseRelic(s2, 'dragonWard');
   putMob(s2, 0, { atk: 12 });
   G.tapTile(s2, 0);
-  assert.equal(s2.player.hp, 80 - Math.round(12 * 0.75), '减伤遗物对偷袭生效');
+  assert.equal(s2.player.hp, 80 - (12 - G.RELIC_WARD_DEF), '防御加成对偷袭同样生效');
 
   const s3 = arena();
   s3.player.hp = s3.player.maxHp = 80;
@@ -1486,7 +1493,7 @@ test('偷袭伤害：至少 1 点，减伤遗物同样生效，也可被完全�
   assert.ok(out.some((e) => e.type === 'ambush' && e.dmg === 0));
 });
 
-test('定神符：偷袭伤害减半，与减伤遗物叠乘', () => {
+test('定神符：偷袭伤害减半，与防御加成叠加', () => {
   const s = arena();
   s.player.hp = s.player.maxHp = 80;
   s.player.def = 0;
@@ -1501,7 +1508,7 @@ test('定神符：偷袭伤害减半，与减伤遗物叠乘', () => {
   grant(s2, 'dragonWard'); grant(s2, 'steadyNerve');
   putMob(s2, 0, { atk: 12 });
   G.tapTile(s2, 0);
-  assert.equal(s2.player.hp, 80 - Math.round(12 * 0.75 * G.RELIC_AMBUSH_HALF), '与承伤减免叠乘');
+  assert.equal(s2.player.hp, 80 - Math.round((12 - G.RELIC_WARD_DEF) * G.RELIC_AMBUSH_HALF), '先扣防御再减半');
 });
 
 test('偷袭：那一口可以直接致死，不会进入战斗', () => {
