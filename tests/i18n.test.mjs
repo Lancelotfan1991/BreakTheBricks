@@ -63,6 +63,16 @@ test('动态键族：难度/商店/怪物/楼层/遗物/祭坛/稀有度/分类�
     assert.ok(G.rarityName(r.rarity) && G.catName(r.cat), `${r.id} 的稀有度/分类`);
   }
   for (const o of G.ALTAR_OPTIONS) assert.ok(G.altarName(o) && G.altarDesc(o), `altar.${o.id}`);
+  for (const st of G.LEVEL_STATS) {
+    assert.ok(G.levelStatName(st) && !G.levelStatName(st).startsWith('level.'), `level.${st.id}.name`);
+    for (const rar of Object.keys(st.vals)) {
+      assert.equal(typeof st.vals[rar], 'number');
+      assert.ok(zhCN[`level.${st.id}.desc`].includes('{n}'), `level.${st.id}.desc 应写具体数值`);
+    }
+  }
+  for (const id of Object.keys(zhCN).filter((k) => k.startsWith('level.bonus.val.'))) {
+    assert.ok(zhCN[id].includes('{n}'), `${id} 应带数值占位`);
+  }
 });
 
 test('怪物文案覆盖所有会生成的怪', () => {
@@ -94,7 +104,7 @@ test('源码不再夹带面向玩家的中文（注释除外）', () => {
 
 test('源码引用的每个 key 都能在目录里找到（允许作为前缀）', () => {
   const known = (k) => KEYS.includes(k) || KEYS.some((x) => x.startsWith(k.endsWith('.') ? k : k + '.'));
-  const literal = /'((?:ui|log|tile|list|mob|relic|shop|altar|floor|difficulty|rarity|cat|source)\.[A-Za-z0-9_.]+)'/g;
+  const literal = /'((?:ui|log|tile|list|mob|relic|shop|altar|floor|difficulty|rarity|cat|source|level)\.[A-Za-z0-9_.]+)'/g;
   const missing = [];
   for (const f of ['game.js', 'ui.js']) {
     const code = stripComments(read(f));

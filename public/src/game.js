@@ -131,6 +131,31 @@ export const RELIC_MIDAS_STEP = 30;     // 点金手：每 30 金币换 1 攻击
 export const RELIC_DEED_GOLD = 30;      // 矿脉契：每次下行的金币
 export const RELIC_INTEREST_RATE = 0.1; // 高利贷：每次下行按当前金币结算的利息
 
+// ---------- 升级奖励 ----------
+// 升级不只涨基础面板：每次升级三选一，让「升级」也成为构筑决策。
+// 三档稀有度只改数值不改机制，选中的加成直接落在面板与规则里。
+export const LEVEL_DRAW_COUNT = 3;
+export const LEVEL_REROLL_BASE = 4;     // 本批首次重置的金币
+export const LEVEL_REROLL_STEP = 4;     // 每次重置的涨价
+export const LEVEL_STATS = [
+  { id: 'atk', icon: 'sword', vals: { common: 1, rare: 2, epic: 3 } },
+  { id: 'def', icon: 'shield', vals: { common: 1, rare: 2, epic: 3 } },
+  { id: 'maxHp', icon: 'heart', vals: { common: 6, rare: 12, epic: 18 } },
+  { id: 'gold', icon: 'coin', vals: { common: 4, rare: 8, epic: 12 } },
+  { id: 'heal', icon: 'potion', vals: { common: 2, rare: 4, epic: 6 } },
+  { id: 'xpKill', icon: 'sparkle', vals: { common: 2, rare: 4, epic: 6 } },
+  { id: 'xpFloor', icon: 'book', vals: { common: 5, rare: 10, epic: 15 } },
+];
+export const levelStat = (id) => LEVEL_STATS.find((st) => st.id === id);
+export const levelStatName = (st) => tr('level.' + st.id + '.name');
+export const levelChoiceStat = (id) => id.split(':')[0];
+export const levelChoiceRarity = (id) => id.split(':')[1];
+export const levelChoiceAmount = (id) => levelStat(levelChoiceStat(id)).vals[levelChoiceRarity(id)];
+export const levelChoiceDesc = (id) => tr('level.' + levelChoiceStat(id) + '.desc', { n: levelChoiceAmount(id) });
+export const levelBonusValue = (s, id) => tr('level.bonus.val.' + id, { n: (s.levelTaken || {})[id] || 0 });
+export const levelBonusCount = (s) =>
+  LEVEL_STATS.filter((st) => ((s.levelTaken || {})[st.id] || 0) > 0).length;
+
 // 越深越容易遇到高品质遗物。权重随层数连续漂移：
 // 第 1 层 60/30/10，第 30 层 30/45/30，中间平滑过渡。
 // 抽档与抽件分开掷，池子里增减同档遗物只改同类出场率，不会带偏整体曲线。
@@ -341,6 +366,10 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
     relicChoices: null,
     relicReroll: 0,
     relicState: { whet: 0, firstKill: false, trapWard: 0, survey: 0, heart: 0, bombForge: 0 },
+    levelChoices: null,
+    levelOffers: 0,
+    levelReroll: 0,
+    levelTaken: {},
     hasKey: false,
     stairsFound: false,
     stairsIndex: -1,
@@ -365,7 +394,7 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
 
 function blankTiles() {
   return Array.from({ length: SIZE }, (_, i) => ({
-    i, kind: 'empty', revealed: false, flagged: false, n: 0, mob: null, used: false, chest: null,
+    i, kind: 'empty', revealed: false, flagged: false, n: 0, mob: null, used: false, chest: null, relicDrop: false,
   }));
 }
 
@@ -498,7 +527,7 @@ export function ensureBoard(s, safeIndex) {
 
 function rollChest(s, f, d) {
   const p = s.player;
-  const bag = ['gold', 'gold', 'potion', 'weapon', 'armor', 'scroll', 'bomb'];
+  const bag = ['gold', 'gold', 'potion', 'weapon', 'armor', 'scroll', 'scroll', 'bomb', 'bomb'];
   if (p.hp < p.maxHp * 0.45) bag.push('potion', 'potion');
   if (d.loot > 1) bag.push('potion', 'gold');
   const type = pick(s, bag);
@@ -608,9 +637,75 @@ function gainXp(s, amount, out) {
     const defUp = p.lv % BAL.lvDefEvery === 0;
     say(s, defUp ? 'log.levelup.def' : 'log.levelup', { lv: p.lv, atk: BAL.lvAtk, hp: BAL.lvHp, def: 1 }, 'good');
     ev(out, 'levelup', { lv: p.lv });
+    offerLevel(s, out);
   }
   // 生命上限长了，血气方刚的派生攻击要跟着长
   if (p.lv > lv0) syncRelicMods(s);
+}
+
+// ---------- 升级奖励 ----------
+function rollLevelRarity(s) {
+  const w = relicRarityWeights(s.floor);
+  const ids = ['common', 'rare', 'epic'];
+  const total = ids.reduce((a, id) => a + w[id], 0);
+  let x = rand(s) * total;
+  for (const id of ids) { x -= w[id]; if (x < 0) return id; }
+  return 'common';
+}
+
+function rollLevelChoices(s, exclude = []) {
+  const all = LEVEL_STATS.map((st) => st.id);
+  const fresh = all.filter((id) => !exclude.includes(id));
+  const pool = shuffle(s, fresh.length >= LEVEL_DRAW_COUNT ? fresh : all.slice());
+  return pool.slice(0, LEVEL_DRAW_COUNT).map((id) => id + ':' + rollLevelRarity(s));
+}
+
+function openLevelOffer(s, out) {
+  s.levelOffers = Math.max(0, (s.levelOffers || 0) - 1);
+  s.levelChoices = rollLevelChoices(s);
+  s.levelReroll = 0;
+  say(s, 'log.level.offer', 'magic');
+  return ev(out, 'levelOffer', { ids: s.levelChoices });
+}
+
+// 一次获得多级时排队：当前批选完才翻出下一批，奖励不会叠成一个抽屉。
+function offerLevel(s, out) {
+  s.levelOffers = (s.levelOffers || 0) + 1;
+  if (Array.isArray(s.levelChoices)) return out;
+  return openLevelOffer(s, out);
+}
+
+export const levelRerollCost = (s) => LEVEL_REROLL_BASE + LEVEL_REROLL_STEP * (s.levelReroll || 0);
+
+export function rerollLevel(s) {
+  const out = [];
+  if (s.status !== 'playing' || !Array.isArray(s.levelChoices)) return out;
+  const cost = levelRerollCost(s);
+  if (s.player.gold < cost) { say(s, 'log.no.gold', 'warn'); return ev(out, 'deny'); }
+  s.player.gold -= cost;
+  syncRelicMods(s);
+  s.levelReroll = (s.levelReroll || 0) + 1;
+  const prev = s.levelChoices.map(levelChoiceStat);
+  s.levelChoices = rollLevelChoices(s, prev);
+  return ev(out, 'reroll', { cost });
+}
+
+export function chooseLevel(s, id) {
+  const out = [];
+  if (s.status !== 'playing' || !Array.isArray(s.levelChoices) || !s.levelChoices.includes(id)) return out;
+  const stat = levelChoiceStat(id), rarity = levelChoiceRarity(id), n = levelChoiceAmount(id);
+  const p = s.player;
+  if (stat === 'atk') p.atk += n;
+  else if (stat === 'def') p.def += n;
+  else if (stat === 'maxHp') { p.maxHp += n; p.hp = Math.min(p.maxHp, p.hp + n); }
+  s.levelTaken = s.levelTaken || {};
+  s.levelTaken[stat] = (s.levelTaken[stat] || 0) + n;
+  s.levelChoices = null;
+  syncRelicMods(s);
+  say(s, 'log.level.choose', { name: ref('level.' + stat + '.name'), n }, 'good');
+  ev(out, 'levelChoose', { id, stat, rarity, n });
+  if ((s.levelOffers || 0) > 0) openLevelOffer(s, out);
+  return out;
 }
 
 // source 用稳定枚举（mob / trap / blood）：UI 据它选音效，译文只在渲染时解析
@@ -722,28 +817,20 @@ function openTile(s, i, out, opts = {}) {
     }
     return;
   }
+  // 宝箱/药瓶/祭坛翻开后留在原地，必须再点一次才交互：探明与拾取是两步
   if (t.kind === 'chest') {
-    if (opts.silent) {
-      say(s, 'log.discover.chest', 'good');
-      ev(out, 'discover', { i, kind: 'chest' });
-      return;
-    }
-    lootChest(s, i, out);
+    say(s, 'log.discover.chest', 'good');
+    ev(out, 'discover', { i, kind: 'chest' });
     return;
   }
   if (t.kind === 'potion') {
-    if (opts.silent) {
-      say(s, 'log.discover.potion', 'good');
-      ev(out, 'discover', { i, kind: 'potion' });
-      return;
-    }
-    pickPotion(s, i, out);
+    say(s, 'log.discover.potion', 'good');
+    ev(out, 'discover', { i, kind: 'potion' });
     return;
   }
   if (t.kind === 'altar') {
     say(s, 'log.discover.altar', 'magic');
-    if (!opts.silent) s.pendingAltar = i;
-    ev(out, 'altar', { i });
+    ev(out, 'discover', { i, kind: 'altar' });
     return;
   }
   if (t.kind === 'stairs') {
@@ -843,7 +930,7 @@ function tapInner(s, i) {
       const xp = killMob(s, t, out, { bomb: true });
       say(s, 'log.bomb.kill', { mob: ref('mob.' + t.mob.id + '.name'), xp }, 'good');
       if (hasRelic(s, 'forge')) say(s, 'log.forge', { n: RELIC_FORGE_GROW, dmg: bombBase(s) }, 'magic');
-      if (t.kind === 'boss') return { out: defeatBoss(s, out), spent: true };
+      if (t.kind === 'boss') return { out: defeatBoss(s, t, out), spent: true };
     } else {
       // 偷袭战里没有逃跑，炸弹只是削血：它活着，战斗面板就得继续挡在面前
       if (s.forcedCombat === i) s.pendingCombat = i;
@@ -884,6 +971,14 @@ function tapInner(s, i) {
   if ((t.kind === 'monster' || t.kind === 'elite' || t.kind === 'boss') && t.mob.hp > 0) {
     s.pendingCombat = i;
     ev(out, 'encounter', { i });
+    return free;
+  }
+  // 精英/龙王死后把遗物留在地上，玩家自己踩上去才开三选一
+  if (t.relicDrop) {
+    t.relicDrop = false;
+    say(s, 'log.relic.pick', 'magic');
+    ev(out, 'relicPickup', { i });
+    offerRelics(s, out);
     return free;
   }
   if (t.kind === 'altar' && !t.used) { s.pendingAltar = i; ev(out, 'altar', { i }); return free; }
@@ -961,7 +1056,8 @@ function killMob(s, t, out, opts = {}) {
   if (s.forcedCombat === t.i) s.forcedCombat = -1;
   if (s.pendingCombat === t.i) s.pendingCombat = -1;
   s.stats.kills++;
-  const xp = Math.round(m.xp * (opts.bomb && hasRelic(s, 'fuse') ? 1 + RELIC_FUSE_XP : 1));
+  const xp = Math.round(m.xp * (opts.bomb && hasRelic(s, 'fuse') ? 1 + RELIC_FUSE_XP : 1))
+    + ((s.levelTaken || {}).xpKill || 0);
   ev(out, 'kill', { i: t.i, mob: m, xp });
   if (opts.bomb && hasRelic(s, 'forge')) s.relicState.bombForge = (s.relicState.bombForge || 0) + RELIC_FORGE_GROW;
   addGold(s, m.gold + (hasRelic(s, 'lootSack') ? RELIC_LOOT_SACK_GOLD : 0)
@@ -985,7 +1081,11 @@ function killMob(s, t, out, opts = {}) {
     s.hasKey = true;
     say(s, 'log.key', 'magic');
     ev(out, 'key', { i: t.i });
-    if (isRelicFloor(s.floor)) offerRelics(s, out);
+    if (isRelicFloor(s.floor)) {
+      t.relicDrop = true;
+      say(s, 'log.relic.drop', 'magic');
+      ev(out, 'relicDrop', { i: t.i });
+    }
   }
   return xp;
 }
@@ -1008,7 +1108,7 @@ export function attack(s, i) {
   const xp = killMob(s, t, out);
   say(s, 'log.kill', { mob: ref('mob.' + t.mob.id + '.name'), rounds: f.rounds, take: f.take, xp }, 'good');
   if (t.kind === 'boss') {
-    const beaten = defeatBoss(s, out);
+    const beaten = defeatBoss(s, t, out);
     if (s.status !== 'playing') return beaten;
     return finish(s, beaten);
   }
@@ -1135,6 +1235,17 @@ export function tryDescend(s) {
   }
   const bonus = addGold(s, (10 + s.floor * 3) * (hasRelic(s, 'prospector') ? 2 : 1)
     + (hasRelic(s, 'deed') ? RELIC_DEED_GOLD : 0), out);
+  // 升级奖励里选过「每层」类加成时，下楼这一刻结算
+  const lv = s.levelTaken || {};
+  if (lv.gold) say(s, 'log.level.gold', { n: addGold(s, lv.gold, out) }, 'good');
+  if (lv.heal) {
+    const h = heal(s, lv.heal, out);
+    if (h) say(s, 'log.level.heal', { n: h }, 'good');
+  }
+  if (lv.xpFloor) {
+    gainXp(s, lv.xpFloor, out);
+    say(s, 'log.level.xp', { n: lv.xpFloor }, 'good');
+  }
   heal(s, Math.ceil(s.player.maxHp * BAL.descendPct), out);
   if (hasRelic(s, 'rations')) {
     const h = heal(s, Math.ceil(s.player.maxHp * RELIC_RATION_HEAL), out);
@@ -1163,12 +1274,14 @@ export function tryDescend(s) {
   return out;
 }
 
-function defeatBoss(s, out) {
+function defeatBoss(s, t, out) {
   if (isFinalFloor(s.floor)) return out.concat(winRun(s));
   s.bossDown = true;
   say(s, 'log.boss.down', { mob: ref('mob.dragon.name') }, 'good');
   ev(out, 'bossDown', { floor: s.floor });
-  offerRelics(s, out);
+  t.relicDrop = true;
+  say(s, 'log.relic.drop', 'magic');
+  ev(out, 'relicDrop', { i: t.i });
   return out;
 }
 
@@ -1307,6 +1420,23 @@ export function deserialize(text) {
     const s = JSON.parse(text);
     if (!s || s.v !== SAVE_VERSION || !Array.isArray(s.tiles) || s.tiles.length !== SIZE) return null;
     if (!DIFFICULTIES[s.difficulty] || !s.player) return null;
+    // 升级奖励字段是后加的：老存档补默认值即可，不必整体作废。
+    // 存档在本地，可能被手改，选项与累计值都按白名单重建，别把脏数据带进面板。
+    const validChoice = (id) => {
+      if (typeof id !== 'string') return false;
+      const [stat, rarity] = id.split(':');
+      return !!levelStat(stat) && ['common', 'rare', 'epic'].includes(rarity);
+    };
+    s.levelChoices = Array.isArray(s.levelChoices) ? s.levelChoices.filter(validChoice) : null;
+    if (!s.levelChoices || !s.levelChoices.length) s.levelChoices = null;
+    s.levelOffers = Number.isFinite(s.levelOffers) ? Math.max(0, s.levelOffers) : 0;
+    s.levelReroll = Number.isFinite(s.levelReroll) ? Math.max(0, s.levelReroll) : 0;
+    const taken = s.levelTaken && typeof s.levelTaken === 'object' ? s.levelTaken : {};
+    s.levelTaken = {};
+    for (const st of LEVEL_STATS) {
+      const n = Math.max(0, Math.floor(taken[st.id] || 0));
+      if (n) s.levelTaken[st.id] = n;
+    }
     return s;
   } catch { return null; }
 }
@@ -1314,6 +1444,7 @@ export function deserialize(text) {
 export function tileLabel(t) {
   if (!t.revealed) return tr(t.flagged ? 'tile.flagged' : 'tile.hidden');
   if (t.mob && t.mob.hp > 0) return tr('tile.mob', { name: ref('mob.' + t.mob.id + '.name') });
+  if (t.relicDrop) return tr('tile.relic.drop');
   if (t.kind === 'stairs') return t.n ? tr('tile.stairs.danger', { n: t.n }) : tr('tile.stairs');
   const name = t.mob ? tr('tile.mob.cleared', { name: ref('mob.' + t.mob.id + '.name') })
     : t.kind === 'trap' ? tr(t.used ? 'tile.trap.used' : 'tile.trap')

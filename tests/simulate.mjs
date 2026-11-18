@@ -2,7 +2,8 @@
 // node tests/simulate.mjs [runs] [difficulty] [build]   build ∈ reason(推理流) / body(体魄流)，缺省为混合抓取
 import {
   createRun, tapTile, attack, usePotion, buy, altarChoose, tryDescend, closePending,
-  forecast, neighbors, canDescend, SIZE, MAX_FLOOR, shopPrice, setMode, chooseRelic,
+  forecast, neighbors, canDescend, SIZE, MAX_FLOOR, shopPrice, setMode, chooseRelic, chooseLevel,
+  levelChoiceStat, levelChoiceAmount,
   toggleFlag, flagCap, flagBonusLeft, ALTAR_FLAG_BONUS, RELIC_SURVEY_CAP, RELIC_SHOP_CAP,
 } from '../public/src/game.js';
 
@@ -107,6 +108,23 @@ const BUILD_PREF = {
     'pawnTicket'],
 };
 
+// 升级三选一：攻击/防御优先，血线吃紧时生命也加分；数值本身已含稀有度差异
+function pickLevel(s) {
+  const p = s.player;
+  const val = (id) => {
+    const stat = levelChoiceStat(id), n = levelChoiceAmount(id);
+    if (stat === 'atk') return n * 9;
+    if (stat === 'def') return n * 7;
+    if (stat === 'maxHp') return n * 2 + (p.hp < p.maxHp * 0.5 ? n * 2 : 0);
+    if (stat === 'xpKill') return n * 2.2;
+    if (stat === 'heal') return n * 1.4;
+    if (stat === 'gold') return n * 0.7;
+    if (stat === 'xpFloor') return n * 0.8;
+    return 0;
+  };
+  return s.levelChoices.slice().sort((a, b) => val(b) - val(a))[0];
+}
+
 function pickRelic(s, prefer) {
   const table = BUILD_PREF[prefer] || RELIC_PREF;
   if (prefer && !BUILD_PREF[prefer]) {
@@ -151,6 +169,7 @@ export function playRun(difficulty, seed, verbose = false, prefer = null, build 
     return evs;
   };
   while (s.status === 'playing' && guard++ < 12000) {
+    if (s.levelChoices) { run(chooseLevel, pickLevel(s)); continue; }
     if (s.relicChoices) { run(chooseRelic, pickRelic(s, build || prefer)); continue; }
     if (s.pendingAltar >= 0) {
       const p = s.player;
@@ -190,10 +209,16 @@ export function playRun(difficulty, seed, verbose = false, prefer = null, build 
       }
       continue;
     }
+    // 精英/龙王留下的遗物要自己踩上去拾取，拾取是免费的
+    const drop = s.tiles.find((t) => t.relicDrop);
+    if (drop) { run(tapTile, drop.i); continue; }
     const p = s.player;
     if (flagPass(s)) continue;
     const loot = s.tiles.find((t) => t.revealed && !t.used && (t.kind === 'chest' || t.kind === 'potion'));
     if (loot) { run(tapTile, loot.i); continue; }
+    // 祭坛／宝箱／药水翻开后都留在原地，必须再点一次才交互
+    const altar = s.tiles.find((t) => t.revealed && !t.used && t.kind === 'altar');
+    if (altar) { run(tapTile, altar.i); continue; }
     if (p.hp < p.maxHp * 0.45 && p.potions > 0) { run(usePotion); potionsUsed++; continue; }
     shopPass(s, build);
 

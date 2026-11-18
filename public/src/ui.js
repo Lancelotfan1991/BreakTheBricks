@@ -142,6 +142,11 @@ function tileView(t) {
     inner += `<span class="tile-num${n ? '' : ' tile-zero'}">${n}</span>`;
     return { cls, inner, n, label };
   }
+  // 精英/龙王留下的遗物：和宝箱一样留在地板上，点一下才开始三选一
+  if (t.relicDrop) {
+    cls += ' tile-relic tile-pick tile-drop';
+    return { cls, inner: svg('relic'), n, label };
+  }
   if (!t.used) {
     if (t.kind === 'trap') { cls += ' tile-trap'; inner = svg('trap'); return { cls, inner, n, label }; }
     if (t.kind === 'chest') { cls += ' tile-chest tile-pick'; inner = svg('chest'); return { cls, inner, n, label }; }
@@ -376,6 +381,48 @@ function openRelicDraw() {
     </div>`, true);
 }
 
+// 升级三选一：和遗物抽取同一套卡片语言，选项是永久面板加成而不是遗物
+function openLevelDraw() {
+  const cards = S.levelChoices.map((id) => {
+    const st = G.levelStat(G.levelChoiceStat(id)), rar = G.levelChoiceRarity(id);
+    const ra = G.RELIC_RARITY[rar];
+    return `<button class="rcard" data-sheet="level" data-id="${id}" style="--rc:${ra.color}">
+      <span class="rcard-rar">${G.rarityName(rar)}</span>
+      <span class="rcard-ic">${svg(st.icon)}</span>
+      <b class="rcard-name">${G.levelStatName(st)}</b>
+      <span class="rcard-desc">${G.levelChoiceDesc(id)}</span>
+    </button>`;
+  }).join('');
+  const rerollCost = G.levelRerollCost(S);
+  const rerollTx = rerollCost > 0 ? tr('ui.level.reroll', { gold: rerollCost }) : tr('ui.level.reroll.free');
+  openSheet('level', `
+    <div class="sheet-head">
+      <div><h2 class="sheet-title">${tr('ui.level.title')}</h2><p class="sheet-sub">${tr('ui.level.sub', { lv: S.player.lv })}</p></div>
+    </div>
+    <div class="rcards">${cards}</div>
+    <p class="rcard-hint">${tr('ui.level.hint', { n: G.LEVEL_REROLL_STEP })}</p>
+    <div class="sheet-actions">
+      <button class="btn btn-primary" data-sheet="levelReroll" ${S.player.gold >= rerollCost ? '' : 'disabled'}>${svg('coin')}<span>${rerollTx}</span></button>
+    </div>`, true);
+}
+
+// 当前累计加成：只列已经选过的项，数值都是实打实落在面板/规则上的
+function openBonus() {
+  if (!S) return;
+  const rows = G.LEVEL_STATS
+    .filter((st) => ((S.levelTaken || {})[st.id] || 0) > 0)
+    .map((st) => `<div class="opt"><span class="opt-ic">${svg(st.icon)}</span>
+      <span class="opt-tx"><b>${G.levelStatName(st)}</b><span>${G.levelBonusValue(S, st.id)}</span></span></div>`)
+    .join('');
+  openSheet('bonus', `
+    <div class="sheet-head">
+      <div><h2 class="sheet-title">${tr('ui.bonus.title')}</h2><p class="sheet-sub">${tr('ui.bonus.sub', { n: G.levelBonusCount(S), lv: S.player.lv })}</p></div>
+      <button class="icon-btn sheet-close" data-sheet="close" aria-label="${tr('ui.btn.close')}">${svg('close')}</button>
+    </div>
+    ${rows || `<p class="log-empty">${tr('ui.bonus.empty')}</p>`}
+    <div class="sheet-actions"><button class="btn btn-primary btn-lg" data-sheet="close">${tr('ui.btn.close')}</button></div>`);
+}
+
 function openLog() {
   if (!S) return;
   const rows = S.log.slice().reverse().map((e) =>
@@ -554,8 +601,24 @@ function consume(events) {
       case 'item': audio.play('item'); break;
       case 'discover': {
         const c = tileCenter(e.i);
-        fx.ring(c.x, c.y, e.kind === 'chest' ? '#ffd54a' : '#7dff5a', 46);
+        const color = e.kind === 'chest' ? '#ffd54a' : e.kind === 'altar' ? '#ff4fd8' : '#7dff5a';
+        fx.ring(c.x, c.y, color, 46);
         audio.play('sparkle');
+        break;
+      }
+      case 'relicDrop': {
+        const c = tileCenter(e.i);
+        fx.ring(c.x, c.y, '#c9a3ff', 110);
+        fx.magic(c.x, c.y);
+        audio.play('sparkle');
+        break;
+      }
+      case 'relicPickup': audio.play('altar'); break;
+      case 'levelOffer': audio.play('ui'); break;
+      case 'levelChoose': {
+        const r = document.getElementById('lvBadge').getBoundingClientRect();
+        const x = r.left + r.width / 2, y = r.top + r.height / 2;
+        fx.ring(x, y, '#ffd54a', 110); fx.magic(x, y);
         break;
       }
       case 'loot': {
@@ -631,15 +694,22 @@ function apply(events, opts = {}) {
   }
   const sv = events.find((e) => e.type === 'solved');
   // 抽屉会盖住棋盘，这时候逐格回放没人看得见，直接落到终态
-  if (sv && !S.relicChoices && S.pendingCombat < 0 && S.pendingAltar < 0) return solveSequence(sv);
+  if (sv && !S.levelChoices && !S.relicChoices && S.pendingCombat < 0 && S.pendingAltar < 0) return solveSequence(sv);
   if (sv) { clearSolve(); render(); }
-  if (S.relicChoices) return openRelicDraw();
-  if (S.pendingCombat >= 0) return openCombat(S.pendingCombat);
-  if (S.pendingAltar >= 0) return openAltar(S.pendingAltar);
+  if (openDrawers()) return;
   if (!opts.keepSheet && sheetKind && !sheetLock) closeSheet();
 }
 
-function guard() { return busy || !S || S.status !== 'playing'; }
+// 升级奖励优先：它锁住棋盘，选完才轮到战斗/祭坛/遗物
+function openDrawers() {
+  if (S.levelChoices) { openLevelDraw(); return true; }
+  if (S.relicChoices) { openRelicDraw(); return true; }
+  if (S.pendingCombat >= 0) { openCombat(S.pendingCombat); return true; }
+  if (S.pendingAltar >= 0) { openAltar(S.pendingAltar); return true; }
+  return false;
+}
+
+function guard() { return busy || !S || S.status !== 'playing' || !!S.levelChoices; }
 
 function doTap(i) {
   if (guard()) return;
@@ -912,6 +982,7 @@ function openHelp() {
     ['chest', 'ui.help.lg.chest', '#ffd54a'],
     ['potion', 'ui.help.lg.potion', '#7dff5a'],
     ['altar', 'ui.help.lg.altar', '#ff4fd8'],
+    ['relic', 'ui.help.lg.relic', '#c9a3ff'],
     ['stairs', 'ui.help.lg.stairs', '#3fe0ff'],
     ['dragon', 'ui.help.lg.dragon', '#ff8ae8'],
   ].map(([ic, k, c]) => `<div class="lg"><span class="lg-ic" style="color:${c}">${svg(ic)}</span><span class="lg-tx"><b>${tr(k + '.t')}</b><span>${tr(k + '.d')}</span></span></div>`).join('');
@@ -924,6 +995,7 @@ function openHelp() {
     elixir: G.SHOP_ELIXIR_HP, vigorStep: G.RELIC_VIGOR_STEP, strataDef: G.STRATA_DEF, strataHp: G.STRATA_HP,
     bombDmg: G.BOMB_DAMAGE, powderDmg: G.RELIC_POWDER_DMG, forgeDmg: G.RELIC_FORGE_GROW,
     reroll: G.RELIC_REROLL_BASE, rerollStep: G.RELIC_REROLL_STEP,
+    lvReroll: G.LEVEL_REROLL_BASE, lvRerollStep: G.LEVEL_REROLL_STEP,
   };
   openSheet('help', `
     <div class="sheet-head">
@@ -949,6 +1021,10 @@ function openHelp() {
       <h3 class="help-h">${tr('ui.help.combat.h')}</h3>
       <p class="help-p">${tr('ui.help.combat.p', P)}</p>
       <p class="help-p">${tr('ui.help.combat.bomb', P)}</p>
+    </div>
+    <div class="help-sec">
+      <h3 class="help-h">${tr('ui.help.level.h')}</h3>
+      <p class="help-p">${tr('ui.help.level.p', P)}</p>
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.ambush.h')}</h3>
@@ -1055,7 +1131,13 @@ function descendSequence() {
   const c = { x: innerWidth / 2, y: innerHeight / 2 };
   fx.portal(c.x, c.y); fx.ring(c.x, c.y, '#3fe0ff', 260);
   setTimeout(() => { buildBoard(); render(); fitBoard(); }, 620);
-  setTimeout(() => { el.floorCard.hidden = true; busy = false; saveRun(); }, 1680);
+  setTimeout(() => {
+    el.floorCard.hidden = true;
+    busy = false;
+    saveRun();
+    // 「每层经验」加成可能在下楼瞬间触发升级
+    openDrawers();
+  }, 1680);
 }
 
 /* ─────────── 完全识破：收旗 + 逐格掀砖 ─────────── */
@@ -1089,7 +1171,7 @@ function clearSolve() {
 
 function solveSequence(e) {
   const bricks = e.tiles, flags = e.flagged;
-  if (!bricks.length || matchMedia('(prefers-reduced-motion: reduce)').matches) { clearSolve(); render(); return; }
+  if (!bricks.length || matchMedia('(prefers-reduced-motion: reduce)').matches) { clearSolve(); render(); openDrawers(); return; }
   busy = true;
   const cap = G.flagCap(S);
   const setFlagLeft = (left) => { el.flag.textContent = String(cap - left); };
@@ -1120,6 +1202,8 @@ function solveSequence(e) {
     render(); fitBoard(); saveRun();
     const c = fx.center(el.board);
     fx.ring(c.x, c.y, '#ffd54a', 240);
+    // 识破给的经验可能刚好升级：回放结束后补上三选一抽屉
+    openDrawers();
   }, start + bricks.length * step + 400);
 }
 
@@ -1166,9 +1250,7 @@ function resumeRun() {
   buildBoard(); render();
   requestAnimationFrame(fitBoard);
   audio.init();
-  if (S.relicChoices) openRelicDraw();
-  else if (S.pendingCombat >= 0) openCombat(S.pendingCombat);
-  else if (S.pendingAltar >= 0) openAltar(S.pendingAltar);
+  openDrawers();
   return true;
 }
 
@@ -1223,6 +1305,7 @@ document.addEventListener('click', (e) => {
     case 'continue': if (!resumeRun()) { toast(tr('ui.toast.noRun'), 'bad'); renderTitle(); } break;
     case 'help': openHelp(); break;
     case 'codex': openCodex(); break;
+    case 'bonus': if (S && !S.levelChoices) openBonus(); break;
     case 'menu': if (S) openMenu(); break;
     case 'potion': if (S && !guard()) apply(G.usePotion(S)); break;
     case 'shop': if (S && !guard()) openShop(); break;
@@ -1275,6 +1358,8 @@ el.sheetBody.addEventListener('click', (e) => {
     }
     case 'relic': { const id = b.dataset.id; forceClose(); apply(G.chooseRelic(S, id)); break; }
     case 'reroll': apply(G.rerollRelics(S)); break;
+    case 'level': { const id = b.dataset.id; forceClose(); apply(G.chooseLevel(S, id)); break; }
+    case 'levelReroll': apply(G.rerollLevel(S)); break;
     case 'codex': openCodex(); break;
     case 'relicBack': if (S && S.relicChoices) openRelicDraw(); else forceClose(); break;
     case 'sound': audio.toggle(); syncSound(); openMenu(); break;
@@ -1344,6 +1429,6 @@ window.__game = {
   tap: doTap, flag: doFlag,
   start: startRun, resume: resumeRun, toTitle,
   sheet: () => sheetKind,
-  closeSheet, openShop, openHelp, openCodex, openRelicDraw, openCombat, openLog, battle: runBattle,
+  closeSheet, openShop, openHelp, openCodex, openRelicDraw, openLevelDraw, openBonus, openCombat, openLog, battle: runBattle,
   setDifficulty: (d) => { difficulty = d; renderTitle(); },
 };

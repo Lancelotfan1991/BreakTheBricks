@@ -80,13 +80,15 @@ test('泛洪露出的宝箱与药水保持未拾取，点击后才收入行囊',
   }
 });
 
-test('直接点击的宝箱立即开启，卷轴揭示的宝箱仍需点击', () => {
+test('直接点击的宝箱只揭示，必须再点一次才开启', () => {
   const s = G.createRun('normal', 33);
   G.ensureBoard(s, 0);
   const chest = find(s, 'chest')[0];
   G.tapTile(s, chest.i);
   assert.equal(chest.revealed, true);
-  assert.equal(chest.used, true, '直接点击应立即开启');
+  assert.equal(chest.used, false, '翻开只是看见宝箱，不等于开启');
+  G.tapTile(s, chest.i);
+  assert.equal(chest.used, true, '第二次点击才开启');
 
   const s2 = G.createRun('normal', 33);
   G.ensureBoard(s2, 0);
@@ -133,7 +135,9 @@ test('空宝箱仍给出邻雷数与危险标签，且可双击展开', () => {
     const chest = s.tiles.find((t) => t.kind === 'chest' && !t.revealed);
     if (!chest) continue;
     G.tapTile(s, chest.i);
-    assert.equal(chest.used, true);
+    assert.equal(chest.revealed, true);
+    G.tapTile(s, chest.i);
+    assert.equal(chest.used, true, '翻开后还要点一次才开箱');
     assert.equal(chest.n, hiddenAround(s, chest.i).length, `空宝箱 ${chest.i} 邻雷数错误`);
     if (!chest.n) continue;
     assert.equal(G.tileLabel(chest), `空宝箱，危险 ${chest.n}`);
@@ -394,6 +398,9 @@ test('升级、商店涨价、祭坛三选一', () => {
   s2.floor = 3; G.buildFloor(s2); G.ensureBoard(s2, 30);
   const altar = find(s2, 'altar')[0];
   G.tapTile(s2, altar.i);
+  assert.equal(altar.revealed, true);
+  assert.equal(s2.pendingAltar, -1, '翻开祭坛只揭示，不直接弹出献祭');
+  G.tapTile(s2, altar.i);
   assert.equal(s2.pendingAltar, altar.i);
   const atkBefore = s2.player.atk;
   s2.player.hp = s2.player.maxHp;
@@ -403,6 +410,149 @@ test('升级、商店涨价、祭坛三选一', () => {
   assert.equal(s2.pendingAltar, -1);
   const again = G.altarChoose(s2, altar.i, 'pray');
   assert.equal(again.length, 0, '祭坛只能用一次');
+});
+
+test('升级三选一：三项不同属性、稀有度分档、选中后直接写进面板', () => {
+  const s = fresh('normal', 200);
+  const p = s.player;
+  p.xp = p.xpNext - 1;
+  const mob = find(s, 'monster')[0];
+  G.tapTile(s, mob.i);
+  p.atk = 9999;
+  G.attack(s, mob.i);
+  assert.ok(Array.isArray(s.levelChoices), '升级应弹出三选一');
+  assert.equal(s.levelChoices.length, G.LEVEL_DRAW_COUNT);
+  assert.equal(new Set(s.levelChoices.map(G.levelChoiceStat)).size, G.LEVEL_DRAW_COUNT, '三项来自不同属性');
+  for (const id of s.levelChoices) {
+    assert.ok(['common', 'rare', 'epic'].includes(G.levelChoiceRarity(id)));
+    assert.ok(G.levelChoiceAmount(id) > 0);
+    assert.ok(G.levelChoiceDesc(id).includes(String(G.levelChoiceAmount(id))), '描述必须写出具体数值');
+  }
+  const pick = s.levelChoices[0];
+  const stat = G.levelChoiceStat(pick), n = G.levelChoiceAmount(pick);
+  const before = { atk: p.atk, def: p.def, maxHp: p.maxHp, hp: p.hp };
+  G.chooseLevel(s, pick);
+  assert.equal(s.levelChoices, null);
+  assert.equal(s.levelTaken[stat], n);
+  if (stat === 'atk') assert.equal(p.atk, before.atk + n);
+  if (stat === 'def') assert.equal(p.def, before.def + n);
+  if (stat === 'maxHp') {
+    assert.equal(p.maxHp, before.maxHp + n);
+    assert.equal(p.hp, Math.min(p.maxHp, before.hp + n));
+  }
+  assert.deepEqual(G.chooseLevel(s, pick), [], '同一批不能选第二次');
+  const absent = G.LEVEL_STATS.find((st) => !s.levelChoices?.map(G.levelChoiceStat).includes(st.id));
+  if (absent) assert.deepEqual(G.chooseLevel(s, absent.id + ':common'), [], '不在选项里的属性不能被选');
+});
+
+test('升级奖励排队：连升多级时选完一批再翻下一批', () => {
+  const s = arena();
+  putMob(s, 0, { hp: 1, atk: 0, xp: 30 });
+  s.tiles[0].revealed = true;
+  s.player.xp = 0; s.player.xpNext = 1;
+  const lv0 = s.player.lv;
+  G.attack(s, 0);
+  assert.ok(s.player.lv - lv0 >= 2, '应连升多级');
+  assert.equal(s.levelOffers, s.player.lv - lv0 - 1, '其余升级排队等待');
+  let guard = 0;
+  while (s.levelChoices && guard++ < 10) {
+    assert.equal(s.levelChoices.length, G.LEVEL_DRAW_COUNT);
+    G.chooseLevel(s, s.levelChoices[0]);
+  }
+  assert.equal(s.levelOffers, 0);
+  assert.equal(Object.keys(s.levelTaken).length >= 1, true);
+});
+
+test('升级重置：4 金币起、每次 +4，金币不足时拒绝且不扣钱', () => {
+  const s = fresh('normal', 201);
+  const p = s.player;
+  p.xp = p.xpNext - 1;
+  const mob = find(s, 'monster')[0];
+  G.tapTile(s, mob.i);
+  p.atk = 9999;
+  G.attack(s, mob.i);
+  assert.ok(s.levelChoices);
+  const first = s.levelChoices.map(G.levelChoiceStat);
+  p.gold = 20;
+  assert.equal(G.levelRerollCost(s), G.LEVEL_REROLL_BASE);
+  const evs = G.rerollLevel(s);
+  assert.ok(evs.some((e) => e.type === 'reroll' && e.cost === G.LEVEL_REROLL_BASE));
+  assert.equal(p.gold, 20 - G.LEVEL_REROLL_BASE);
+  assert.equal(s.levelReroll, 1);
+  assert.equal(G.levelRerollCost(s), G.LEVEL_REROLL_BASE + G.LEVEL_REROLL_STEP);
+  for (const st of s.levelChoices.map(G.levelChoiceStat)) assert.ok(!first.includes(st), '重置应换一批新属性');
+  p.gold = 0;
+  const before = s.levelChoices.slice();
+  assert.ok(G.rerollLevel(s).some((e) => e.type === 'deny'));
+  assert.deepEqual(s.levelChoices, before);
+  assert.equal(p.gold, 0);
+});
+
+test('每层金币/回复/经验加成在下行时结算', () => {
+  const s = fresh('normal', 202);
+  atFloor(s, 2);
+  const p = s.player;
+  p.hp = 10;
+  s.levelTaken = { gold: 8, heal: 4, xpFloor: 12 };
+  const gold0 = p.gold, lv0 = p.lv, xp0 = p.xp;
+  s.stairsFound = true; s.hasKey = true;
+  const evs = G.tryDescend(s);
+  assert.ok(evs.filter((e) => e.type === 'gold').some((e) => e.amount >= 8), '应额外结算每层金币');
+  assert.ok(evs.filter((e) => e.type === 'heal').reduce((a, e) => a + e.amount, 0) >= 5, '每层回复应叠加下行的 5% 回复');
+  assert.ok(p.gold > gold0 && (p.xp > xp0 || p.lv > lv0), '经验加成应到账');
+  assert.equal(s.floor, 3);
+});
+
+test('击杀经验加成：每次击杀额外计入经验', () => {
+  const s = arena();
+  putMob(s, 0, { hp: 1, atk: 0, xp: 10 });
+  s.tiles[0].revealed = true;
+  s.levelTaken = { xpKill: 6 };
+  const evs = G.attack(s, 0);
+  const kill = evs.find((e) => e.type === 'kill');
+  assert.equal(kill.xp, 16);
+});
+
+test('宝箱掉落里卷轴与炸弹各占约两成', () => {
+  let total = 0, scroll = 0, bomb = 0;
+  for (let seed = 1; seed <= 120; seed++) {
+    const s = G.createRun('normal', seed);
+    s.floor = 3; G.buildFloor(s); G.ensureBoard(s, 30);
+    for (const t of s.tiles) {
+      if (t.kind !== 'chest') continue;
+      total++;
+      if (t.chest.type === 'scroll') scroll++;
+      if (t.chest.type === 'bomb') bomb++;
+    }
+  }
+  assert.ok(total > 200, `样本不足：${total}`);
+  assert.ok(scroll / total > 0.15, `卷轴占比过低：${scroll}/${total}`);
+  assert.ok(bomb / total > 0.15, `炸弹占比过低：${bomb}/${total}`);
+});
+
+test('升级字段可存档往返，旧存档缺字段时补默认值', () => {
+  const s = fresh('normal', 203);
+  const p = s.player;
+  p.xp = p.xpNext - 1;
+  const mob = find(s, 'monster')[0];
+  G.tapTile(s, mob.i);
+  p.atk = 9999;
+  G.attack(s, mob.i);
+  G.chooseLevel(s, s.levelChoices[0]);
+  const back = G.deserialize(G.serialize(s));
+  assert.ok(back);
+  assert.deepEqual(back.levelTaken, s.levelTaken);
+  assert.equal(back.levelChoices, null);
+  assert.equal(back.levelOffers, 0);
+
+  const raw = JSON.parse(G.serialize(s));
+  delete raw.levelTaken; delete raw.levelChoices; delete raw.levelOffers; delete raw.levelReroll;
+  const old = G.deserialize(JSON.stringify(raw));
+  assert.ok(old, '缺升级字段的存档仍可读取');
+  assert.deepEqual(old.levelTaken, {});
+  assert.equal(old.levelChoices, null);
+  assert.equal(old.levelOffers, 0);
+  assert.equal(old.levelReroll, 0);
 });
 
 test('药水：满血不浪费、空包不生效', () => {
@@ -518,7 +668,10 @@ test('第 10 层龙王倒下后继续探索：阶梯解封、不用钥匙、不�
   assert.equal(s.bossDown, true);
   assert.equal(G.canDescend(s), true, '龙王倒下即解封，不需要钥匙');
   assert.equal(s.hasKey, false, 'Boss 层全程不消耗钥匙');
-  assert.ok(s.relicChoices, '龙王层的胜利应给一次遗物');
+  assert.equal(s.relicChoices, null, '遗物先掉在地上，不直接弹三选一');
+  assert.equal(s.tiles[boss.i].relicDrop, true, '龙王层应留下遗物掉落');
+  G.tapTile(s, boss.i);
+  assert.ok(s.relicChoices, '拾取掉落才打开三选一');
   G.chooseRelic(s, s.relicChoices[0]);
   assert.ok(G.tryDescend(s).some((e) => e.type === 'descend'));
   assert.equal(s.floor, 11);
@@ -557,7 +710,8 @@ test('守卫只在遗物层掉落：非遗物层给钥匙但不给抽取', () =>
     s.player.atk = 9999; s.player.hp = s.player.maxHp;
     G.tapTile(s, elite.i);
     const evs = G.attack(s, s.pendingCombat);
-    assert.equal(evs.some((e) => e.type === 'relicOffer'), false, `第${f}层不该掉遗物`);
+    assert.equal(evs.some((e) => e.type === 'relicDrop'), false, `第${f}层不该掉遗物`);
+    assert.equal(elite.relicDrop, false);
     assert.equal(s.hasKey, true, `第${f}层仍然要掉钥匙`);
     assert.equal(s.relicChoices, null);
   }
@@ -923,14 +1077,20 @@ test('静默誓约：生命上限 +30、防御 +3、攻击 −2，不再惩罚�
   assert.equal(pray, Math.ceil(s.player.maxHp * G.BAL.prayPct), '祈祷应恢复全额');
 });
 
-test('击杀钥匙守卫触发三选一：不重复、只能选其中之一', () => {
+test('击杀钥匙守卫留下遗物掉落，拾取后才三选一', () => {
   const s = fresh('normal', 91);
   atFloor(s, 2);
   const elite = find(s, 'elite')[0];
   s.player.atk = 9999; s.player.hp = s.player.maxHp;
   G.tapTile(s, elite.i);
   const evs = G.attack(s, s.pendingCombat);
-  assert.ok(evs.some((e) => e.type === 'relicOffer'), '击杀守卫应触发遗物抽取');
+  assert.ok(evs.some((e) => e.type === 'relicDrop'), '击杀守卫应留下遗物掉落');
+  assert.equal(s.relicChoices, null, '掉落不会直接弹三选一');
+  assert.equal(elite.relicDrop, true);
+  assert.equal(G.tileLabel(elite), '敌人掉落的遗物（可拾取）');
+  const pickupEvs = G.tapTile(s, elite.i);
+  assert.ok(pickupEvs.some((e) => e.type === 'relicPickup'));
+  assert.equal(elite.relicDrop, false, '拾取后地上的掉落消失');
   assert.equal(s.relicChoices.length, G.RELIC_DRAW_COUNT);
   assert.equal(new Set(s.relicChoices).size, 3, '三个选项互不相同');
   const invalid = G.RELICS.find((r) => !s.relicChoices.includes(r.id)).id;
@@ -952,9 +1112,11 @@ test('炸毁钥匙守卫同样按遗物层掉落，且整局不会抽到已拥�
     s.tiles[elite.i].revealed = true;
     G.setMode(s, 'bomb');
     const evs = G.tapTile(s, elite.i);
-    assert.equal(evs.some((e) => e.type === 'relicOffer'), G.isRelicFloor(f), `第${f}层掉落规则应与攻击路径一致`);
+    assert.equal(evs.some((e) => e.type === 'relicDrop'), G.isRelicFloor(f), `第${f}层掉落规则应与攻击路径一致`);
     assert.equal(s.hasKey, true);
     if (!G.isRelicFloor(f)) continue;
+    assert.equal(s.relicChoices, null, '炸弹击杀同样只是掉落');
+    G.tapTile(s, elite.i);
     for (const id of s.relicChoices) assert.ok(!s.relics.includes(id), `抽到了已拥有的 ${id}`);
     G.chooseRelic(s, s.relicChoices[0]);
   }
@@ -1002,7 +1164,7 @@ test('遗物抽取可复现：同种子同选项', () => {
     atFloor(s, 2);
     const elite = find(s, 'elite')[0];
     s.player.atk = 9999; s.player.hp = s.player.maxHp;
-    G.tapTile(s, elite.i); G.attack(s, s.pendingCombat);
+    G.tapTile(s, elite.i); G.attack(s, s.pendingCombat); G.tapTile(s, elite.i);
     return s.relicChoices.join(',');
   };
   assert.equal(run(4242), run(4242));
@@ -1259,7 +1421,7 @@ test('无遗物时战斗数学与旧版一致，遗物状态可存档往返', ()
   atFloor(s, 2);
   const elite = find(s, 'elite')[0];
   p.atk = 9999; p.hp = p.maxHp;
-  G.tapTile(s, elite.i); G.attack(s, s.pendingCombat);
+  G.tapTile(s, elite.i); G.attack(s, s.pendingCombat); G.tapTile(s, elite.i);
   G.chooseRelic(s, s.relicChoices[0]);
   const back = G.deserialize(G.serialize(s));
   assert.ok(back);
