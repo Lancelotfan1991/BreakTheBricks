@@ -156,6 +156,26 @@ export const levelBonusValue = (s, id) => tr('level.bonus.val.' + id, { n: (s.le
 export const levelBonusCount = (s) =>
   LEVEL_STATS.filter((st) => ((s.levelTaken || {})[st.id] || 0) > 0).length;
 
+// ---------- 天赋（职业） ----------
+// 每局开局选一个，整局不可更换；效果常驻，UI 里占遗物条第一格。
+export const TALENTS = [
+  { id: 'gladiator', icon: 'sword', color: '#ffab2e' },
+  { id: 'brawler', icon: 'hand', color: '#ff6b8a' },
+];
+export const talentById = (id) => TALENTS.find((t) => t.id === id);
+export const talentName = (t) => tr('talent.' + t.id + '.name');
+export const talentDesc = (t) => tr('talent.' + t.id + '.desc');
+export const talentFlavor = (t) => tr('talent.' + t.id + '.flavor');
+export const hasTalent = (s, id) => s.talent === id;
+
+// 格斗家：每 10 杀随机长一项，四类等概率
+export const BRAWLER_EVERY = 10;
+export const BRAWLER_HP = 6;
+export const BRAWLER_DEF = 1;
+export const BRAWLER_ATK = 1;
+export const BRAWLER_HEAL = 1;
+export const BRAWLER_TYPES = ['hp', 'def', 'atk', 'heal'];
+
 // 越深越容易遇到高品质遗物。权重随层数连续漂移：
 // 第 1 层 60/30/10，第 30 层 30/45/30，中间平滑过渡。
 // 抽档与抽件分开掷，池子里增减同档遗物只改同类出场率，不会带偏整体曲线。
@@ -321,14 +341,23 @@ export function recalc(s) {
 
 // ---------- combat math ----------
 export const hitDamage = (atk, def) => Math.max(1, atk - def);
+// 角斗士看的是「场上已显示的存活怪物」：探明即亮相，击杀后离场。
+export function visibleMobs(s) {
+  return s.tiles.filter((t) => t.revealed && t.mob && t.mob.hp > 0).length;
+}
+export function atkOf(s) {
+  const p = s.player;
+  return hasTalent(s, 'gladiator') && visibleMobs(s) === 1 ? p.atk * 2 : p.atk;
+}
 // 偷袭就是白挨一次普通攻击：攻击 − 防御，并按战斗同一套减伤结算。
 export function ambushDamage(p, mob) {
   const perHit = hitDamage(mob.atk, p.def);
   const mul = (mob.elite || mob.boss ? p.eliteTakeMul : 1) * p.takeMul;
   return Math.max(0, Math.round(perHit * mul) - p.takeFlat);
 }
-export function forecast(p, mob) {
-  const deal = hitDamage(p.atk, mob.def);
+// atk 允许传入“当前有效攻击”（角斗士翻倍）；默认仍读面板，老调用不需要改。
+export function forecast(p, mob, atk = p.atk) {
+  const deal = hitDamage(atk, mob.def);
   const T = p.thorns;
   // 反震跟着反击走：第 r 回合玩家打 deal，怪物若没死就反击一次并吃 T 点反震。
   // 于是它可能死在第 r 次挥剑，也可能死在第 r 次反击的反震上——后者玩家仍要挨这一口。
@@ -360,7 +389,9 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
     floor: 1,
     tiles: [],
     generated: false,
-    player: { hp: d.hp, maxHp: d.hp, atk: 5, def: 1, lv: 1, xp: 0, xpNext: 12, gold: d.gold, potions: 2, bombs: 1, scrolls: 1, takeMul: 1, takeFlat: 0, eliteTakeMul: 1, freeKill: false, thorns: 0, atkBonus: 0, goldBonus: 0 },
+    player: { hp: d.hp, maxHp: d.hp, atk: 5, def: 1, lv: 1, xp: 0, xpNext: 12, gold: d.gold, potions: 2, bombs: 1, scrolls: 1, takeMul: 1, takeFlat: 0, eliteTakeMul: 1, freeKill: false, thorns: 0, atkBonus: 0, goldBonus: 0, killHeal: 0 },
+    talent: null,
+    talentPending: true,
     bought: {},
     relics: [],
     relicChoices: null,
@@ -390,6 +421,16 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
   buildFloor(s);
   say(s, 'log.enter', { n: 1, name: ref('floor.1') }, 'info');
   return s;
+}
+
+export function chooseTalent(s, id) {
+  const out = [];
+  if (s.status !== 'playing' || !s.talentPending || !talentById(id)) return out;
+  s.talent = id;
+  s.talentPending = false;
+  syncRelicMods(s);
+  say(s, 'log.talent.pick', { name: ref('talent.' + id + '.name') }, 'magic');
+  return ev(out, 'talentPick', { id });
 }
 
 function blankTiles() {
@@ -622,6 +663,15 @@ export function shopPrice(s, id) {
   return Math.max(1, Math.round(base * mult));
 }
 
+// 角斗士：每次永久获得攻击力都额外 +1；失去攻击力（如静默誓约）不返还。
+// 所有「加攻」都必须走这里，否则天赋会时灵时不灵。
+function addAtk(s, n) {
+  if (!n) return 0;
+  const gain = n + (n > 0 && hasTalent(s, 'gladiator') ? 1 : 0);
+  s.player.atk += gain;
+  return gain;
+}
+
 function gainXp(s, amount, out) {
   const p = s.player;
   const lv0 = p.lv;
@@ -632,10 +682,10 @@ function gainXp(s, amount, out) {
     p.xpNext = BAL.lvXp + BAL.lvXpF * (p.lv - 1);
     p.maxHp += BAL.lvHp;
     p.hp = Math.min(p.maxHp, p.hp + BAL.lvHp);
-    p.atk += BAL.lvAtk;
+    const atkUp = addAtk(s, BAL.lvAtk);
     if (p.lv % BAL.lvDefEvery === 0) p.def += 1;
     const defUp = p.lv % BAL.lvDefEvery === 0;
-    say(s, defUp ? 'log.levelup.def' : 'log.levelup', { lv: p.lv, atk: BAL.lvAtk, hp: BAL.lvHp, def: 1 }, 'good');
+    say(s, defUp ? 'log.levelup.def' : 'log.levelup', { lv: p.lv, atk: atkUp, hp: BAL.lvHp, def: 1 }, 'good');
     ev(out, 'levelup', { lv: p.lv });
     offerLevel(s, out);
   }
@@ -695,14 +745,15 @@ export function chooseLevel(s, id) {
   if (s.status !== 'playing' || !Array.isArray(s.levelChoices) || !s.levelChoices.includes(id)) return out;
   const stat = levelChoiceStat(id), rarity = levelChoiceRarity(id), n = levelChoiceAmount(id);
   const p = s.player;
-  if (stat === 'atk') p.atk += n;
+  let gain = n;
+  if (stat === 'atk') gain = addAtk(s, n);
   else if (stat === 'def') p.def += n;
   else if (stat === 'maxHp') { p.maxHp += n; p.hp = Math.min(p.maxHp, p.hp + n); }
   s.levelTaken = s.levelTaken || {};
   s.levelTaken[stat] = (s.levelTaken[stat] || 0) + n;
   s.levelChoices = null;
   syncRelicMods(s);
-  say(s, 'log.level.choose', { name: ref('level.' + stat + '.name'), n }, 'good');
+  say(s, 'log.level.choose', { name: ref('level.' + stat + '.name'), n: gain }, 'good');
   ev(out, 'levelChoose', { id, stat, rarity, n });
   if ((s.levelOffers || 0) > 0) openLevelOffer(s, out);
   return out;
@@ -751,7 +802,7 @@ function lootChest(s, i, out) {
   }
   if (type === 'gold') { const got = addGold(s, amount, out); say(s, 'log.chest.gold', { n: got }, 'good'); }
   else if (type === 'potion') { p.potions++; say(s, 'log.chest.potion', 'good'); ev(out, 'item', { item: 'potion' }); }
-  else if (type === 'weapon') { p.atk += amount; say(s, 'log.chest.weapon', { n: amount }, 'good'); ev(out, 'item', { item: 'weapon' }); }
+  else if (type === 'weapon') { const gain = addAtk(s, amount); say(s, 'log.chest.weapon', { n: gain }, 'good'); ev(out, 'item', { item: 'weapon' }); }
   else if (type === 'armor') { p.def += amount; say(s, 'log.chest.armor', { n: amount }, 'good'); ev(out, 'item', { item: 'armor' }); }
   else if (type === 'scroll') { p.scrolls++; say(s, 'log.chest.scroll', 'good'); ev(out, 'item', { item: 'scroll' }); }
   else { p.bombs++; say(s, 'log.chest.bomb', 'good'); ev(out, 'item', { item: 'bomb' }); }
@@ -952,8 +1003,8 @@ function tapInner(s, i) {
       const add = Math.min(RELIC_SURVEY_CAP - s.relicState.survey, surveyed);
       if (add > 0) {
         s.relicState.survey += add;
-        s.player.atk += add;
-        say(s, 'log.survey', { n: surveyed, add, have: s.relicState.survey, cap: RELIC_SURVEY_CAP }, 'magic');
+        const gain = addAtk(s, add);
+        say(s, 'log.survey', { n: surveyed, add: gain, have: s.relicState.survey, cap: RELIC_SURVEY_CAP }, 'magic');
       }
     }
     return { out, spent: true };
@@ -1047,6 +1098,20 @@ export function bombDamage(s, mob) {
   return dmg;
 }
 
+// 格斗家：每 10 杀随机长一项，四类等概率；用种子随机，回放一致。
+function brawlerGrow(s, out) {
+  const p = s.player;
+  const type = BRAWLER_TYPES[Math.floor(rand(s) * BRAWLER_TYPES.length)];
+  if (type === 'hp') { p.maxHp += BRAWLER_HP; p.hp = Math.min(p.maxHp, p.hp + BRAWLER_HP); }
+  else if (type === 'def') p.def += BRAWLER_DEF;
+  else if (type === 'atk') addAtk(s, BRAWLER_ATK);
+  else p.killHeal += BRAWLER_HEAL;
+  syncRelicMods(s);
+  const n = type === 'hp' ? BRAWLER_HP : type === 'def' ? BRAWLER_DEF : type === 'atk' ? BRAWLER_ATK : BRAWLER_HEAL;
+  say(s, 'log.brawler.' + type, { n }, 'magic');
+  return ev(out, 'brawlerGrow', { stat: type, n });
+}
+
 // 击杀结算集中在一处：普攻与炸弹共用同一套经验、金币与击杀类遗物，
 // 炸弹杀死的敌人不会变成「不算击杀」的黑洞。
 function killMob(s, t, out, opts = {}) {
@@ -1056,6 +1121,8 @@ function killMob(s, t, out, opts = {}) {
   if (s.forcedCombat === t.i) s.forcedCombat = -1;
   if (s.pendingCombat === t.i) s.pendingCombat = -1;
   s.stats.kills++;
+  if (p.killHeal > 0) heal(s, p.killHeal, out);
+  if (hasTalent(s, 'brawler') && s.stats.kills % BRAWLER_EVERY === 0) brawlerGrow(s, out);
   const xp = Math.round(m.xp * (opts.bomb && hasRelic(s, 'fuse') ? 1 + RELIC_FUSE_XP : 1))
     + ((s.levelTaken || {}).xpKill || 0);
   ev(out, 'kill', { i: t.i, mob: m, xp });
@@ -1074,8 +1141,8 @@ function killMob(s, t, out, opts = {}) {
   }
   if (hasRelic(s, 'whetSoul') && s.relicState.whet < RELIC_WHET_CAP) {
     s.relicState.whet++;
-    p.atk += 1;
-    say(s, 'log.whet', { have: s.relicState.whet, cap: RELIC_WHET_CAP }, 'magic');
+    const gain = addAtk(s, 1);
+    say(s, 'log.whet', { n: gain, have: s.relicState.whet, cap: RELIC_WHET_CAP }, 'magic');
   }
   if (t.kind === 'elite') {
     s.hasKey = true;
@@ -1096,7 +1163,7 @@ export function attack(s, i) {
   const t = s.tiles[i];
   if (!t || !t.mob || t.mob.hp <= 0) return out;
   const p = s.player;
-  const f = forecast(p, t.mob);
+  const f = forecast(p, t.mob, atkOf(s));
   const forced = s.forcedCombat === i;
   s.pendingCombat = -1;
   // 普通遭遇会被必死预演拦下；偷袭战无路可退，硬拼就按必死结算
@@ -1149,7 +1216,7 @@ export function buy(s, id) {
   syncRelicMods(s);
   const p = s.player;
   if (id === 'potion') p.potions++;
-  if (id === 'whet') p.atk += BAL.shopWhet;
+  if (id === 'whet') addAtk(s, BAL.shopWhet);
   if (id === 'plate') p.def += 1;
   if (id === 'elixir') { p.maxHp += SHOP_ELIXIR_HP; heal(s, SHOP_ELIXIR_HP, out); syncRelicMods(s); }
   if (id === 'pouch') s.flagBonus += 1;
@@ -1193,8 +1260,8 @@ export function altarChoose(s, i, choice) {
   if (choice === 'blood') {
     hurt(s, BAL.bloodCost, out, 'blood');
     if (s.status !== 'playing') return out;
-    p.atk += BAL.bloodAtk;
-    say(s, 'log.altar.blood', { n: BAL.bloodAtk }, 'magic');
+    const gain = addAtk(s, BAL.bloodAtk);
+    say(s, 'log.altar.blood', { n: gain }, 'magic');
   } else if (choice === 'pray') {
     const pct = hasRelic(s, 'altarGrace') ? 0.75 : BAL.prayPct;
     const h = heal(s, Math.ceil(p.maxHp * pct), out);
@@ -1308,7 +1375,8 @@ function syncRelicMods(s) {
   const want = hasRelic(s, 'vigor') ? Math.floor(p.maxHp / RELIC_VIGOR_STEP) : 0;
   p.atk += want - p.atkBonus;
   p.atkBonus = want;
-  // 点金手同理：金币随时会被花掉，按当前持有量重算差额，花掉就收回加成
+  // 点金手同理：金币随时会被花掉，按当前持有量重算差额，花掉就收回加成。
+  // 派生攻防不进 addAtk：它们会随金币/血上限回落，反复涨落不该白赚角斗士的 +1。
   const goldWant = hasRelic(s, 'midas') ? Math.floor(p.gold / RELIC_MIDAS_STEP) : 0;
   const goldDiff = goldWant - (p.goldBonus || 0);
   p.atk += goldDiff;
@@ -1388,10 +1456,10 @@ export function chooseRelic(s, id) {
 function grantRelic(s, id, out) {
   const p = s.player;
   s.relics.push(id);
-  if (id === 'bloodPact') { p.atk += 4; p.maxHp = Math.max(8, p.maxHp - 8); p.hp = Math.min(p.hp, p.maxHp); }
-  if (id === 'glassCannon') p.atk += 6;
-  if (id === 'warPaint') { p.atk += RELIC_PAINT_ATK; p.maxHp = Math.max(8, p.maxHp - RELIC_PAINT_HP); p.hp = Math.min(p.hp, p.maxHp); }
-  if (id === 'whetstone') p.atk += RELIC_WHETSTONE_ATK;
+  if (id === 'bloodPact') { addAtk(s, 4); p.maxHp = Math.max(8, p.maxHp - 8); p.hp = Math.min(p.hp, p.maxHp); }
+  if (id === 'glassCannon') addAtk(s, 6);
+  if (id === 'warPaint') { addAtk(s, RELIC_PAINT_ATK); p.maxHp = Math.max(8, p.maxHp - RELIC_PAINT_HP); p.hp = Math.min(p.hp, p.maxHp); }
+  if (id === 'whetstone') addAtk(s, RELIC_WHETSTONE_ATK);
   if (id === 'ribguard') p.def += RELIC_RIB_DEF;
   if (id === 'bloodSac') { p.maxHp += RELIC_BLOOD_SAC_HP; p.hp = Math.min(p.maxHp, p.hp + RELIC_BLOOD_SAC_HP); }
   if (id === 'pennant') s.flagBonus = Math.min(FLAG_BONUS_CAP, s.flagBonus + RELIC_PENNANT_FLAGS);
@@ -1437,6 +1505,10 @@ export function deserialize(text) {
       const n = Math.max(0, Math.floor(taken[st.id] || 0));
       if (n) s.levelTaken[st.id] = n;
     }
+    // 天赋同样是后加字段：老存档没有就当作无天赋继续玩，不整档作废。
+    s.talent = talentById(s.talent) ? s.talent : null;
+    s.talentPending = !!s.talentPending && !s.talent;
+    s.player.killHeal = Number.isFinite(s.player.killHeal) ? Math.max(0, s.player.killHeal) : 0;
     return s;
   } catch { return null; }
 }

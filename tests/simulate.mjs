@@ -1,9 +1,9 @@
 // 自动玩家：用于平衡性与稳定性验证
-// node tests/simulate.mjs [runs] [difficulty] [build]   build ∈ reason(推理流) / body(体魄流)，缺省为混合抓取
+// node tests/simulate.mjs [runs] [difficulty] [build] [talent]   build ∈ reason(推理流) / body(体魄流)，缺省为混合抓取；talent ∈ gladiator / brawler
 import {
   createRun, tapTile, attack, usePotion, buy, altarChoose, tryDescend, closePending,
   forecast, neighbors, canDescend, SIZE, MAX_FLOOR, shopPrice, setMode, chooseRelic, chooseLevel,
-  levelChoiceStat, levelChoiceAmount,
+  levelChoiceStat, levelChoiceAmount, chooseTalent, atkOf,
   toggleFlag, flagCap, flagBonusLeft, ALTAR_FLAG_BONUS, RELIC_SURVEY_CAP, RELIC_SHOP_CAP,
 } from '../public/src/game.js';
 
@@ -145,8 +145,9 @@ function pickRelic(s, prefer) {
   return s.relicChoices.slice().sort((a, b) => val(b) - val(a))[0];
 }
 
-export function playRun(difficulty, seed, verbose = false, prefer = null, build = null) {
+export function playRun(difficulty, seed, verbose = false, prefer = null, build = null, talent = 'gladiator') {
   const s = createRun(difficulty, seed);
+  chooseTalent(s, talent);
   const trace = [];
   const floors = [];
   let guard = 0, dmg = 0, healed = 0, potionsUsed = 0, blocked = 0, ambushes = 0;
@@ -182,7 +183,7 @@ export function playRun(difficulty, seed, verbose = false, prefer = null, build 
     }
     if (s.pendingCombat >= 0) {
       const t = s.tiles[s.pendingCombat];
-      const f = forecast(s.player, t.mob);
+      const f = forecast(s.player, t.mob, atkOf(s));
       if (s.forcedCombat === s.pendingCombat) {
         // 偷袭战无路可退：药水把血补到能扛，炸弹削到能打，最后只能硬拼
         if (f.lethal && s.player.potions > 0 && s.player.hp < s.player.maxHp) { run(usePotion); potionsUsed++; continue; }
@@ -201,7 +202,7 @@ export function playRun(difficulty, seed, verbose = false, prefer = null, build 
       } else if (must && f.lethal) {
         shopPass(s, build);
         if (s.player.hp < s.player.maxHp && s.player.potions > 0) { run(usePotion); continue; }
-        const f2 = forecast(s.player, t.mob);
+        const f2 = forecast(s.player, t.mob, atkOf(s));
         if (!f2.lethal) { run(attack, s.pendingCombat); continue; }
         closePending(s); blocked++;
       } else {
@@ -235,11 +236,11 @@ export function playRun(difficulty, seed, verbose = false, prefer = null, build 
       }
     }
 
-    const cheap = s.tiles.find((t) => t.revealed && isMob(t) && !forecast(p, t.mob).lethal && forecast(p, t.mob).take <= p.hp * 0.3);
+    const cheap = s.tiles.find((t) => t.revealed && isMob(t) && !forecast(p, t.mob, atkOf(s)).lethal && forecast(p, t.mob, atkOf(s)).take <= p.hp * 0.3);
     if (cheap) { run(attack, cheap.i); continue; }
 
     if (canDescend(s)) {
-      const left = s.tiles.filter((t) => t.revealed && isMob(t) && !forecast(p, t.mob).lethal && forecast(p, t.mob).take <= p.hp * 0.22);
+      const left = s.tiles.filter((t) => t.revealed && isMob(t) && !forecast(p, t.mob, atkOf(s)).lethal && forecast(p, t.mob, atkOf(s)).take <= p.hp * 0.22);
       if (!left.length || p.hp < p.maxHp * 0.4) { run(tryDescend); trace.push(`F${s.floor}`); continue; }
       run(attack, left[0].i); continue;
     }
@@ -274,12 +275,13 @@ if (process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('simulate.mj
   const runs = Number(process.argv[2] || 120);
   const diff = process.argv[3];
   const build = process.argv[4] || null;
-  if (diff === 'trace') { playRun(process.argv[4] || 'normal', Number(process.argv[5] || 12345), true); }
+  const talent = process.argv[5] || 'gladiator';
+  if (diff === 'trace') { playRun(process.argv[4] || 'normal', Number(process.argv[5] || 12345), true, null, null, process.argv[6] || 'gladiator'); }
   else {
     const diffs = diff ? [diff] : ['easy', 'normal', 'hard'];
     for (const d of diffs) {
       const out = [];
-      for (let k = 0; k < runs; k++) out.push(playRun(d, 1000 + k * 7919, false, null, build));
+      for (let k = 0; k < runs; k++) out.push(playRun(d, 1000 + k * 7919, false, null, build, talent));
       const wins = out.filter((r) => r.status === 'won').length;
       const stuck = out.filter((r) => r.stuck).length;
       const avgFloor = out.reduce((a, r) => a + r.floor, 0) / out.length;
@@ -297,7 +299,7 @@ if (process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('simulate.mj
       const avgMaxHp = out.reduce((a, r) => a + r.maxHp, 0) / out.length;
       const avgAtk = out.reduce((a, r) => a + r.atk, 0) / out.length;
       const avgDef = out.reduce((a, r) => a + r.def, 0) / out.length;
-      console.log(`${(build || 'mixed').padEnd(6)} ${d.padEnd(7)} 胜率 ${(wins / runs * 100).toFixed(1)}%  层数 ${avgFloor.toFixed(2)}  等级 ${avgLv.toFixed(1)}  遗物 ${avgRelics.toFixed(1)}  血上限 ${avgMaxHp.toFixed(0)}  攻 ${avgAtk.toFixed(1)}  防 ${avgDef.toFixed(1)}  操作 ${avgTurns.toFixed(0)}  受伤 ${avgDmg.toFixed(0)}  偷袭 ${avgAmbush.toFixed(1)}次  治疗 ${avgHeal.toFixed(0)}  识破 ${avgSolves.toFixed(2)}(旗${avgSolveFlags.toFixed(1)},完美${perfects})  卡死 ${stuck}  分布 ${JSON.stringify(hist)}`);
+      console.log(`${((build || 'mixed') + '/' + talent).padEnd(16)} ${d.padEnd(7)} 胜率 ${(wins / runs * 100).toFixed(1)}%  层数 ${avgFloor.toFixed(2)}  等级 ${avgLv.toFixed(1)}  遗物 ${avgRelics.toFixed(1)}  血上限 ${avgMaxHp.toFixed(0)}  攻 ${avgAtk.toFixed(1)}  防 ${avgDef.toFixed(1)}  操作 ${avgTurns.toFixed(0)}  受伤 ${avgDmg.toFixed(0)}  偷袭 ${avgAmbush.toFixed(1)}次  治疗 ${avgHeal.toFixed(0)}  识破 ${avgSolves.toFixed(2)}(旗${avgSolveFlags.toFixed(1)},完美${perfects})  卡死 ${stuck}  分布 ${JSON.stringify(hist)}`);
     }
   }
 }

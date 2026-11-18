@@ -163,6 +163,8 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
 .chip b{font-family:var(--num);font-weight:700;font-size:12.5px}
 .chip i{font-style:normal;font-size:9.5px;color:var(--ink-3)}
 .chip-atk{color:#ff9a6b}.chip-atk .ic{color:var(--blood)}
+.chip-atk.doubled{border-color:rgba(255,154,107,.6);background:rgba(255,59,92,.16);box-shadow:0 0 12px -3px rgba(255,59,92,.9)}
+.chip-atk.doubled b{color:#ffd0b8}
 .chip-def{color:#8fd8ff}.chip-def .ic{color:var(--cyan)}
 /* 祭坛借走的防御：琥珀色描边读作「这是暂时的」，下行归还后自动褪掉 */
 .chip-def.debt{border-color:rgba(255,171,46,.55);background:rgba(255,171,46,.13)}
@@ -192,6 +194,9 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
 .relic-chip .ic{width:19px;height:19px}
 .relic-chip em{position:absolute;right:-3px;bottom:-3px;font-style:normal;font-family:var(--num);font-size:8.5px;
   line-height:1;padding:2px 3px;border-radius:5px;background:#150e1d;border:1px solid color-mix(in srgb,var(--rc) 50%,transparent);color:var(--rc)}
+/* 天赋固定在第一格：描边更亮，角标写「天赋」，与遗物区分开 */
+.relic-talent{border-width:1.5px;box-shadow:inset 0 0 10px -3px var(--rc)}
+.relic-talent em{font-family:inherit;font-size:7.5px;padding:1px 2px;right:-4px;bottom:-4px}
 @keyframes relicIn{from{transform:scale(0) rotate(-25deg);opacity:0}to{transform:scale(1) rotate(0);opacity:1}}
 .relic-codex{flex:none;display:flex;align-items:center;gap:4px;padding:5px 9px;border-radius:9px;font-size:11px;
   letter-spacing:.06em;color:var(--ink-2);background:rgba(0,0,0,.34);border:1px solid rgba(255,255,255,.09);transition:.16s}
@@ -516,6 +521,9 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
 .opt-tx{flex:1;min-width:0}
 .opt-tx b{display:block;font-size:14px;letter-spacing:.04em}
 .opt-tx span{display:block;font-size:11px;color:var(--ink-3);margin-top:2px;line-height:1.5}
+.opt-talent{border-color:color-mix(in srgb,var(--rc) 45%,transparent);background:linear-gradient(160deg,color-mix(in srgb,var(--rc) 14%,transparent),rgba(0,0,0,.28))}
+.opt-talent .opt-ic .ic{color:var(--rc)}
+.opt-tx .opt-note{color:var(--amber-hi)}
 .opt-price{font-family:var(--num);font-size:14px;font-weight:700;color:var(--gold);display:flex;align-items:center;gap:3px;flex:none}
 .opt-price .ic{width:13px;height:13px}
 .opt-price.no{color:#7c6a8c}

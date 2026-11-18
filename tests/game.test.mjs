@@ -2509,3 +2509,89 @@ test('构筑字段可存档往返，v11 存档被拒绝', () => {
   assert.equal(back.defDebt, 1);
   assert.equal(G.deserialize(JSON.stringify({ ...s, v: 11 })), null, 'v11 存档应被拒绝');
 });
+
+/* ─────────── 天赋（职业） ─────────── */
+test('天赋：开局必须选一次，选定后锁定且不可重复', () => {
+  const s = G.createRun('normal', 3);
+  assert.equal(s.talent, null);
+  assert.equal(s.talentPending, true);
+  assert.deepEqual(G.chooseTalent(s, 'nope'), []);
+  assert.equal(s.talentPending, true, '非法 id 不应清除待选状态');
+  const evs = G.chooseTalent(s, 'gladiator');
+  assert.equal(s.talent, 'gladiator');
+  assert.equal(s.talentPending, false);
+  assert.ok(evs.some((e) => e.type === 'talentPick' && e.id === 'gladiator'));
+  assert.deepEqual(G.chooseTalent(s, 'brawler'), []);
+  assert.equal(s.talent, 'gladiator', '选定后不能换天赋');
+});
+
+test('角斗士：场上仅 1 只存活怪物时攻击翻倍，预演与实际结算一致', () => {
+  const s = fresh('normal', 11);
+  G.chooseTalent(s, 'gladiator');
+  s.player.atk = 10; s.player.hp = 999; s.player.maxHp = 999;
+  const put = (i) => { s.tiles[i].revealed = true; s.tiles[i].mob = { id: 'bat', hp: 999, atk: 0, def: 2, xp: 0, gold: 0 }; };
+  assert.equal(G.visibleMobs(s), 0);
+  assert.equal(G.atkOf(s), 10);
+  put(5);
+  assert.equal(G.visibleMobs(s), 1);
+  assert.equal(G.atkOf(s), 20, '仅 1 只时翻倍');
+  const evs = G.attack(s, 5);
+  const combat = evs.find((e) => e.type === 'combat');
+  assert.equal(combat.deal, G.hitDamage(20, 2), '战斗按翻倍后的攻击结算');
+  put(6); put(8);
+  assert.equal(G.visibleMobs(s), 2);
+  assert.equal(G.atkOf(s), 10, '两只以上不再翻倍');
+});
+
+test('角斗士：永久攻击增益额外 +1，升级奖励面板仍记录本身数值', () => {
+  const s = fresh('normal', 17);
+  G.chooseTalent(s, 'gladiator');
+  const atk0 = s.player.atk;
+  s.levelChoices = ['atk:common'];
+  G.chooseLevel(s, 'atk:common');
+  assert.equal(s.player.atk, atk0 + 2, '升级攻击 +1 实际 +2');
+  assert.equal(s.levelTaken.atk, 1, '累计面板记录的是升级奖励本身');
+  const atk1 = s.player.atk;
+  grant(s, 'whetstone');
+  assert.equal(s.player.atk, atk1 + G.RELIC_WHETSTONE_ATK + 1, '遗物加攻同样额外 +1');
+});
+
+test('格斗家：每 10 杀随机成长一项，击杀回复按次回血', () => {
+  const s = fresh('normal', 23);
+  G.chooseTalent(s, 'brawler');
+  const p = s.player;
+  p.hp = 50; p.maxHp = 100;
+  s.stats.kills = 9;
+  const before = { hp: p.maxHp, def: p.def, atk: p.atk, heal: p.killHeal };
+  const put = (i) => { s.tiles[i].revealed = true; s.tiles[i].mob = { id: 'bat', hp: 1, atk: 0, def: 0, xp: 0, gold: 0 }; };
+  put(5);
+  const evs = G.attack(s, 5);
+  const grow = evs.find((e) => e.type === 'brawlerGrow');
+  assert.ok(grow, '第 10 杀应触发成长');
+  assert.ok(G.BRAWLER_TYPES.includes(grow.stat));
+  const delta = { hp: p.maxHp - before.hp, def: p.def - before.def, atk: p.atk - before.atk, heal: p.killHeal - before.heal };
+  assert.equal(Object.values(delta).filter((n) => n !== 0).length, 1, '每次只成长一项');
+  assert.equal(delta[grow.stat], grow.n, '事件数值与实际成长一致');
+
+  p.killHeal = 3; p.hp = 10;
+  put(7);
+  G.attack(s, 7);
+  assert.equal(p.hp, 13, '击杀回复每次击杀都生效');
+});
+
+test('天赋与击杀回复可存档往返；老存档补默认值且不强制选天赋', () => {
+  const s = fresh('normal', 29);
+  G.chooseTalent(s, 'brawler');
+  s.player.killHeal = 4;
+  const back = G.deserialize(G.serialize(s));
+  assert.equal(back.talent, 'brawler');
+  assert.equal(back.talentPending, false);
+  assert.equal(back.player.killHeal, 4);
+
+  const raw = JSON.parse(G.serialize(s));
+  delete raw.talent; delete raw.talentPending; delete raw.player.killHeal;
+  const old = G.deserialize(JSON.stringify(raw));
+  assert.equal(old.talent, null);
+  assert.equal(old.talentPending, false, '老存档已开局，不强行插入选天赋');
+  assert.equal(old.player.killHeal, 0);
+});

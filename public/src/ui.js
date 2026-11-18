@@ -39,6 +39,8 @@ let sheetKind = null;
 let sheetLock = false;
 let busy = false;
 let toastTimer = 0;
+// 首次开局先选天赋，选完再把玩法说明推上来，两个锁定抽屉不抢同一张 sheet
+let firstRunHelp = false;
 // 识破时状态已一次性翻完，DOM 却要按节奏回放：solveHold 暂存掀开前的砖面，solveAnim 标记本格正在掀
 let solveHold = null;
 const solveAnim = new Map();
@@ -275,7 +277,13 @@ function renderHud() {
   el.hpFill.style.transform = `scaleX(${pct})`;
   el.hpText.textContent = `${p.hp} / ${p.maxHp}`;
   el.hpBar.classList.toggle('low', pct <= 0.3);
-  el.atk.textContent = p.atk; el.def.textContent = p.def; el.gold.textContent = p.gold;
+  // 角斗士的翻倍要直接写进攻击读数，否则玩家得自己心算，预演也会对不上
+  const atkNow = G.atkOf(S);
+  el.atk.textContent = atkNow; el.def.textContent = p.def; el.gold.textContent = p.gold;
+  const atkChip = el.atk.parentElement;
+  atkChip.classList.toggle('doubled', atkNow !== p.atk);
+  atkChip.title = atkNow !== p.atk ? tr('ui.hud.atk.double', { atk: atkNow, base: p.atk }) : '';
+  atkChip.setAttribute('aria-label', tr(atkNow !== p.atk ? 'ui.hud.atk.double' : 'ui.hud.atk', { atk: atkNow, base: p.atk }));
   // 祭坛借走的防御要让人看见「是借的」，否则玩家会以为永久亏了
   const defChip = el.def.parentElement;
   defChip.classList.toggle('debt', S.defDebt > 0);
@@ -303,8 +311,9 @@ function renderHud() {
   el.flag.parentElement.setAttribute('aria-label', tr('ui.hud.flag.aria', { left: flagLeft, cap }));
   if (prevFlag != null && prevFlag !== flagLeft) bump(el.flag.parentElement);
   prevFlag = flagLeft;
-  for (const k of ['atk', 'def', 'gold', 'lv']) if (prev[k] != null && prev[k] !== p[k]) bump(el[k].parentElement.classList.contains('chip') ? el[k].parentElement : el.lv.parentElement);
-  prev = { atk: p.atk, def: p.def, gold: p.gold, lv: p.lv };
+  const shown = { atk: atkNow, def: p.def, gold: p.gold, lv: p.lv };
+  for (const k of ['atk', 'def', 'gold', 'lv']) if (prev[k] != null && prev[k] !== shown[k]) bump(el[k].parentElement.classList.contains('chip') ? el[k].parentElement : el.lv.parentElement);
+  prev = shown;
 
   for (const b of el.actionbar.querySelectorAll('[data-mode]')) b.classList.toggle('is-on', b.dataset.mode === S.mode);
   const can = G.canDescend(S);
@@ -344,9 +353,13 @@ function relicNote(s, r) {
 
 function renderRelics() {
   const list = S.relics;
-  el.relicBar.hidden = !list.length;
-  if (!list.length) { el.relicSlots.innerHTML = ''; return; }
-  const html = list.map((id) => {
+  const t = S.talent ? G.talentById(S.talent) : null;
+  el.relicBar.hidden = !list.length && !t;
+  if (!list.length && !t) { el.relicSlots.innerHTML = ''; return; }
+  // 天赋占首格：它是整局的「职业」，不参与遗物池与图鉴
+  const tChip = t ? `<button class="relic-chip relic-talent" data-act="bonus" style="--rc:${t.color}" aria-label="${tr('ui.talent.chip.aria', { name: G.talentName(t), desc: G.talentDesc(t) })}">
+    ${svg(t.icon)}<em>${tr('ui.talent.badge')}</em></button>` : '';
+  const html = tChip + list.map((id) => {
     const r = G.relicById(id), note = relicNote(S, r);
     return `<button class="relic-chip" data-act="codex" style="--rc:${rarityColor(r)}" aria-label="${tr('ui.relic.chip.aria', { name: G.relicName(r), desc: G.relicDesc(r) })}">
       ${svg(r.icon)}${note ? `<em>${note}</em>` : ''}</button>`;
@@ -381,6 +394,36 @@ function openRelicDraw() {
     </div>`, true);
 }
 
+// 开局选天赋：和遗物三选一同一套卡片语言，但锁定到选定为止
+function openTalentDraw() {
+  const cards = G.TALENTS.map((t) => `<button class="rcard" data-sheet="talent" data-id="${t.id}" style="--rc:${t.color}">
+      <span class="rcard-rar">${tr('talent.' + t.id + '.tag')}</span>
+      <span class="rcard-ic">${svg(t.icon)}</span>
+      <b class="rcard-name">${G.talentName(t)}</b>
+      <span class="rcard-cat">${tr('ui.talent.card.cat')}</span>
+      <span class="rcard-desc">${G.talentDesc(t)}</span>
+      <span class="rcard-flavor">${G.talentFlavor(t)}</span>
+    </button>`).join('');
+  openSheet('talent', `
+    <div class="sheet-head">
+      <div><h2 class="sheet-title">${tr('ui.talent.draw.title')}</h2><p class="sheet-sub">${tr('ui.talent.draw.sub')}</p></div>
+    </div>
+    <div class="rcards">${cards}</div>
+    <p class="rcard-hint">${tr('ui.talent.draw.hint')}</p>`, true);
+}
+
+function talentNote(s) {
+  if (s.talent === 'gladiator') {
+    const n = G.visibleMobs(s);
+    return tr(n === 1 ? 'ui.talent.note.gladiator.on' : 'ui.talent.note.gladiator.off', { n, atk: G.atkOf(s), base: s.player.atk });
+  }
+  if (s.talent === 'brawler') {
+    const done = s.stats.kills % G.BRAWLER_EVERY;
+    return tr('ui.talent.note.brawler', { left: G.BRAWLER_EVERY - done, heal: s.player.killHeal });
+  }
+  return '';
+}
+
 // 升级三选一：和遗物抽取同一套卡片语言，选项是永久面板加成而不是遗物
 function openLevelDraw() {
   const cards = S.levelChoices.map((id) => {
@@ -409,6 +452,11 @@ function openLevelDraw() {
 // 当前累计加成：只列已经选过的项，数值都是实打实落在面板/规则上的
 function openBonus() {
   if (!S) return;
+  const t = S.talent ? G.talentById(S.talent) : null;
+  const talentRow = t ? `<div class="opt opt-talent" style="--rc:${t.color}">
+      <span class="opt-ic">${svg(t.icon)}</span>
+      <span class="opt-tx"><b>${G.talentName(t)}（${tr('ui.talent.badge')}）</b>
+        <span>${G.talentDesc(t)}</span><span class="opt-note">${talentNote(S)}</span></span></div>` : '';
   const rows = G.LEVEL_STATS
     .filter((st) => ((S.levelTaken || {})[st.id] || 0) > 0)
     .map((st) => `<div class="opt"><span class="opt-ic">${svg(st.icon)}</span>
@@ -419,7 +467,8 @@ function openBonus() {
       <div><h2 class="sheet-title">${tr('ui.bonus.title')}</h2><p class="sheet-sub">${tr('ui.bonus.sub', { n: G.levelBonusCount(S), lv: S.player.lv })}</p></div>
       <button class="icon-btn sheet-close" data-sheet="close" aria-label="${tr('ui.btn.close')}">${svg('close')}</button>
     </div>
-    ${rows || `<p class="log-empty">${tr('ui.bonus.empty')}</p>`}
+    ${talentRow}
+    ${rows || (t ? '' : `<p class="log-empty">${tr('ui.bonus.empty')}</p>`)}
     <div class="sheet-actions"><button class="btn btn-primary btn-lg" data-sheet="close">${tr('ui.btn.close')}</button></div>`);
 }
 
@@ -621,6 +670,19 @@ function consume(events) {
         fx.ring(x, y, '#ffd54a', 110); fx.magic(x, y);
         break;
       }
+      case 'talentPick': {
+        const c = fx.center(el.lv);
+        fx.ring(c.x, c.y, '#ffd54a', 150); fx.magic(c.x, c.y); fx.flash('gold');
+        audio.play('levelup'); fx.haptic('heavy');
+        toast(tr('ui.toast.talent', { name: G.talentName(G.talentById(e.id)) }), 'magic');
+        break;
+      }
+      case 'brawlerGrow': {
+        const c = fx.center(el.relicBar.hidden ? el.lv : el.relicBar);
+        fx.ring(c.x, c.y, '#ff6b8a', 100); fx.magic(c.x, c.y);
+        audio.play('levelup');
+        break;
+      }
       case 'loot': {
         const c = tileCenter(e.i);
         fx.coins(c.x, c.y); fx.haptic('tick');
@@ -702,6 +764,8 @@ function apply(events, opts = {}) {
 
 // 升级奖励优先：它锁住棋盘，选完才轮到战斗/祭坛/遗物
 function openDrawers() {
+  // 天赋没选之前整局锁定，优先级高于一切抽屉
+  if (S.talentPending) { openTalentDraw(); return true; }
   if (S.levelChoices) { openLevelDraw(); return true; }
   if (S.relicChoices) { openRelicDraw(); return true; }
   if (S.pendingCombat >= 0) { openCombat(S.pendingCombat); return true; }
@@ -709,7 +773,7 @@ function openDrawers() {
   return false;
 }
 
-function guard() { return busy || !S || S.status !== 'playing' || !!S.levelChoices; }
+function guard() { return busy || !S || S.status !== 'playing' || !!S.levelChoices || !!S.talentPending; }
 
 function doTap(i) {
   if (guard()) return;
@@ -768,7 +832,7 @@ function btReplay(node, cls) {
 
 function runBattle(i, done) {
   const t = S.tiles[i], m = t.mob, p = S.player;
-  const f = G.forecast(p, m);
+  const f = G.forecast(p, m, G.atkOf(S));
   if (skipBattleAnim || motionReduced()) { done(); return; }
   const seq = ++battleSeq;
   const bo = el.battle;
@@ -856,7 +920,7 @@ function runBattle(i, done) {
 
 function openCombat(i) {
   const t = S.tiles[i], m = t.mob, p = S.player;
-  const f = G.forecast(p, m);
+  const f = G.forecast(p, m, G.atkOf(S));
   const forced = S.forcedCombat === i;
   const safePct = Math.max(0, (p.hp - f.take) / p.maxHp * 100);
   const lossPct = Math.min(100, f.take / p.maxHp * 100);
@@ -996,6 +1060,7 @@ function openHelp() {
     bombDmg: G.BOMB_DAMAGE, powderDmg: G.RELIC_POWDER_DMG, forgeDmg: G.RELIC_FORGE_GROW,
     reroll: G.RELIC_REROLL_BASE, rerollStep: G.RELIC_REROLL_STEP,
     lvReroll: G.LEVEL_REROLL_BASE, lvRerollStep: G.LEVEL_REROLL_STEP,
+    every: G.BRAWLER_EVERY, hp: G.BRAWLER_HP, def: G.BRAWLER_DEF, atk: G.BRAWLER_ATK, heal: G.BRAWLER_HEAL,
   };
   openSheet('help', `
     <div class="sheet-head">
@@ -1025,6 +1090,11 @@ function openHelp() {
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.level.h')}</h3>
       <p class="help-p">${tr('ui.help.level.p', P)}</p>
+    </div>
+    <div class="help-sec">
+      <h3 class="help-h">${tr('ui.help.talent.h')}</h3>
+      <p class="help-p">${tr('ui.help.talent.p1')}</p>
+      <p class="help-p">${tr('ui.help.talent.p2', P)}</p>
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.ambush.h')}</h3>
@@ -1236,7 +1306,10 @@ function startRun(diff, seed) {
   saveRun();
   requestAnimationFrame(fitBoard);
   audio.init();
-  if (!localStorage.getItem(SEEN_KEY)) { localStorage.setItem(SEEN_KEY, '1'); setTimeout(openHelp, 420); }
+  firstRunHelp = !localStorage.getItem(SEEN_KEY);
+  if (firstRunHelp) localStorage.setItem(SEEN_KEY, '1');
+  if (S.talentPending) openTalentDraw();
+  else if (firstRunHelp) setTimeout(openHelp, 420);
 }
 
 function resumeRun() {
@@ -1305,8 +1378,8 @@ document.addEventListener('click', (e) => {
     case 'continue': if (!resumeRun()) { toast(tr('ui.toast.noRun'), 'bad'); renderTitle(); } break;
     case 'help': openHelp(); break;
     case 'codex': openCodex(); break;
-    case 'bonus': if (S && !S.levelChoices) openBonus(); break;
-    case 'menu': if (S) openMenu(); break;
+    case 'bonus': if (S && !S.levelChoices && !S.talentPending) openBonus(); break;
+    case 'menu': if (S && !S.talentPending) openMenu(); break;
     case 'potion': if (S && !guard()) apply(G.usePotion(S)); break;
     case 'shop': if (S && !guard()) openShop(); break;
     case 'descend': if (S && !guard()) apply(G.tryDescend(S)); break;
@@ -1340,7 +1413,7 @@ el.sheetBody.addEventListener('click', (e) => {
     case 'attack': {
       const i = +b.dataset.i;
       const forced = S.forcedCombat === i;
-      const lethal = G.forecast(S.player, S.tiles[i].mob).lethal;
+      const lethal = G.forecast(S.player, S.tiles[i].mob, G.atkOf(S)).lethal;
       forceClose();
       // 偷袭战的必死一击不需要战斗演绎：演出会先「击破」怪物，与实际的一击即死相反
       if (forced && lethal) { apply(G.attack(S, i)); break; }
@@ -1354,6 +1427,13 @@ el.sheetBody.addEventListener('click', (e) => {
       const evs = G.buy(S, b.dataset.id);
       if (S.relicChoices) apply(evs);
       else { consume(evs); render(); saveRun(); openShop(); }
+      break;
+    }
+    case 'talent': {
+      const id = b.dataset.id;
+      forceClose();
+      apply(G.chooseTalent(S, id));
+      if (firstRunHelp) { firstRunHelp = false; setTimeout(openHelp, 260); }
       break;
     }
     case 'relic': { const id = b.dataset.id; forceClose(); apply(G.chooseRelic(S, id)); break; }
@@ -1429,6 +1509,6 @@ window.__game = {
   tap: doTap, flag: doFlag,
   start: startRun, resume: resumeRun, toTitle,
   sheet: () => sheetKind,
-  closeSheet, openShop, openHelp, openCodex, openRelicDraw, openLevelDraw, openBonus, openCombat, openLog, battle: runBattle,
+  closeSheet, openShop, openHelp, openCodex, openRelicDraw, openLevelDraw, openTalentDraw, openBonus, openCombat, openLog, battle: runBattle,
   setDifficulty: (d) => { difficulty = d; renderTitle(); },
 };

@@ -63,6 +63,10 @@ test('动态键族：难度/商店/怪物/楼层/遗物/祭坛/稀有度/分类�
     assert.ok(G.rarityName(r.rarity) && G.catName(r.cat), `${r.id} 的稀有度/分类`);
   }
   for (const o of G.ALTAR_OPTIONS) assert.ok(G.altarName(o) && G.altarDesc(o), `altar.${o.id}`);
+  for (const t of G.TALENTS) {
+    assert.ok(G.talentName(t) && !G.talentName(t).startsWith('talent.'), `talent.${t.id}.name`);
+    assert.ok(G.talentDesc(t) && G.talentFlavor(t) && zhCN[`talent.${t.id}.tag`], `talent.${t.id}`);
+  }
   for (const st of G.LEVEL_STATS) {
     assert.ok(G.levelStatName(st) && !G.levelStatName(st).startsWith('level.'), `level.${st.id}.name`);
     for (const rar of Object.keys(st.vals)) {
@@ -104,7 +108,7 @@ test('源码不再夹带面向玩家的中文（注释除外）', () => {
 
 test('源码引用的每个 key 都能在目录里找到（允许作为前缀）', () => {
   const known = (k) => KEYS.includes(k) || KEYS.some((x) => x.startsWith(k.endsWith('.') ? k : k + '.'));
-  const literal = /'((?:ui|log|tile|list|mob|relic|shop|altar|floor|difficulty|rarity|cat|source|level)\.[A-Za-z0-9_.]+)'/g;
+  const literal = /'((?:ui|log|tile|list|mob|relic|shop|altar|floor|difficulty|rarity|cat|source|level|talent)\.[A-Za-z0-9_.]+)'/g;
   const missing = [];
   for (const f of ['game.js', 'ui.js']) {
     const code = stripComments(read(f));
