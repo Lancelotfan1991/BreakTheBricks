@@ -168,8 +168,8 @@ export const talentDesc = (t) => tr('talent.' + t.id + '.desc');
 export const talentFlavor = (t) => tr('talent.' + t.id + '.flavor');
 export const hasTalent = (s, id) => s.talent === id;
 
-// 格斗家：每 10 杀随机长一项，四类等概率
-export const BRAWLER_EVERY = 10;
+// 格斗家：每 5 杀随机长一项，四类等概率
+export const BRAWLER_EVERY = 5;
 export const BRAWLER_HP = 6;
 export const BRAWLER_DEF = 1;
 export const BRAWLER_ATK = 1;
@@ -1098,7 +1098,7 @@ export function bombDamage(s, mob) {
   return dmg;
 }
 
-// 格斗家：每 10 杀随机长一项，四类等概率；用种子随机，回放一致。
+// 格斗家：每 5 杀随机长一项，四类等概率；用种子随机，回放一致。
 function brawlerGrow(s, out) {
   const p = s.player;
   const type = BRAWLER_TYPES[Math.floor(rand(s) * BRAWLER_TYPES.length)];

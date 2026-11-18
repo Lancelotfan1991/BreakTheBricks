@@ -505,7 +505,7 @@ export default {
   'talent.gladiator.flavor': '人声鼎沸的斗兽场里，只剩一个对手时，你的血才真正热起来。',
   'talent.brawler.name': '格斗家',
   'talent.brawler.tag': '磨练技艺',
-  'talent.brawler.desc': '每击败 10 个敌人，随机获得一项永久成长：生命上限 +6、防御 +1、攻击 +1，或击杀回复 +1。',
+  'talent.brawler.desc': '每击败 5 个敌人，随机获得一项永久成长：生命上限 +6、防御 +1、攻击 +1，或击杀回复 +1。',
   'talent.brawler.flavor': '拳茧一层层磨厚——每一场胜利都会在身上留下点什么。',
   'ui.talent.draw.title': '选择天赋',
   'ui.talent.draw.sub': '每局只选一次 · 天赋占物品栏首格，整局生效',

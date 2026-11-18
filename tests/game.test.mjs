@@ -2556,18 +2556,18 @@ test('角斗士：永久攻击增益额外 +1，升级奖励面板仍记录本�
   assert.equal(s.player.atk, atk1 + G.RELIC_WHETSTONE_ATK + 1, '遗物加攻同样额外 +1');
 });
 
-test('格斗家：每 10 杀随机成长一项，击杀回复按次回血', () => {
+test('格斗家：每 5 杀随机成长一项，击杀回复按次回血', () => {
   const s = fresh('normal', 23);
   G.chooseTalent(s, 'brawler');
   const p = s.player;
   p.hp = 50; p.maxHp = 100;
-  s.stats.kills = 9;
+  s.stats.kills = G.BRAWLER_EVERY - 1;
   const before = { hp: p.maxHp, def: p.def, atk: p.atk, heal: p.killHeal };
   const put = (i) => { s.tiles[i].revealed = true; s.tiles[i].mob = { id: 'bat', hp: 1, atk: 0, def: 0, xp: 0, gold: 0 }; };
   put(5);
   const evs = G.attack(s, 5);
   const grow = evs.find((e) => e.type === 'brawlerGrow');
-  assert.ok(grow, '第 10 杀应触发成长');
+  assert.ok(grow, `第 ${G.BRAWLER_EVERY} 杀应触发成长`);
   assert.ok(G.BRAWLER_TYPES.includes(grow.stat));
   const delta = { hp: p.maxHp - before.hp, def: p.def - before.def, atk: p.atk - before.atk, heal: p.killHeal - before.heal };
   assert.equal(Object.values(delta).filter((n) => n !== 0).length, 1, '每次只成长一项');
