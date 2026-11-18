@@ -1,5 +1,5 @@
 // 自动玩家：用于平衡性与稳定性验证
-// node tests/simulate.mjs [runs] [difficulty] [build] [talent]   build ∈ reason(推理流) / body(体魄流)，缺省为混合抓取；talent ∈ gladiator / brawler
+// node tests/simulate.mjs [runs] [difficulty] [build] [talent]   build ∈ reason(推理流) / body(体魄流)，缺省为混合抓取；talent ∈ gladiator / brawler / treasureHunter
 import {
   createRun, tapTile, attack, usePotion, buy, altarChoose, tryDescend, closePending,
   forecast, neighbors, canDescend, SIZE, MAX_FLOOR, shopPrice, setMode, chooseRelic, chooseLevel,
@@ -266,6 +266,7 @@ export function playRun(difficulty, seed, verbose = false, prefer = null, build 
     stuck: guard >= 12000, dmg, healed, potionsUsed, blocked, ambushes, trace: trace.join('>'), floors,
     relics: s.relics.slice(), whet: s.relicState.whet, solves, solveFlags, perfect,
     thorns: s.player.thorns, survey: s.relicState.survey, atkBonus: s.player.atkBonus, flagBonus: s.flagBonus,
+    chests: s.stats.chests, chestRelics: s.stats.chestRelics,
   };
   if (verbose) { console.log(res); for (const f of floors) console.log(JSON.stringify(f)); }
   return res;
@@ -299,7 +300,8 @@ if (process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('simulate.mj
       const avgMaxHp = out.reduce((a, r) => a + r.maxHp, 0) / out.length;
       const avgAtk = out.reduce((a, r) => a + r.atk, 0) / out.length;
       const avgDef = out.reduce((a, r) => a + r.def, 0) / out.length;
-      console.log(`${((build || 'mixed') + '/' + talent).padEnd(16)} ${d.padEnd(7)} 胜率 ${(wins / runs * 100).toFixed(1)}%  层数 ${avgFloor.toFixed(2)}  等级 ${avgLv.toFixed(1)}  遗物 ${avgRelics.toFixed(1)}  血上限 ${avgMaxHp.toFixed(0)}  攻 ${avgAtk.toFixed(1)}  防 ${avgDef.toFixed(1)}  操作 ${avgTurns.toFixed(0)}  受伤 ${avgDmg.toFixed(0)}  偷袭 ${avgAmbush.toFixed(1)}次  治疗 ${avgHeal.toFixed(0)}  识破 ${avgSolves.toFixed(2)}(旗${avgSolveFlags.toFixed(1)},完美${perfects})  卡死 ${stuck}  分布 ${JSON.stringify(hist)}`);
+      const avgChestRelics = out.reduce((a, r) => a + r.chestRelics, 0) / out.length;
+      console.log(`${((build || 'mixed') + '/' + talent).padEnd(16)} ${d.padEnd(7)} 胜率 ${(wins / runs * 100).toFixed(1)}%  层数 ${avgFloor.toFixed(2)}  等级 ${avgLv.toFixed(1)}  遗物 ${avgRelics.toFixed(1)}  箱中遗物 ${avgChestRelics.toFixed(2)}  血上限 ${avgMaxHp.toFixed(0)}  攻 ${avgAtk.toFixed(1)}  防 ${avgDef.toFixed(1)}  操作 ${avgTurns.toFixed(0)}  受伤 ${avgDmg.toFixed(0)}  偷袭 ${avgAmbush.toFixed(1)}次  治疗 ${avgHeal.toFixed(0)}  识破 ${avgSolves.toFixed(2)}(旗${avgSolveFlags.toFixed(1)},完美${perfects})  卡死 ${stuck}  分布 ${JSON.stringify(hist)}`);
     }
   }
 }

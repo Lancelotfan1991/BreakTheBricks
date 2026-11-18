@@ -2579,19 +2579,69 @@ test('格斗家：每 5 杀随机成长一项，击杀回复按次回血', () =>
   assert.equal(p.hp, 13, '击杀回复每次击杀都生效');
 });
 
+test('宝藏猎人：每层宝箱 +1，深层封顶 9 个', () => {
+  for (const diff of ['easy', 'normal', 'hard']) {
+    for (let f = 1; f <= G.MAX_FLOOR; f++) {
+      const base = Math.min(8, Math.max(2, Math.round((3 + f * 0.15) * G.DIFFICULTIES[diff].loot)));
+      const s = G.createRun(diff, 100 + f);
+      G.chooseTalent(s, 'treasureHunter');
+      s.floor = f; G.buildFloor(s); G.ensureBoard(s, 30);
+      assert.equal(s.plan.chests, Math.min(9, base + 1), `${diff} 第 ${f} 层应 +1`);
+      assert.equal(find(s, 'chest').length, s.plan.chests);
+    }
+  }
+  const first = G.createRun('normal', 5);
+  const base = Math.min(8, Math.max(2, Math.round((3 + 1 * 0.15) * G.DIFFICULTIES.normal.loot)));
+  G.chooseTalent(first, 'treasureHunter');
+  assert.equal(first.plan.chests, Math.min(9, base + 1), '首层选完天赋后方案要重算');
+});
+
+test('宝藏猎人：开箱按概率额外掉落遗物，计数与实际入栏一致', () => {
+  const s = fresh('normal', 31);
+  G.chooseTalent(s, 'treasureHunter');
+  s.player.hp = 999; s.player.maxHp = 999;
+  const chest = find(s, 'chest')[0];
+  chest.revealed = true; chest.used = false;
+  const relics0 = s.relics.length;
+  let procs = 0;
+  for (let k = 0; k < 400; k++) {
+    chest.used = false;
+    const before = s.stats.chestRelics;
+    G.tapTile(s, chest.i);
+    if (s.stats.chestRelics > before) procs++;
+  }
+  assert.equal(s.stats.chests, 400, '每次开箱都计数');
+  assert.equal(s.stats.chestRelics, procs);
+  assert.equal(s.relics.length - relics0, procs, '每件箱中遗物都真正入栏');
+  assert.ok(procs > 0, '400 次开箱内应至少触发一次');
+  assert.ok(procs < 400, '不应每次都掉');
+
+  const plain = fresh('normal', 31);
+  const ch = find(plain, 'chest')[0];
+  ch.revealed = true; ch.used = false;
+  G.tapTile(plain, ch.i);
+  assert.equal(plain.stats.chestRelics, 0, '没有天赋时宝箱不掉遗物');
+});
+
 test('天赋与击杀回复可存档往返；老存档补默认值且不强制选天赋', () => {
   const s = fresh('normal', 29);
   G.chooseTalent(s, 'brawler');
   s.player.killHeal = 4;
+  s.stats.chests = 3; s.stats.chestRelics = 1;
   const back = G.deserialize(G.serialize(s));
   assert.equal(back.talent, 'brawler');
   assert.equal(back.talentPending, false);
   assert.equal(back.player.killHeal, 4);
+  assert.equal(back.stats.chests, 3);
+  assert.equal(back.stats.chestRelics, 1);
 
   const raw = JSON.parse(G.serialize(s));
   delete raw.talent; delete raw.talentPending; delete raw.player.killHeal;
+  delete raw.stats.chests; delete raw.stats.chestRelics;
   const old = G.deserialize(JSON.stringify(raw));
   assert.equal(old.talent, null);
   assert.equal(old.talentPending, false, '老存档已开局，不强行插入选天赋');
   assert.equal(old.player.killHeal, 0);
+  assert.equal(old.stats.chests, 0);
+  assert.equal(old.stats.chestRelics, 0);
 });

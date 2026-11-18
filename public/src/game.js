@@ -161,6 +161,7 @@ export const levelBonusCount = (s) =>
 export const TALENTS = [
   { id: 'gladiator', icon: 'sword', color: '#ffab2e' },
   { id: 'brawler', icon: 'hand', color: '#ff6b8a' },
+  { id: 'treasureHunter', icon: 'chest', color: '#ffd54a' },
 ];
 export const talentById = (id) => TALENTS.find((t) => t.id === id);
 export const talentName = (t) => tr('talent.' + t.id + '.name');
@@ -175,6 +176,10 @@ export const BRAWLER_DEF = 1;
 export const BRAWLER_ATK = 1;
 export const BRAWLER_HEAL = 1;
 export const BRAWLER_TYPES = ['hp', 'def', 'atk', 'heal'];
+
+// 宝藏猎人：每层宝箱 +1（上限 9），开箱额外掉遗物的概率。
+// 满程 normal 约 190 箱，10% ≈ 19 件额外遗物；实战多半走到十几层，实测约 +5 件。
+export const CHEST_RELIC_CHANCE = 0.10;
 
 // 越深越容易遇到高品质遗物。权重随层数连续漂移：
 // 第 1 层 60/30/10，第 30 层 30/45/30，中间平滑过渡。
@@ -414,7 +419,7 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
     pendingCombat: -1,
     forcedCombat: -1,
     pendingAltar: -1,
-    stats: { kills: 0, revealed: 0, goldEarned: 0, damage: 0, turns: 0 },
+    stats: { kills: 0, revealed: 0, goldEarned: 0, damage: 0, turns: 0, chests: 0, chestRelics: 0 },
     log: [],
     logId: 0,
   };
@@ -428,6 +433,8 @@ export function chooseTalent(s, id) {
   if (s.status !== 'playing' || !s.talentPending || !talentById(id)) return out;
   s.talent = id;
   s.talentPending = false;
+  // 首层棋盘还没生成时，方案是按无天赋算的；补选后重算，让「每层 +1」从第一层就生效。
+  if (!s.generated) s.plan = planFloor(s, s.floor, DIFFICULTIES[s.difficulty]);
   syncRelicMods(s);
   say(s, 'log.talent.pick', { name: ref('talent.' + id + '.name') }, 'magic');
   return ev(out, 'talentPick', { id });
@@ -475,7 +482,8 @@ function planFloor(s, f, d) {
   // 63 格里要塞下整层内容：深层靠更狠的怪而不是更多怪施压，否则满盘都是威胁，数字就不再提供信息
   const monsters = Math.round(Math.min(20, Math.max(5, (6 + f * 1.3) * d.threat)) * (boss ? 0.7 : 1));
   const traps = Math.min(6, Math.max(1, Math.round((1 + f * 0.35) * d.threat)));
-  const chests = Math.min(8, Math.max(2, Math.round((3 + f * 0.15) * d.loot)));
+  const hunter = hasTalent(s, 'treasureHunter');
+  const chests = Math.min(8 + (hunter ? 1 : 0), Math.max(2, Math.round((3 + f * 0.15) * d.loot)) + (hunter ? 1 : 0));
   const potions = Math.max(1, d.potions);
   return { monsters, traps, chests, potions, elite: boss || f < 2 ? 0 : 1, boss: boss ? 1 : 0, altar: f >= 2 ? 1 : 0, stairs: 1 };
 }
@@ -797,6 +805,7 @@ function lootChest(s, i, out) {
   const t = s.tiles[i], p = s.player;
   let type = t.chest.type, amount = t.chest.amount;
   t.used = true;
+  s.stats.chests++;
   if (hasRelic(s, 'greedyHeart')) {
     if (type === 'gold') amount *= 2;
   }
@@ -807,6 +816,14 @@ function lootChest(s, i, out) {
   else if (type === 'scroll') { p.scrolls++; say(s, 'log.chest.scroll', 'good'); ev(out, 'item', { item: 'scroll' }); }
   else { p.bombs++; say(s, 'log.chest.bomb', 'good'); ev(out, 'item', { item: 'bomb' }); }
   ev(out, 'loot', { i });
+  if (hasTalent(s, 'treasureHunter') && rand(s) < CHEST_RELIC_CHANCE) {
+    const pool = relicPool(s);
+    if (pool.length) {
+      s.stats.chestRelics++;
+      say(s, 'log.chest.relic', 'magic');
+      grantRelic(s, takeWeighted(s, pool, relicRarityWeights(s.floor)).id, out);
+    }
+  }
 }
 
 function pickPotion(s, i, out) {
@@ -1509,6 +1526,9 @@ export function deserialize(text) {
     s.talent = talentById(s.talent) ? s.talent : null;
     s.talentPending = !!s.talentPending && !s.talent;
     s.player.killHeal = Number.isFinite(s.player.killHeal) ? Math.max(0, s.player.killHeal) : 0;
+    s.stats = s.stats && typeof s.stats === 'object' ? s.stats : {};
+    s.stats.chests = Number.isFinite(s.stats.chests) ? Math.max(0, s.stats.chests) : 0;
+    s.stats.chestRelics = Number.isFinite(s.stats.chestRelics) ? Math.max(0, s.stats.chestRelics) : 0;
     return s;
   } catch { return null; }
 }

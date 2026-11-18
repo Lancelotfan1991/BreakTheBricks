@@ -421,6 +421,9 @@ function talentNote(s) {
     const done = s.stats.kills % G.BRAWLER_EVERY;
     return tr('ui.talent.note.brawler', { left: G.BRAWLER_EVERY - done, heal: s.player.killHeal });
   }
+  if (s.talent === 'treasureHunter') {
+    return tr('ui.talent.note.treasureHunter', { pct: Math.round(G.CHEST_RELIC_CHANCE * 100), n: s.stats.chestRelics || 0 });
+  }
   return '';
 }
 
@@ -1061,6 +1064,7 @@ function openHelp() {
     reroll: G.RELIC_REROLL_BASE, rerollStep: G.RELIC_REROLL_STEP,
     lvReroll: G.LEVEL_REROLL_BASE, lvRerollStep: G.LEVEL_REROLL_STEP,
     every: G.BRAWLER_EVERY, hp: G.BRAWLER_HP, def: G.BRAWLER_DEF, atk: G.BRAWLER_ATK, heal: G.BRAWLER_HEAL,
+    chestPct: Math.round(G.CHEST_RELIC_CHANCE * 100),
   };
   openSheet('help', `
     <div class="sheet-head">
@@ -1095,6 +1099,7 @@ function openHelp() {
       <h3 class="help-h">${tr('ui.help.talent.h')}</h3>
       <p class="help-p">${tr('ui.help.talent.p1')}</p>
       <p class="help-p">${tr('ui.help.talent.p2', P)}</p>
+      <p class="help-p">${tr('ui.help.talent.p3', P)}</p>
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.ambush.h')}</h3>
