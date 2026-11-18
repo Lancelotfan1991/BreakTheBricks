@@ -162,6 +162,7 @@ export const TALENTS = [
   { id: 'gladiator', icon: 'sword', color: '#ffab2e' },
   { id: 'brawler', icon: 'hand', color: '#ff6b8a' },
   { id: 'treasureHunter', icon: 'chest', color: '#ffd54a' },
+  { id: 'healer', icon: 'flask', color: '#5ce8a4' },
 ];
 export const talentById = (id) => TALENTS.find((t) => t.id === id);
 export const talentName = (t) => tr('talent.' + t.id + '.name');
@@ -182,6 +183,10 @@ export function awardTalentMedal(meta, id) {
   return true;
 }
 export const talentMedalCount = (meta) => TALENTS.filter((t) => meta && meta.medals && meta.medals[t.id]).length;
+
+// 医者：每层直接入包 1 瓶；服药额外回复 10 点，并永久 +10 生命上限。
+export const HEALER_POTION_HEAL = 10;
+export const HEALER_POTION_MAXHP = 10;
 
 // 格斗家：每 5 杀随机长一项，四类等概率
 export const BRAWLER_EVERY = 5;
@@ -442,6 +447,14 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
   return s;
 }
 
+// 医者的药是直接入包的，不占本层格位；首层在选定天赋时补发，之后每次进入新层发放。
+function brewPotion(s, out) {
+  if (!hasTalent(s, 'healer')) return;
+  s.player.potions++;
+  say(s, 'log.healer.brew', 'good');
+  ev(out, 'item', { item: 'potion' });
+}
+
 export function chooseTalent(s, id) {
   const out = [];
   if (s.status !== 'playing' || !s.talentPending || !talentById(id)) return out;
@@ -451,7 +464,9 @@ export function chooseTalent(s, id) {
   if (!s.generated) s.plan = planFloor(s, s.floor, DIFFICULTIES[s.difficulty]);
   syncRelicMods(s);
   say(s, 'log.talent.pick', { name: ref('talent.' + id + '.name') }, 'magic');
-  return ev(out, 'talentPick', { id });
+  ev(out, 'talentPick', { id });
+  brewPotion(s, out);
+  return out;
 }
 
 function blankTiles() {
@@ -503,11 +518,10 @@ function planFloor(s, f, d) {
 }
 
 export const BAL = {
-  mobHp: 10, mobHpF: 4.4,
-  mobAtk: 2.5, mobAtkF: 1.95,
-  adapt: 0.5,            // 怪物随玩家强度自适应的比例
-  refRounds: 2.0, refRoundsF: 0.14,
-  refBurn: 0.055, refBurnF: 0.012,
+  // 怪物强度只由深度决定，不读取玩家面板：加血加防就是纯收益，不会把敌人一起喂大。
+  // 前 8 层保持平缓曲线，之后用二次项追赶玩家的成长速度。
+  mobHp: 10, mobHpF: 3.5, mobHpQ: 6.0,
+  mobAtk: 2.5, mobAtkF: 1.95, mobAtkQ: 1.4,
   lvXp: 12, lvXpF: 10, lvHp: 6, lvAtk: 1, lvDefEvery: 3,
   potionPct: 0.3, prayPct: 0.45, descendPct: 0.05,
   trapBase: 5, trapF: 2.8,
@@ -525,13 +539,9 @@ function makeMob(s, f, d, type) {
   const B = BAL;
   const depth = depthOf(f);
   const def = Math.floor(depth / 2) + b.def;
-  const mix = (fixed, ref) => fixed * (1 - B.adapt) + ref * B.adapt;
-  const deal = hitDamage(p.atk, def);
-  // 自适应血量必须按 forecast 的同一份公式反推，否则反震省下的回合会被生成器原样加回去
-  const hpRef = (deal + p.thorns) * (B.refRounds + B.refRoundsF * depth);
-  const atkRef = p.def + p.maxHp * (B.refBurn + B.refBurnF * depth);
-  let hp = Math.round(mix(B.mobHp + B.mobHpF * depth, hpRef) * b.hp * P);
-  let atk = Math.round(mix(B.mobAtk + B.mobAtkF * depth, atkRef) * b.atk * P);
+  const late = Math.max(0, depth - 8);
+  let hp = Math.round((B.mobHp + B.mobHpF * depth + B.mobHpQ * late * late) * b.hp * P);
+  let atk = Math.round((B.mobAtk + B.mobAtkF * depth + B.mobAtkQ * late * late) * b.atk * P);
   let xp = Math.round((2 + 1.2 * f) * (b.hp + b.atk) / 2);
   let gold = Math.round((BAL.mobGold + BAL.mobGoldF * f) * d.loot);
   if (type === 'elite') { hp = Math.round(hp * 1.9); atk = Math.round(atk * 1.3); xp *= 3; gold = Math.round(gold * 3.2); }
@@ -543,7 +553,7 @@ function makeMob(s, f, d, type) {
     const cap = Math.floor(p.maxHp * (type === 'boss' ? B.bossCap : B.eliteCap));
     const ref = { ...p, freeKill: false };
     let guard = 0;
-    while (forecast(ref, mob).take > cap && guard++ < 80) {
+    while (forecast(ref, mob).take > cap && guard++ < 400) {
       if (mob.atk > p.def + 1) mob.atk -= 1;
       else if (mob.hp > 4) mob.hp = Math.round(mob.hp * 0.9);
       else break;
@@ -1227,9 +1237,15 @@ export function usePotion(s) {
   if (p.potions <= 0) { say(s, 'log.no.potion', 'warn'); return out; }
   if (p.hp >= p.maxHp) { say(s, 'log.hp.full', 'warn'); return out; }
   p.potions--;
+  const healer = hasTalent(s, 'healer');
+  if (healer) {
+    p.maxHp += HEALER_POTION_MAXHP;
+    syncRelicMods(s);
+  }
   const pct = hasRelic(s, 'ironStomach') ? 0.38 : BAL.potionPct;
-  const amount = heal(s, Math.ceil(p.maxHp * pct), out);
-  say(s, 'log.potion', { n: amount }, 'good');
+  const amount = heal(s, Math.ceil(p.maxHp * pct) + (healer ? HEALER_POTION_HEAL : 0), out);
+  if (healer) say(s, 'log.potion.healer', { n: amount, hp: HEALER_POTION_MAXHP }, 'good');
+  else say(s, 'log.potion', { n: amount }, 'good');
   return out;
 }
 
@@ -1370,6 +1386,7 @@ export function tryDescend(s) {
   buildFloor(s);
   say(s, 'log.descend', { n: s.floor, name: ref('floor.' + s.floor), gold: bonus }, 'magic');
   ev(out, 'descend', { floor: s.floor });
+  brewPotion(s, out);
   return out;
 }
 

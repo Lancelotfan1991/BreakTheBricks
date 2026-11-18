@@ -415,7 +415,7 @@ function openTalentDraw() {
     <div class="sheet-head">
       <div><h2 class="sheet-title">${tr('ui.talent.draw.title')}</h2><p class="sheet-sub">${tr('ui.talent.draw.sub')}</p></div>
     </div>
-    <div class="rcards">${cards}</div>
+    <div class="rcards${G.TALENTS.length > 3 ? ' rcards-4' : ''}">${cards}</div>
     <p class="rcard-hint">${tr('ui.talent.draw.hint')}</p>`, true);
 }
 
@@ -430,6 +430,9 @@ function talentNote(s) {
   }
   if (s.talent === 'treasureHunter') {
     return tr('ui.talent.note.treasureHunter', { pct: Math.round(G.CHEST_RELIC_CHANCE * 100), n: s.stats.chestRelics || 0 });
+  }
+  if (s.talent === 'healer') {
+    return tr('ui.talent.note.healer', { extra: G.HEALER_POTION_HEAL, hp: G.HEALER_POTION_MAXHP });
   }
   return '';
 }
@@ -1072,6 +1075,7 @@ function openHelp() {
     lvReroll: G.LEVEL_REROLL_BASE, lvRerollStep: G.LEVEL_REROLL_STEP,
     every: G.BRAWLER_EVERY, hp: G.BRAWLER_HP, def: G.BRAWLER_DEF, atk: G.BRAWLER_ATK, heal: G.BRAWLER_HEAL,
     chestPct: Math.round(G.CHEST_RELIC_CHANCE * 100),
+    healerHeal: G.HEALER_POTION_HEAL, healerHp: G.HEALER_POTION_MAXHP,
   };
   openSheet('help', `
     <div class="sheet-head">
@@ -1107,6 +1111,7 @@ function openHelp() {
       <p class="help-p">${tr('ui.help.talent.p1')}</p>
       <p class="help-p">${tr('ui.help.talent.p2', P)}</p>
       <p class="help-p">${tr('ui.help.talent.p3', P)}</p>
+      <p class="help-p">${tr('ui.help.talent.p4', P)}</p>
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.ambush.h')}</h3>

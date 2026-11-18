@@ -359,11 +359,31 @@ test('钥匙门禁与下一层', () => {
   assert.equal(s.floor, 3);
 });
 
+test('怪物属性只由深度决定，不随玩家面板变化', () => {
+  for (const diff of ['easy', 'normal', 'hard']) {
+    for (let f = 2; f <= 20; f += 3) {
+      const weak = G.createRun(diff, 777);
+      const strong = G.createRun(diff, 777);
+      weak.floor = f; strong.floor = f;
+      Object.assign(weak.player, { atk: 5, def: 1, maxHp: 32 });
+      Object.assign(strong.player, { atk: 500, def: 200, maxHp: 2000 });
+      G.buildFloor(weak); G.buildFloor(strong);
+      G.ensureBoard(weak, 30); G.ensureBoard(strong, 30);
+      const sig = (s) => find(s, 'monster').map((t) => `${t.i}:${t.mob.hp}/${t.mob.atk}/${t.mob.def}`).sort();
+      assert.equal(find(strong, 'monster').length, find(weak, 'monster').length);
+      assert.deepEqual(sig(strong), sig(weak), `${diff} 第${f}层怪物不应随玩家面板变化`);
+    }
+  }
+});
+
 test('钥匙守卫在生成时满血可胜（反锁死）', () => {
   for (const diff of ['easy', 'normal', 'hard']) {
     for (let seed = 1; seed <= 60; seed++) {
       const s = G.createRun(diff, seed * 31);
       for (let f = 2; f <= G.MAX_FLOOR; f++) {
+        // 怪物已按深度固定成长，用一条参考成长曲线代替 1 级裸装
+        Object.assign(s.player, { atk: 8 + f * 7, def: 2 + f * 2, maxHp: 36 + f * 12 });
+        s.player.hp = s.player.maxHp;
         s.floor = f; G.buildFloor(s); G.ensureBoard(s, 30);
         const key = find(s, 'elite')[0] || find(s, 'boss')[0];
         const full = { ...s.player, hp: s.player.maxHp };
@@ -1233,6 +1253,8 @@ test('势如破竹不会让守卫绕过反锁死上限（首杀被小怪用掉�
       const s = G.createRun(diff, seed * 31 + 7);
       grant(s, 'momentum');
       for (let f = 2; f <= G.MAX_FLOOR; f++) {
+        Object.assign(s.player, { atk: 8 + f * 7, def: 2 + f * 2, maxHp: 36 + f * 12 });
+        s.player.hp = s.player.maxHp;
         atFloor(s, f);
         const key = find(s, 'elite')[0] || find(s, 'boss')[0];
         s.player.freeKill = false; // 模拟首杀额度已被小怪消耗
@@ -1644,11 +1666,12 @@ test('钥匙守卫：攻击与炸弹两条路径都必定掉钥匙，不存在�
       assert.equal(a.hasKey, true, `seed${seed} 第${f}层攻击夺钥`);
 
       const b = mk();
-      b.player.bombs = 3;
+      b.player.bombs = 20;
       b.relics.push('powderKeg', 'blastCharge', 'siegeBlast');
+      b.player.hp = b.player.maxHp = 99999;
       b.tiles[gi].revealed = true;
-      G.setMode(b, 'bomb');
-      G.tapTile(b, gi);
+      // 炸弹是固定伤害，深层守卫要连炸几发；这里验证的是「有炸弹就不会被钥匙锁死」
+      for (let k = 0; k < 20 && !b.hasKey; k++) { G.setMode(b, 'bomb'); G.tapTile(b, gi); }
       assert.equal(b.hasKey, true, `seed${seed} 第${f}层炸弹夺钥`);
       assert.equal(G.remainingThreats(a), G.remainingThreats(b), '两条路径清掉的威胁数一致');
     }
@@ -2348,6 +2371,8 @@ test('反震甲：装上即生效，龙王仍在满血可胜的上限内生成',
       const s = G.createRun(diff, seed);
       grant(s, 'recoilMail');
       assert.equal(s.player.thorns, G.RELIC_RECOIL);
+      // 怪物已不再随玩家面板缩放，这里给一个第 30 层的合理面板，而不是 1 级裸装
+      Object.assign(s.player, { atk: 220, def: 60, maxHp: 460 });
       s.floor = G.MAX_FLOOR; G.buildFloor(s); G.tapTile(s, 30);
       const boss = find(s, 'boss')[0];
       assert.ok(boss, '第 30 层应有龙王');
@@ -2622,6 +2647,47 @@ test('宝藏猎人：开箱按概率额外掉落遗物，计数与实际入栏�
   ch.revealed = true; ch.used = false;
   G.tapTile(plain, ch.i);
   assert.equal(plain.stats.chestRelics, 0, '没有天赋时宝箱不掉遗物');
+});
+
+test('医者：开局与每次下行各入包 1 瓶药水', () => {
+  const s = fresh('normal', 41);
+  const potions0 = s.player.potions;
+  const evs = G.chooseTalent(s, 'healer');
+  assert.equal(s.player.potions, potions0 + 1, '选定天赋时补发首层药水');
+  assert.ok(evs.some((e) => e.type === 'item' && e.item === 'potion'));
+
+  s.stairsFound = true; s.hasKey = true;
+  const before = s.player.potions;
+  G.tryDescend(s);
+  assert.equal(s.floor, 2);
+  assert.equal(s.player.potions, before + 1, '下行进入新层再发 1 瓶');
+
+  const plain = fresh('normal', 42);
+  const base = plain.player.potions;
+  G.chooseTalent(plain, 'gladiator');
+  plain.stairsFound = true; plain.hasKey = true;
+  G.tryDescend(plain);
+  assert.equal(plain.player.potions, base, '其他天赋不会额外发药');
+});
+
+test('医者：服药额外回复 10 点并永久 +10 生命上限', () => {
+  const s = fresh('normal', 43);
+  G.chooseTalent(s, 'healer');
+  s.player.hp = 1;
+  const potions0 = s.player.potions, max0 = s.player.maxHp;
+  const evs = G.usePotion(s);
+  assert.equal(s.player.potions, potions0 - 1);
+  assert.equal(s.player.maxHp, max0 + G.HEALER_POTION_MAXHP);
+  const healed = evs.find((e) => e.type === 'heal').amount;
+  assert.equal(healed, Math.ceil((max0 + G.HEALER_POTION_MAXHP) * G.BAL.potionPct) + G.HEALER_POTION_HEAL, '药水基础回复 + 医者额外 10 点');
+  assert.equal(s.player.hp, 1 + healed);
+
+  const plain = fresh('normal', 43);
+  plain.player.hp = 1;
+  const plainMax = plain.player.maxHp;
+  const plainHeal = G.usePotion(plain).find((e) => e.type === 'heal').amount;
+  assert.equal(plain.player.maxHp, plainMax, '无天赋者生命上限不变');
+  assert.equal(plainHeal, Math.ceil(plainMax * G.BAL.potionPct));
 });
 
 test('天赋勋章：首通点亮、重复通关返回 false、非法 id 不计', () => {
