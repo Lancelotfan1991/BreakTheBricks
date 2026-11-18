@@ -787,12 +787,12 @@ function grant(s, id) {
 const hiddenThreats = (s) => s.tiles.filter((t) => !t.revealed && ['monster', 'elite', 'trap', 'boss'].includes(t.kind));
 function atFloor(s, f) { s.floor = f; G.buildFloor(s); G.tapTile(s, 30); G.closePending(s); return s; }
 
-test('遗物表完整：54 件、id 唯一、分类与稀有度合法', () => {
-  assert.equal(G.RELICS.length, 54);
-  assert.equal(new Set(G.RELICS.map((r) => r.id)).size, 54);
+test('遗物表完整：58 件、id 唯一、分类与稀有度合法', () => {
+  assert.equal(G.RELICS.length, 58);
+  assert.equal(new Set(G.RELICS.map((r) => r.id)).size, 58);
   const byRarity = {};
   for (const r of G.RELICS) byRarity[r.rarity] = (byRarity[r.rarity] || 0) + 1;
-  assert.deepEqual(byRarity, { common: 25, rare: 20, epic: 9 }, '稀有度应呈普通多、史诗少的金字塔');
+  assert.deepEqual(byRarity, { common: 25, rare: 20, epic: 13 }, '稀有度应呈普通多、史诗少的金字塔');
   for (const r of G.RELICS) {
     assert.ok(G.RELIC_CATS.includes(r.cat), `${r.id} 分类非法`);
     assert.ok(G.RELIC_RARITY[r.rarity], `${r.id} 稀有度非法`);
@@ -1484,6 +1484,24 @@ test('偷袭伤害：至少 1 点，减伤遗物同样生效，也可被完全�
   assert.equal(s3.log.at(-1).k, 'log.ambush.block');
   assert.equal(s3.forcedCombat, 0, '挡下伤害仍要开战');
   assert.ok(out.some((e) => e.type === 'ambush' && e.dmg === 0));
+});
+
+test('定神符：偷袭伤害减半，与减伤遗物叠乘', () => {
+  const s = arena();
+  s.player.hp = s.player.maxHp = 80;
+  s.player.def = 0;
+  grant(s, 'steadyNerve');
+  putMob(s, 0, { atk: 12 });
+  G.tapTile(s, 0);
+  assert.equal(s.player.hp, 80 - Math.round(12 * G.RELIC_AMBUSH_HALF), '偷袭伤害减半');
+
+  const s2 = arena();
+  s2.player.hp = s2.player.maxHp = 80;
+  s2.player.def = 0;
+  grant(s2, 'dragonWard'); grant(s2, 'steadyNerve');
+  putMob(s2, 0, { atk: 12 });
+  G.tapTile(s2, 0);
+  assert.equal(s2.player.hp, 80 - Math.round(12 * 0.75 * G.RELIC_AMBUSH_HALF), '与承伤减免叠乘');
 });
 
 test('偷袭：那一口可以直接致死，不会进入战斗', () => {
@@ -2570,6 +2588,25 @@ test('宝藏猎人：每层宝箱 +1，深层封顶 9 个', () => {
   assert.equal(first.plan.chests, Math.min(9, base + 1), '首层选完天赋后方案要重算');
 });
 
+test('寻宝铃：每层宝箱 +1，与宝藏猎人叠加', () => {
+  for (const diff of ['easy', 'normal', 'hard']) {
+    for (let f = 1; f <= G.MAX_FLOOR; f++) {
+      const base = Math.min(8, Math.max(2, Math.round((3 + f * 0.15) * G.DIFFICULTIES[diff].loot)));
+      const s = G.createRun(diff, 200 + f);
+      grant(s, 'treasureBell');
+      s.floor = f; G.buildFloor(s); G.ensureBoard(s, 30);
+      assert.equal(s.plan.chests, Math.min(9, base + G.RELIC_BELL_CHEST), `${diff} 第 ${f} 层应 +1`);
+      assert.equal(find(s, 'chest').length, s.plan.chests);
+    }
+  }
+  const both = G.createRun('normal', 9);
+  G.chooseTalent(both, 'treasureHunter');
+  grant(both, 'treasureBell');
+  both.floor = 5; G.buildFloor(both); G.ensureBoard(both, 30);
+  const base5 = Math.max(2, Math.round((3 + 5 * 0.15) * G.DIFFICULTIES.normal.loot));
+  assert.equal(both.plan.chests, Math.min(10, base5 + 1 + G.RELIC_BELL_CHEST), '天赋与遗物各 +1');
+});
+
 test('宝藏猎人：开箱按概率额外掉落遗物，计数与实际入栏一致', () => {
   const s = fresh('normal', 31);
   G.chooseTalent(s, 'treasureHunter');
@@ -2636,6 +2673,45 @@ test('医者：服药额外回复 10 点并永久 +10 生命上限', () => {
   const plainHeal = G.usePotion(plain).find((e) => e.type === 'heal').amount;
   assert.equal(plain.player.maxHp, plainMax, '无天赋者生命上限不变');
   assert.equal(plainHeal, Math.ceil(plainMax * G.BAL.potionPct));
+});
+
+test('猎手水囊：击杀按概率掉药水，同种子回放一致', () => {
+  const run = (seed, withRelic) => {
+    const s = G.createRun('normal', seed);
+    if (withRelic) grant(s, 'hunterFlask');
+    s.floor = 3; G.buildFloor(s); G.ensureBoard(s, 30);
+    Object.assign(s.player, { atk: 9999, def: 999, maxHp: 9999, hp: 9999 });
+    const p0 = s.player.potions;
+    let kills = 0;
+    for (const t of s.tiles.filter((x) => x.kind === 'monster')) { G.attack(s, t.i); kills++; }
+    return { drops: s.player.potions - p0, kills };
+  };
+  const a = run(11, true), b = run(11, true);
+  assert.deepEqual(a, b, '同种子回放一致');
+  assert.equal(run(11, false).drops, 0, '没有遗物就不掉');
+  let drops = 0, kills = 0;
+  for (let seed = 1; seed <= 30; seed++) { const r = run(seed, true); drops += r.drops; kills += r.kills; }
+  assert.ok(drops > 0, '带遗物应能掉出药水');
+  const rate = drops / kills;
+  assert.ok(rate > 0.08 && rate < 0.25, `长期掉率应接近 ${Math.round(G.RELIC_KILL_POTION_CHANCE * 100)}%（实际 ${(rate * 100).toFixed(1)}%）`);
+});
+
+test('浓炼药液：每瓶药水额外回复 30 点，与医者、铁胃叠加', () => {
+  const plain = fresh('normal', 98);
+  plain.player.maxHp = 500; plain.player.hp = 10;
+  const base = G.usePotion(plain).find((e) => e.type === 'heal').amount;
+
+  const brew = fresh('normal', 98);
+  grant(brew, 'richBrew');
+  brew.player.maxHp = 500; brew.player.hp = 10;
+  assert.equal(G.usePotion(brew).find((e) => e.type === 'heal').amount, base + G.RELIC_POTION_FLAT);
+
+  const doc = fresh('normal', 98);
+  G.chooseTalent(doc, 'healer');
+  grant(doc, 'richBrew'); grant(doc, 'ironStomach');
+  doc.player.maxHp = 500; doc.player.hp = 10;
+  const healed = G.usePotion(doc).find((e) => e.type === 'heal').amount;
+  assert.equal(healed, Math.ceil(doc.player.maxHp * 0.38) + G.HEALER_POTION_HEAL + G.RELIC_POTION_FLAT);
 });
 
 test('天赋勋章：首通点亮、重复通关返回 false、非法 id 不计', () => {

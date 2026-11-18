@@ -130,6 +130,10 @@ export const RELIC_BOUNTY_GOLD = 5;     // 赏金令：每次击杀额外金币
 export const RELIC_MIDAS_STEP = 30;     // 点金手：每 30 金币换 1 攻击与 1 防御
 export const RELIC_DEED_GOLD = 30;      // 矿脉契：每次下行的金币
 export const RELIC_INTEREST_RATE = 0.1; // 高利贷：每次下行按当前金币结算的利息
+export const RELIC_AMBUSH_HALF = 0.5;   // 定神符：偷袭伤害减半
+export const RELIC_BELL_CHEST = 1;      // 寻宝铃：每层额外宝箱
+export const RELIC_KILL_POTION_CHANCE = 0.15; // 猎手水囊：击杀掉药水的概率
+export const RELIC_POTION_FLAT = 30;    // 浓炼药液：每瓶药水额外回复
 
 // ---------- 升级奖励 ----------
 // 升级不只涨基础面板：每次升级三选一，让「升级」也成为构筑决策。
@@ -224,6 +228,8 @@ export const RELICS = [
   { id: 'cartographer', icon: 'scroll', cat: 'explore', rarity: 'rare' },
   { id: 'chronicle', icon: 'book', cat: 'explore', rarity: 'rare' },
   { id: 'perfectMind', icon: 'eye', cat: 'explore', rarity: 'epic' },
+  { id: 'steadyNerve', icon: 'hand', cat: 'explore', rarity: 'epic' },
+  { id: 'treasureBell', icon: 'chest', cat: 'explore', rarity: 'epic' },
 
   { id: 'thornMail', icon: 'shield', cat: 'combat', rarity: 'common' },
   { id: 'whetstone', icon: 'sword', cat: 'combat', rarity: 'common' },
@@ -263,6 +269,8 @@ export const RELICS = [
   { id: 'siegeBlast', icon: 'flask', cat: 'supply', rarity: 'epic' },
   { id: 'forge', icon: 'flame', cat: 'supply', rarity: 'rare' },
   { id: 'pawnTicket', icon: 'coin', cat: 'supply', rarity: 'common' },
+  { id: 'hunterFlask', icon: 'potion', cat: 'supply', rarity: 'epic' },
+  { id: 'richBrew', icon: 'flask', cat: 'supply', rarity: 'epic' },
 
   { id: 'bloodPact', icon: 'heart', cat: 'pact', rarity: 'epic' },
   { id: 'glassCannon', icon: 'crown', cat: 'pact', rarity: 'epic' },
@@ -314,6 +322,9 @@ const RELIC_PARAMS = {
   strataOath: { def: STRATA_DEF, hp: STRATA_HP },
   vow: { hp: RELIC_VOW_HP, def: RELIC_VOW_DEF, atk: RELIC_VOW_ATK },
   greedyHeart: { pct: Math.round((GREEDY_HEART_SHOP - 1) * 100) },
+  treasureBell: { n: RELIC_BELL_CHEST },
+  hunterFlask: { pct: Math.round(RELIC_KILL_POTION_CHANCE * 100) },
+  richBrew: { n: RELIC_POTION_FLAT },
 };
 export const relicName = (r) => tr('relic.' + r.id + '.name');
 export const relicDesc = (r) => tr('relic.' + r.id + '.desc', RELIC_PARAMS[r.id]);
@@ -376,7 +387,7 @@ export function atkOf(s) {
 // 偷袭就是白挨一次普通攻击：攻击 − 防御，并按战斗同一套减伤结算。
 export function ambushDamage(p, mob) {
   const perHit = hitDamage(mob.atk, p.def);
-  const mul = (mob.elite || mob.boss ? p.eliteTakeMul : 1) * p.takeMul;
+  const mul = (mob.elite || mob.boss ? p.eliteTakeMul : 1) * p.takeMul * (p.ambushMul ?? 1);
   return Math.max(0, Math.round(perHit * mul) - p.takeFlat);
 }
 // atk 允许传入“当前有效攻击”（角斗士翻倍）；默认仍读面板，老调用不需要改。
@@ -413,7 +424,7 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
     floor: 1,
     tiles: [],
     generated: false,
-    player: { hp: d.hp, maxHp: d.hp, atk: 5, def: 1, lv: 1, xp: 0, xpNext: 12, gold: d.gold, potions: 2, bombs: 1, scrolls: 1, takeMul: 1, takeFlat: 0, eliteTakeMul: 1, freeKill: false, thorns: 0, atkBonus: 0, goldBonus: 0, killHeal: 0 },
+    player: { hp: d.hp, maxHp: d.hp, atk: 5, def: 1, lv: 1, xp: 0, xpNext: 12, gold: d.gold, potions: 2, bombs: 1, scrolls: 1, takeMul: 1, takeFlat: 0, eliteTakeMul: 1, ambushMul: 1, freeKill: false, thorns: 0, atkBonus: 0, goldBonus: 0, killHeal: 0 },
     talent: null,
     talentPending: true,
     bought: {},
@@ -512,7 +523,8 @@ function planFloor(s, f, d) {
   const monsters = Math.round(Math.min(20, Math.max(5, (6 + f * 1.3) * d.threat)) * (boss ? 0.7 : 1));
   const traps = Math.min(6, Math.max(1, Math.round((1 + f * 0.35) * d.threat)));
   const hunter = hasTalent(s, 'treasureHunter');
-  const chests = Math.min(8 + (hunter ? 1 : 0), Math.max(2, Math.round((3 + f * 0.15) * d.loot)) + (hunter ? 1 : 0));
+  const extraChests = (hunter ? 1 : 0) + (hasRelic(s, 'treasureBell') ? RELIC_BELL_CHEST : 0);
+  const chests = Math.min(8 + extraChests, Math.max(2, Math.round((3 + f * 0.15) * d.loot)) + extraChests);
   const potions = Math.max(1, d.potions);
   return { monsters, traps, chests, potions, elite: boss || f < 2 ? 0 : 1, boss: boss ? 1 : 0, altar: f >= 2 ? 1 : 0, stairs: 1 };
 }
@@ -1160,6 +1172,10 @@ function killMob(s, t, out, opts = {}) {
   gainXp(s, xp, out);
   if (hasRelic(s, 'momentum') && !s.relicState.firstKill) { s.relicState.firstKill = true; syncRelicMods(s); }
   if (hasRelic(s, 'vampiricEdge')) heal(s, 4, out);
+  if (hasRelic(s, 'hunterFlask') && rand(s) < RELIC_KILL_POTION_CHANCE) {
+    p.potions++;
+    say(s, 'log.flask.drop', 'good');
+  }
   if (hasRelic(s, 'heartEater') && s.relicState.heart < RELIC_HEART_CAP) {
     s.relicState.heart++;
     p.maxHp += RELIC_HEART_GAIN;
@@ -1229,7 +1245,8 @@ export function usePotion(s) {
     syncRelicMods(s);
   }
   const pct = hasRelic(s, 'ironStomach') ? 0.38 : BAL.potionPct;
-  const amount = heal(s, Math.ceil(p.maxHp * pct) + (healer ? HEALER_POTION_HEAL : 0), out);
+  const flat = (healer ? HEALER_POTION_HEAL : 0) + (hasRelic(s, 'richBrew') ? RELIC_POTION_FLAT : 0);
+  const amount = heal(s, Math.ceil(p.maxHp * pct) + flat, out);
   if (healer) say(s, 'log.potion.healer', { n: amount, hp: HEALER_POTION_MAXHP }, 'good');
   else say(s, 'log.potion', { n: amount }, 'good');
   return out;
@@ -1404,6 +1421,7 @@ function syncRelicMods(s) {
   p.takeFlat = (hasRelic(s, 'thornMail') ? 2 : 0)
     + (hasRelic(s, 'bonePlate') ? Math.min(RELIC_PLATE_CAP, Math.floor(p.maxHp / RELIC_PLATE_STEP)) : 0);
   p.eliteTakeMul = hasRelic(s, 'guardianBane') ? 0.6 : 1;
+  p.ambushMul = hasRelic(s, 'steadyNerve') ? RELIC_AMBUSH_HALF : 1;
   p.freeKill = hasRelic(s, 'momentum') && !s.relicState.firstKill;
   p.thorns = (hasRelic(s, 'recoilMail') ? RELIC_RECOIL : 0) + (hasRelic(s, 'spikedMail') ? RELIC_SPIKED_THORNS : 0);
   // 血气方刚是派生值：按 maxHp 重算目标加成，只写回差额，重复同步才不会越叠越多
@@ -1544,6 +1562,8 @@ export function deserialize(text) {
     s.talent = talentById(s.talent) ? s.talent : null;
     s.talentPending = !!s.talentPending && !s.talent;
     s.player.killHeal = Number.isFinite(s.player.killHeal) ? Math.max(0, s.player.killHeal) : 0;
+    // 偷袭减免是后加的派生字段：老存档补 1，拿到对应遗物后由 syncRelicMods 覆盖。
+    s.player.ambushMul = Number.isFinite(s.player.ambushMul) ? s.player.ambushMul : 1;
     s.stats = s.stats && typeof s.stats === 'object' ? s.stats : {};
     s.stats.chests = Number.isFinite(s.stats.chests) ? Math.max(0, s.stats.chests) : 0;
     s.stats.chestRelics = Number.isFinite(s.stats.chestRelics) ? Math.max(0, s.stats.chestRelics) : 0;
