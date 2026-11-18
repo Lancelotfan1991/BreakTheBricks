@@ -369,25 +369,10 @@ test('怪物属性只由深度决定，不随玩家面板变化', () => {
       Object.assign(strong.player, { atk: 500, def: 200, maxHp: 2000 });
       G.buildFloor(weak); G.buildFloor(strong);
       G.ensureBoard(weak, 30); G.ensureBoard(strong, 30);
-      const sig = (s) => find(s, 'monster').map((t) => `${t.i}:${t.mob.hp}/${t.mob.atk}/${t.mob.def}`).sort();
-      assert.equal(find(strong, 'monster').length, find(weak, 'monster').length);
-      assert.deepEqual(sig(strong), sig(weak), `${diff} 第${f}层怪物不应随玩家面板变化`);
-    }
-  }
-});
-
-test('钥匙守卫在生成时满血可胜（反锁死）', () => {
-  for (const diff of ['easy', 'normal', 'hard']) {
-    for (let seed = 1; seed <= 60; seed++) {
-      const s = G.createRun(diff, seed * 31);
-      for (let f = 2; f <= G.MAX_FLOOR; f++) {
-        // 怪物已按深度固定成长，用一条参考成长曲线代替 1 级裸装
-        Object.assign(s.player, { atk: 8 + f * 7, def: 2 + f * 2, maxHp: 36 + f * 12 });
-        s.player.hp = s.player.maxHp;
-        s.floor = f; G.buildFloor(s); G.ensureBoard(s, 30);
-        const key = find(s, 'elite')[0] || find(s, 'boss')[0];
-        const full = { ...s.player, hp: s.player.maxHp };
-        assert.equal(G.forecast(full, key.mob).lethal, false, `${diff} 第${f}层 关键怪物满血不可胜`);
+      for (const kind of ['monster', 'elite', 'boss']) {
+        const sig = (s) => find(s, kind).map((t) => `${t.i}:${t.mob.hp}/${t.mob.atk}/${t.mob.def}`).sort();
+        assert.equal(find(strong, kind).length, find(weak, kind).length, `${diff} 第${f}层 ${kind} 数量`);
+        assert.deepEqual(sig(strong), sig(weak), `${diff} 第${f}层 ${kind} 不应随玩家面板变化`);
       }
     }
   }
@@ -1245,24 +1230,6 @@ test('势如破竹：每层首杀免伤、之后恢复、下行重置', () => {
   G.tryDescend(s);
   assert.equal(s.player.freeKill, true, '下行后首杀额度应重置');
   assert.equal(s.relicState.firstKill, false);
-});
-
-test('势如破竹不会让守卫绕过反锁死上限（首杀被小怪用掉仍满血可胜）', () => {
-  for (const diff of ['easy', 'normal', 'hard']) {
-    for (let seed = 1; seed <= 20; seed++) {
-      const s = G.createRun(diff, seed * 31 + 7);
-      grant(s, 'momentum');
-      for (let f = 2; f <= G.MAX_FLOOR; f++) {
-        Object.assign(s.player, { atk: 8 + f * 7, def: 2 + f * 2, maxHp: 36 + f * 12 });
-        s.player.hp = s.player.maxHp;
-        atFloor(s, f);
-        const key = find(s, 'elite')[0] || find(s, 'boss')[0];
-        s.player.freeKill = false; // 模拟首杀额度已被小怪消耗
-        const full = { ...s.player, hp: s.player.maxHp };
-        assert.equal(G.forecast(full, key.mob).lethal, false, `${diff} 第${f}层 关键怪物满血不可胜`);
-      }
-    }
-  }
 });
 
 test('陷阱遗物：钉底靴减伤 30%、猫步 3 次充能免伤、拾荒爪按陷阱旗给金币', () => {
@@ -2363,25 +2330,6 @@ test('反震甲：它省的是回合数，不是每击伤害', () => {
   assert.equal(a.deal, b.deal, '反震不改变每击伤害');
   assert.ok(b.rounds < a.rounds, '反震缩短回合');
   assert.ok(b.take < a.take, '反震减少承伤');
-});
-
-test('反震甲：装上即生效，龙王仍在满血可胜的上限内生成', () => {
-  for (const diff of ['easy', 'normal', 'hard']) {
-    for (let seed = 1; seed <= 8; seed++) {
-      const s = G.createRun(diff, seed);
-      grant(s, 'recoilMail');
-      assert.equal(s.player.thorns, G.RELIC_RECOIL);
-      // 怪物已不再随玩家面板缩放，这里给一个第 30 层的合理面板，而不是 1 级裸装
-      Object.assign(s.player, { atk: 220, def: 60, maxHp: 460 });
-      s.floor = G.MAX_FLOOR; G.buildFloor(s); G.tapTile(s, 30);
-      const boss = find(s, 'boss')[0];
-      assert.ok(boss, '第 30 层应有龙王');
-      const p = { ...s.player, freeKill: false, hp: s.player.maxHp };
-      const f = G.forecast(p, boss.mob);
-      assert.ok(f.take <= Math.floor(p.maxHp * G.BAL.bossCap), `${diff} seed${seed} 龙王满血可胜`);
-      assert.ok(!f.lethal, `${diff} seed${seed} 不该出现必死龙王`);
-    }
-  }
 });
 
 test('血气方刚：攻击按生命上限派生，重复同步不叠加', () => {

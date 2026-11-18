@@ -526,16 +526,16 @@ export const BAL = {
   potionPct: 0.3, prayPct: 0.45, descendPct: 0.05,
   trapBase: 5, trapF: 2.8,
   bloodCost: 10, bloodAtk: 2,
-  eliteCap: 0.9, bossCap: 0.95, shopWhet: 1, mobGold: 2, mobGoldF: 1, chestGold: 8, chestGoldF: 3,
+  shopWhet: 1, mobGold: 2, mobGoldF: 1, chestGold: 8, chestGoldF: 3,
 };
 
 function makeMob(s, f, d, type) {
+  // 只读深度、难度与怪种：世界规则不因玩家面板变化，打不过就是打不过。
   const pool = BESTIARY.filter((b) => f >= b.min && f <= b.max);
   const b = type === 'elite' ? { id: 'guardian', icon: 'guardian', hp: 1, atk: 1, def: 0 }
     : type === 'boss' ? { id: 'dragon', icon: 'dragon', hp: 1, atk: 1, def: 0 }
       : pick(s, pool.length ? pool : BESTIARY);
   const P = d.power;
-  const p = s.player;
   const B = BAL;
   const depth = depthOf(f);
   const def = Math.floor(depth / 2) + b.def;
@@ -546,21 +546,7 @@ function makeMob(s, f, d, type) {
   let gold = Math.round((BAL.mobGold + BAL.mobGoldF * f) * d.loot);
   if (type === 'elite') { hp = Math.round(hp * 1.9); atk = Math.round(atk * 1.3); xp *= 3; gold = Math.round(gold * 3.2); }
   if (type === 'boss') { hp = Math.round(hp * 3.4); atk = Math.round(atk * 1.45); xp = 120; gold = 260; }
-  const mob = { id: b.id, icon: b.icon, hp, maxHp: hp, atk, def, xp, gold, elite: type === 'elite', boss: type === 'boss' };
-  // 反锁死：钥匙守卫 / 龙王在生成时必须是「满血可胜」的。
-  // 这里刻意忽略 freeKill——否则「势如破竹」会让守卫绕过上限生成，一旦首杀被小怪用掉就无解。
-  if (type === 'elite' || type === 'boss') {
-    const cap = Math.floor(p.maxHp * (type === 'boss' ? B.bossCap : B.eliteCap));
-    const ref = { ...p, freeKill: false };
-    let guard = 0;
-    while (forecast(ref, mob).take > cap && guard++ < 400) {
-      if (mob.atk > p.def + 1) mob.atk -= 1;
-      else if (mob.hp > 4) mob.hp = Math.round(mob.hp * 0.9);
-      else break;
-      mob.maxHp = mob.hp;
-    }
-  }
-  return mob;
+  return { id: b.id, icon: b.icon, hp, maxHp: hp, atk, def, xp, gold, elite: type === 'elite', boss: type === 'boss' };
 }
 
 export function ensureBoard(s, safeIndex) {
@@ -1411,7 +1397,7 @@ function winRun(s) {
 export const hasRelic = (s, id) => s.relics.includes(id);
 
 // 战斗修正全部落在 player 上，forecast 因此无需知道遗物系统的存在，
-// 预演 / 结算 / 生成时的反锁死校验读到的永远是同一份数字。
+// 预演与结算读到的永远是同一份数字。
 function syncRelicMods(s) {
   const p = s.player;
   p.takeMul = (hasRelic(s, 'dragonWard') ? 0.75 : 1) * (hasRelic(s, 'glassCannon') ? 1.35 : 1);
