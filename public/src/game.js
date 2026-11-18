@@ -142,7 +142,7 @@ export const LEVEL_STATS = [
   { id: 'def', icon: 'shield', vals: { common: 1, rare: 2, epic: 3 } },
   { id: 'maxHp', icon: 'heart', vals: { common: 6, rare: 12, epic: 18 } },
   { id: 'gold', icon: 'coin', vals: { common: 4, rare: 8, epic: 12 } },
-  { id: 'heal', icon: 'potion', vals: { common: 2, rare: 4, epic: 6 } },
+  { id: 'heal', icon: 'potion', vals: { common: 4, rare: 8, epic: 12 } },
   { id: 'xpKill', icon: 'sparkle', vals: { common: 2, rare: 4, epic: 6 } },
   { id: 'xpFloor', icon: 'book', vals: { common: 5, rare: 10, epic: 15 } },
 ];
@@ -761,7 +761,8 @@ export function chooseLevel(s, id) {
   s.levelTaken[stat] = (s.levelTaken[stat] || 0) + n;
   s.levelChoices = null;
   syncRelicMods(s);
-  say(s, 'log.level.choose', { name: ref('level.' + stat + '.name'), n: gain }, 'good');
+  if (stat === 'heal') say(s, 'log.level.heal.pick', { n }, 'good');
+  else say(s, 'log.level.choose', { name: ref('level.' + stat + '.name'), n: gain }, 'good');
   ev(out, 'levelChoose', { id, stat, rarity, n });
   if ((s.levelOffers || 0) > 0) openLevelOffer(s, out);
   return out;

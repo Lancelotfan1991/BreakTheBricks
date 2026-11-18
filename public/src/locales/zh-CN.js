@@ -335,6 +335,7 @@ export default {
   'log.level.choose': '升级奖励：{name} +{n}。',
   'log.level.gold': '升级奖励：额外 +{n} 金币。',
   'log.level.heal': '升级奖励：额外回复 {n} 生命。',
+  'log.level.heal.pick': '升级奖励：休整，每进入新层回复 {n} 点生命。',
   'log.level.xp': '升级奖励：额外 +{n} 经验。',
   'log.talent.pick': '你选择了天赋「{name}」。',
   'log.brawler.hp': '磨练技艺：生命上限 +{n}。',

@@ -493,12 +493,13 @@ test('每层金币/回复/经验加成在下行时结算', () => {
   atFloor(s, 2);
   const p = s.player;
   p.hp = 10;
-  s.levelTaken = { gold: 8, heal: 4, xpFloor: 12 };
+  s.levelTaken = { gold: 8, heal: 8, xpFloor: 12 };
   const gold0 = p.gold, lv0 = p.lv, xp0 = p.xp;
   s.stairsFound = true; s.hasKey = true;
   const evs = G.tryDescend(s);
   assert.ok(evs.filter((e) => e.type === 'gold').some((e) => e.amount >= 8), '应额外结算每层金币');
-  assert.ok(evs.filter((e) => e.type === 'heal').reduce((a, e) => a + e.amount, 0) >= 5, '每层回复应叠加下行的 5% 回复');
+  const healed = evs.filter((e) => e.type === 'heal').reduce((a, e) => a + e.amount, 0);
+  assert.equal(healed, 8 + Math.ceil(p.maxHp * 0.05), '每层回复应叠加下行的 5% 回复');
   assert.ok(p.gold > gold0 && (p.xp > xp0 || p.lv > lv0), '经验加成应到账');
   assert.equal(s.floor, 3);
 });

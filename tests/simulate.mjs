@@ -117,7 +117,7 @@ function pickLevel(s) {
     if (stat === 'def') return n * 7;
     if (stat === 'maxHp') return n * 2 + (p.hp < p.maxHp * 0.5 ? n * 2 : 0);
     if (stat === 'xpKill') return n * 2.2;
-    if (stat === 'heal') return n * 1.4;
+    if (stat === 'heal') return n * 1.1;
     if (stat === 'gold') return n * 0.7;
     if (stat === 'xpFloor') return n * 0.8;
     return 0;
