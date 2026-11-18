@@ -19,7 +19,7 @@ const el = {
   descend: $('#btnDescend'), log: $('#logLine'), ticker: document.querySelector('.ticker'),
   scrim: $('#scrim'), sheet: $('#sheet'), sheetBody: $('#sheetBody'),
   toast: $('#toast'), floorCard: $('#floorCard'), fcDepth: $('#fcDepth'), fcName: $('#fcName'),
-  diffGrid: $('#diffGrid'), record: $('#record'), btnContinue: $('#btnContinue'), actionbar: $('#actionbar'),
+  diffGrid: $('#diffGrid'), record: $('#record'), medals: $('#medals'), btnContinue: $('#btnContinue'), actionbar: $('#actionbar'),
   relicBar: $('#relicBar'), relicSlots: $('#relicSlots'),
   bossBar: $('#bossBar'), bossName: $('#bossName'), bossFill: $('#bossFill'),
   bossHp: $('#bossHp'), bossAtk: $('#bossAtk'),
@@ -47,8 +47,11 @@ const solveAnim = new Map();
 let solveTimers = [];
 
 function loadMeta() {
-  try { return Object.assign({ wins: 0, runs: 0 }, JSON.parse(localStorage.getItem(META_KEY) || '{}')); }
-  catch { return { wins: 0, runs: 0 }; }
+  try {
+    const m = Object.assign({ wins: 0, runs: 0, medals: {} }, JSON.parse(localStorage.getItem(META_KEY) || '{}'));
+    m.medals = G.sanitizeMedals(m.medals);
+    return m;
+  } catch { return { wins: 0, runs: 0, medals: {} }; }
 }
 function saveMeta() { localStorage.setItem(META_KEY, JSON.stringify(meta)); }
 function saveRun() {
@@ -396,14 +399,18 @@ function openRelicDraw() {
 
 // 开局选天赋：和遗物三选一同一套卡片语言，但锁定到选定为止
 function openTalentDraw() {
-  const cards = G.TALENTS.map((t) => `<button class="rcard" data-sheet="talent" data-id="${t.id}" style="--rc:${t.color}">
+  const cards = G.TALENTS.map((t) => {
+    const done = !!meta.medals[t.id];
+    return `<button class="rcard" data-sheet="talent" data-id="${t.id}" style="--rc:${t.color}">
       <span class="rcard-rar">${tr('talent.' + t.id + '.tag')}</span>
       <span class="rcard-ic">${svg(t.icon)}</span>
       <b class="rcard-name">${G.talentName(t)}</b>
       <span class="rcard-cat">${tr('ui.talent.card.cat')}</span>
+      ${done ? `<span class="rcard-done">${svg('crown')}${tr('ui.talent.medal.earned')}</span>` : ''}
       <span class="rcard-desc">${G.talentDesc(t)}</span>
       <span class="rcard-flavor">${G.talentFlavor(t)}</span>
-    </button>`).join('');
+    </button>`;
+  }).join('');
   openSheet('talent', `
     <div class="sheet-head">
       <div><h2 class="sheet-title">${tr('ui.talent.draw.title')}</h2><p class="sheet-sub">${tr('ui.talent.draw.sub')}</p></div>
@@ -1160,6 +1167,7 @@ function endSequence(win) {
   busy = true;
   meta.runs++;
   if (win) meta.wins++;
+  const newMedal = win && G.awardTalentMedal(meta, S.talent);
   saveMeta(); saveRun();
   audio.play(win ? 'win' : 'death');
   fx.flash(win ? 'gold' : 'hurt');
@@ -1180,6 +1188,10 @@ function endSequence(win) {
         <h2 class="result-title">${win ? tr('ui.result.win.title') : tr('ui.result.death.title')}</h2>
         <p class="result-sub">${win ? tr('ui.result.win.sub') : tr('ui.result.death.sub', { floor: S.floor, name: G.floorName(S.floor) })}</p>
       </div>
+      ${newMedal ? `<div class="medal-new" style="--mc:${G.talentById(S.talent).color}">
+        <span class="medal-new-ic">${svg(G.talentById(S.talent).icon)}</span>
+        <span><b>${tr('ui.result.medal', { name: G.talentName(G.talentById(S.talent)) })}</b><span>${tr('ui.result.medal.sub')}</span></span>
+      </div>` : ''}
       <div class="res-grid">
         <div class="stat"><i>${tr('ui.result.depth')}</i><b>${S.floor}</b></div>
         <div class="stat"><i>${tr('ui.result.lv')}</i><b>${S.player.lv}</b></div>
@@ -1355,6 +1367,14 @@ function renderTitle() {
   el.record.innerHTML = meta.runs
     ? tr('ui.title.record', { wins: meta.wins, runs: meta.runs })
     : tr('ui.title.first');
+  const got = G.talentMedalCount(meta);
+  el.medals.innerHTML = `<p class="medal-head">${tr('ui.title.medals', { got, total: G.TALENTS.length })}</p>
+    <div class="medal-row">${G.TALENTS.map((t) => {
+      const has = !!meta.medals[t.id];
+      return `<span class="medal${has ? ' has' : ''}" style="--mc:${t.color}" aria-label="${tr(has ? 'ui.title.medal.earned' : 'ui.title.medal.locked', { name: G.talentName(t) })}">
+        <span class="medal-ic">${svg(t.icon)}</span><b>${G.talentName(t)}</b><i>${tr(has ? 'ui.medal.has' : 'ui.medal.lock')}</i>
+      </span>`;
+    }).join('')}</div>`;
   syncSound();
 }
 

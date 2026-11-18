@@ -168,6 +168,20 @@ export const talentName = (t) => tr('talent.' + t.id + '.name');
 export const talentDesc = (t) => tr('talent.' + t.id + '.desc');
 export const talentFlavor = (t) => tr('talent.' + t.id + '.flavor');
 export const hasTalent = (s, id) => s.talent === id;
+// 天赋勋章存在跨局 meta 里：每个天赋首次通关点亮一枚，鼓励换职业重开。
+export function sanitizeMedals(raw) {
+  const out = {};
+  for (const t of TALENTS) if (raw && raw[t.id]) out[t.id] = true;
+  return out;
+}
+export function awardTalentMedal(meta, id) {
+  if (!talentById(id)) return false;
+  meta.medals = sanitizeMedals(meta.medals);
+  if (meta.medals[id]) return false;
+  meta.medals[id] = true;
+  return true;
+}
+export const talentMedalCount = (meta) => TALENTS.filter((t) => meta && meta.medals && meta.medals[t.id]).length;
 
 // 格斗家：每 5 杀随机长一项，四类等概率
 export const BRAWLER_EVERY = 5;

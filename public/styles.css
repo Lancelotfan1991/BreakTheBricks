@@ -121,6 +121,35 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
 .record{margin:2px 0 0;font-size:11px;color:var(--ink-3);letter-spacing:.06em;min-height:16px}
 .record b{color:var(--gold)}
 
+/* ── 天赋通关勋章 ─────────────────────── */
+.medals{display:flex;flex-direction:column;gap:6px;width:100%}
+.medal-head{margin:0;font-size:10.5px;letter-spacing:.06em;color:var(--ink-3)}
+.medal-head b{color:var(--gold)}
+.medal-row{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+.medal{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 4px 7px;border-radius:12px;
+  background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.07);opacity:.45;filter:saturate(.15)}
+.medal.has{opacity:1;filter:none;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--mc) 15%,transparent),rgba(0,0,0,.3));
+  border-color:color-mix(in srgb,var(--mc) 42%,transparent);box-shadow:0 0 18px -9px var(--mc)}
+.medal-ic{width:30px;height:30px;display:grid;place-items:center;border-radius:50%;color:var(--mc);
+  background:rgba(0,0,0,.4);border:1px solid color-mix(in srgb,var(--mc) 42%,transparent)}
+.medal-ic .ic{width:18px;height:18px}
+.medal b{font-size:10px;letter-spacing:.04em;color:var(--ink-1)}
+.medal i{font-style:normal;font-size:8.5px;letter-spacing:.1em;color:var(--ink-3)}
+.medal.has i{color:var(--mc)}
+.rcard-done{position:relative;display:inline-flex;align-items:center;gap:3px;font-size:8.5px;letter-spacing:.1em;
+  padding:2px 6px;border-radius:999px;background:color-mix(in srgb,var(--rc) 20%,transparent);color:var(--rc);
+  border:1px solid color-mix(in srgb,var(--rc) 42%,transparent)}
+.rcard-done .ic{width:10px;height:10px}
+.medal-new{display:flex;align-items:center;gap:10px;margin:2px 0 10px;padding:10px 12px;border-radius:12px;
+  background:linear-gradient(100deg,color-mix(in srgb,var(--mc) 16%,transparent),rgba(0,0,0,.3));
+  border:1px solid color-mix(in srgb,var(--mc) 42%,transparent)}
+.medal-new-ic{width:38px;height:38px;flex:none;display:grid;place-items:center;border-radius:50%;color:var(--mc);
+  background:rgba(0,0,0,.35);border:1px solid color-mix(in srgb,var(--mc) 48%,transparent);box-shadow:0 0 18px -7px var(--mc)}
+.medal-new-ic .ic{width:22px;height:22px}
+.medal-new b{display:block;font-size:12px;color:var(--mc)}
+.medal-new span span{display:block;font-size:10px;color:var(--ink-3);line-height:1.5;margin-top:2px}
+
 /* ── 顶栏 ───────────────────────────────── */
 .game-screen{padding:calc(8px + env(safe-area-inset-top)) 10px calc(8px + env(safe-area-inset-bottom));gap:8px}
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none}

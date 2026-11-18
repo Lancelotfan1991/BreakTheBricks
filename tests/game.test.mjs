@@ -2624,6 +2624,32 @@ test('宝藏猎人：开箱按概率额外掉落遗物，计数与实际入栏�
   assert.equal(plain.stats.chestRelics, 0, '没有天赋时宝箱不掉遗物');
 });
 
+test('天赋勋章：首通点亮、重复通关返回 false、非法 id 不计', () => {
+  const meta = { wins: 0, runs: 0 };
+  assert.equal(G.awardTalentMedal(meta, 'gladiator'), true, '首次通关应点亮');
+  assert.equal(meta.medals.gladiator, true);
+  assert.equal(G.awardTalentMedal(meta, 'gladiator'), false, '同一天赋重复通关不再点亮');
+  assert.equal(G.awardTalentMedal(meta, 'nope'), false, '未知天赋不写勋章');
+  assert.equal(G.awardTalentMedal(meta, null), false);
+  assert.deepEqual(Object.keys(meta.medals), ['gladiator']);
+
+  assert.equal(G.awardTalentMedal(meta, 'brawler'), true, '另一天赋应点亮第二枚');
+  assert.equal(G.talentMedalCount(meta), 2);
+});
+
+test('天赋勋章：读取存档时清理非法 id，计数只认现有天赋', () => {
+  assert.deepEqual(G.sanitizeMedals({ gladiator: true, ghost: true }), { gladiator: true });
+  assert.deepEqual(G.sanitizeMedals(null), {});
+  assert.deepEqual(G.sanitizeMedals('x'), {});
+  assert.equal(G.talentMedalCount({ medals: { gladiator: true, ghost: true } }), 1);
+  assert.equal(G.talentMedalCount({}), 0);
+  assert.equal(G.talentMedalCount(null), 0);
+
+  const meta = { medals: { ghost: true } };
+  assert.equal(G.awardTalentMedal(meta, 'treasureHunter'), true);
+  assert.deepEqual(meta.medals, { treasureHunter: true }, '写入前先清掉脏数据');
+});
+
 test('天赋与击杀回复可存档往返；老存档补默认值且不强制选天赋', () => {
   const s = fresh('normal', 29);
   G.chooseTalent(s, 'brawler');
