@@ -1,13 +1,15 @@
 // 自动玩家：用于平衡性与稳定性验证
 // node tests/simulate.mjs [runs] [difficulty] [build] [talent]   build ∈ reason(推理流) / body(体魄流)，缺省为混合抓取；talent ∈ gladiator / brawler / treasureHunter / healer
 import {
-  createRun, tapTile, attack, usePotion, buy, altarChoose, tryDescend, closePending,
+  createRun, tapTile, attack, usePotion, buy, altarChoose, tryDescend, closePending, useDoor,
   forecast, neighbors, canDescend, SIZE, MAX_FLOOR, shopPrice, setMode, chooseRelic, chooseLevel,
-  levelChoiceStat, levelChoiceAmount, chooseTalent, atkOf,
+  levelChoiceStat, levelChoiceAmount, chooseTalent, atkOf, wallOpen,
   toggleFlag, flagCap, flagBonusLeft, ALTAR_FLAG_BONUS, RELIC_SURVEY_CAP, RELIC_SHOP_CAP,
 } from '../public/src/game.js';
 
 const isMob = (t) => t.mob && t.mob.hp > 0;
+// 石墙不参与雷数推理：它永远不会是威胁，但未解锁时点了也是白点
+const wallBlocks = (s, t) => t.kind === 'wall' && !t.revealed && !wallOpen(s, t.i);
 
 // 演绎的另一半：暗格数正好等于「数字 − 已插旗」→ 这些暗格全是威胁，插旗规避。
 // 插旗不消耗回合，所以这是纯收益；也是测量识破收益与推理流的前提。
@@ -18,7 +20,7 @@ function flagPass(s) {
     if (!t.revealed || t.kind !== 'empty' || t.n === 0) continue;
     const nb = neighbors(t.i);
     const flags = nb.filter((j) => s.tiles[j].flagged).length;
-    const hidden = nb.filter((j) => !s.tiles[j].revealed && !s.tiles[j].flagged);
+    const hidden = nb.filter((j) => !s.tiles[j].revealed && !s.tiles[j].flagged && s.tiles[j].kind !== 'wall');
     if (!hidden.length || hidden.length !== t.n - flags) continue;
     let did = false;
     for (const j of hidden) {
@@ -37,13 +39,14 @@ function bestSafeTile(s) {
     const nb = neighbors(t.i);
     const flags = nb.filter((j) => s.tiles[j].flagged).length;
     if (flags !== t.n) continue;
-    const hidden = nb.filter((j) => !s.tiles[j].revealed && !s.tiles[j].flagged);
-    if (hidden.length) return hidden[0];
+    const hidden = nb.filter((j) => !s.tiles[j].revealed && !s.tiles[j].flagged && s.tiles[j].kind !== 'wall');
+    if (hidden.length) return (hidden.find((j) => !s.tiles[j].fire) ?? hidden[0]);
   }
   // 数字格已无暗邻居威胁 → 无
   let best = -1, bestRisk = 99;
   for (const t of s.tiles) {
     if (t.revealed || t.flagged) continue;
+    if (wallBlocks(s, t)) continue; // 未解锁的墙点了也是白点
     const nb = neighbors(t.i).filter((j) => s.tiles[j].revealed && s.tiles[j].kind === 'empty');
     if (!nb.length) continue;
     let risk = 0;
@@ -57,11 +60,11 @@ function bestSafeTile(s) {
     if (risk < bestRisk) { bestRisk = risk; best = t.i; }
   }
   if (best >= 0 && bestRisk <= 0.34) return best;
-  // 全暗：优先角落（邻居少）
-  const hidden = s.tiles.filter((t) => !t.revealed && !t.flagged);
+  // 全暗：优先非火格与角落（邻居少）；未解锁的墙留到最后，点了也不消耗但毫无收益
+  const hidden = s.tiles.filter((t) => !t.revealed && !t.flagged && !wallBlocks(s, t));
   if (!hidden.length) return -1;
   if (bestRisk <= 0.5) return best;
-  hidden.sort((a, b) => neighbors(a.i).length - neighbors(b.i).length);
+  hidden.sort((a, b) => Number(a.fire) - Number(b.fire) || neighbors(a.i).length - neighbors(b.i).length);
   return hidden[0].i;
 }
 
@@ -183,6 +186,16 @@ export function playRun(difficulty, seed, verbose = false, prefer = null, build 
       run(altarChoose, s.pendingAltar, choice);
       continue;
     }
+    // 大地之门整局只有一次：退回 5 层补资源，是正收益但会拖慢推进
+    if (s.pendingDoor >= 0) { run(useDoor, s.pendingDoor); continue; }
+    const doorTile = s.tiles.find((t) => t.revealed && t.kind === 'door' && !t.used);
+    if (doorTile) { run(tapTile, doorTile.i); continue; }
+    const deathTotem = s.tiles.find((t) => t.revealed && t.kind === 'totemDeath' && !t.used);
+    if (deathTotem && s.player.bombs >= 2 && s.player.hp > s.player.maxHp * 0.5) {
+      setMode(s, 'bomb');
+      run(tapTile, deathTotem.i);
+      continue;
+    }
     if (s.pendingCombat >= 0) {
       const t = s.tiles[s.pendingCombat];
       const f = forecast(s.player, t.mob, atkOf(s));
@@ -251,13 +264,17 @@ export function playRun(difficulty, seed, verbose = false, prefer = null, build 
       if (canDescend(s)) { run(tryDescend); continue; }
       // 棋盘被完全识破后，守卫/龙王就摆在明面上且不会自动进预演：
       // 必须主动去夺钥或通关，而不是把「没有暗格」当成无路可走。
-      const must = s.tiles.find((t) => t.revealed && (t.kind === 'elite' || t.kind === 'boss') && isMob(t));
+      // 守卫也可能仍藏在旗子下面——它是唯一必须清掉的威胁，点了才会掉钥匙。
+      const must = s.tiles.find((t) => (t.kind === 'elite' || t.kind === 'boss') && isMob(t) && (t.revealed || t.flagged));
       const sig = `${p.hp}|${p.atk}|${p.def}|${p.bombs}|${p.potions}`;
       if (must && (retry !== must.i || retrySig !== sig)) {
         retry = must.i; retrySig = sig;
         run(tapTile, must.i);
         continue;
       }
+      // 石墙可能围出了唯一通往阶梯的口子：没有安全格可走时用炸弹开路
+      const wall = s.tiles.find((t) => t.kind === 'wall' && !t.revealed);
+      if (wall && p.bombs > 0) { setMode(s, 'bomb'); run(tapTile, wall.i); continue; }
       break;
     }
     run(tapTile, i);

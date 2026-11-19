@@ -119,11 +119,41 @@ function tileView(t) {
   let cls = 'tile', inner = '', n = 0, label = G.tileLabel(t);
   if (!rev) {
     cls += t.flagged ? ' tile-hidden tile-flag' : ' tile-hidden';
-    if (t.flagged) inner = svg('flag');
+    if (t.kind === 'wall') {
+      cls += ' tile-wall';
+      inner = svg('wall');
+    } else if (t.fire) {
+      cls += ' tile-fire';
+      inner = svg('flame') + (t.flagged ? `<span class="tile-fire-flag">${svg('flag')}</span>` : '');
+    } else if (t.flagged) inner = svg('flag');
     label = tr('ui.board.pos', { row: Math.floor(t.i / G.COLS) + 1, col: (t.i % G.COLS) + 1, label });
     return { cls, inner, n, label };
   }
   cls += ' tile-rev';
+  // 拆开的石墙：和阶梯一样保留邻雷数，否则它附近的推断会少一条线索
+  if (t.kind === 'wall') {
+    cls += ' tile-wall-open';
+    n = t.n;
+    inner = svg('wall') + `<span class="tile-num${n ? '' : ' tile-zero'}">${n}</span>`;
+    return { cls, inner, n, label };
+  }
+  if (t.kind === 'door') {
+    cls += ` tile-gate${t.used ? ' tile-used' : ' tile-pick'}`;
+    n = t.n;
+    inner = svg('gate') + `<span class="tile-num${n ? '' : ' tile-zero'}">${n}</span>`;
+    return { cls, inner, n, label };
+  }
+  if (t.kind === 'totemMagic' || t.kind === 'totemDeath') {
+    cls += ` tile-totem ${t.kind === 'totemMagic' ? 'tile-totem-magic' : 'tile-totem-death'}${t.used ? ' tile-used' : ''}`;
+    n = t.n;
+    inner = svg('totem') + `<span class="tile-num${n ? '' : ' tile-zero'}">${n}</span>`;
+    if (!t.used) {
+      inner += t.kind === 'totemMagic'
+        ? `<span class="tile-charge">${t.totem.charges}</span>`
+        : `<span class="tile-aura">${svg('skull')}</span>`;
+    }
+    return { cls, inner, n, label };
+  }
   if (t.mob && t.mob.hp > 0) {
     const m = t.mob;
     cls += t.kind === 'boss' ? ' tile-boss' : t.kind === 'elite' ? ' tile-elite' : ' tile-mob';
@@ -619,7 +649,7 @@ function consume(events) {
         fx.shake(bossHit ? el.game : el.board, bossHit ? 'heavy' : '');
         fx.blood(c.x, c.y);
         fx.float(c.x, c.y - 10, '-' + e.amount, 'dmg');
-        audio.play(e.source === 'trap' ? 'trap' : 'hit'); fx.haptic('heavy');
+        audio.play(e.source === 'trap' || e.source === 'fire' ? 'trap' : 'hit'); fx.haptic('heavy');
         break;
       }
       case 'heal': {
@@ -668,6 +698,53 @@ function consume(events) {
         audio.play('sparkle');
         break;
       }
+      case 'wallLock': {
+        const c = tileCenter(e.i);
+        fx.ring(c.x, c.y, '#9b8aa8', 70);
+        audio.play('deny');
+        toast(tr('ui.toast.wall.lock'), 'warn');
+        break;
+      }
+      case 'wallFlag': audio.play('deny'); toast(tr('log.wall.flag'), 'warn'); break;
+      case 'wallBreak': {
+        const c = tileCenter(e.i);
+        fx.shards(c.x, c.y); fx.dust(c.x, c.y);
+        fx.haptic('medium');
+        toast(tr('ui.toast.wall.break'), 'good');
+        break;
+      }
+      case 'fireBurn': {
+        const c = tileCenter(e.i);
+        fx.ring(c.x, c.y, '#ff9f3a', 110);
+        toast(tr('ui.toast.fire.burn', { n: e.dmg }), 'bad');
+        break;
+      }
+      case 'fireSpread': {
+        const c = tileCenter(e.i);
+        fx.ring(c.x, c.y, '#ff9f3a', 80);
+        audio.play('sparkle');
+        break;
+      }
+      case 'totemPulse': {
+        const c = tileCenter(e.i);
+        fx.ring(c.x, c.y, '#c9a3ff', 120); fx.magic(c.x, c.y);
+        audio.play('trap'); fx.shake(el.board); fx.haptic('medium');
+        break;
+      }
+      case 'totemSpent': {
+        const c = tileCenter(e.i);
+        fx.ring(c.x, c.y, '#6b5a7d', 80);
+        toast(tr('ui.toast.totem.spent'), 'good');
+        break;
+      }
+      case 'totemBreak': {
+        const c = tileCenter(e.i);
+        fx.shards(c.x, c.y); fx.magic(c.x, c.y);
+        audio.play('sparkle');
+        toast(tr('ui.toast.totem.break'), 'magic');
+        break;
+      }
+      case 'door': audio.play('stairs'); break;
       case 'relicDrop': {
         const c = tileCenter(e.i);
         fx.ring(c.x, c.y, '#c9a3ff', 110);
@@ -760,7 +837,7 @@ function apply(events, opts = {}) {
   const pops = consume(events);
   render(pops);
   saveRun();
-  if (events.some((e) => e.type === 'descend')) return descendSequence();
+  if (events.some((e) => e.type === 'descend' || e.type === 'doorUse')) return descendSequence();
   if (S.status === 'dead') return endSequence(false);
   if (S.status === 'won') {
     // 血条排空 + 重震之后再把结算页推上来，让「龙王倒下」这一下站稳
@@ -783,6 +860,7 @@ function openDrawers() {
   if (S.relicChoices) { openRelicDraw(); return true; }
   if (S.pendingCombat >= 0) { openCombat(S.pendingCombat); return true; }
   if (S.pendingAltar >= 0) { openAltar(S.pendingAltar); return true; }
+  if (S.pendingDoor >= 0) { openDoor(S.pendingDoor); return true; }
   return false;
 }
 
@@ -1024,8 +1102,24 @@ function openAltar(i) {
   audio.play('altar');
 }
 
-function openShop() {
-  const p = S.player;
+// 大地之门：点开先确认。它是整局唯一的回头路，误触的代价太重，不能一点就走。
+function openDoor(i) {
+  const to = G.doorTarget(S);
+  openSheet('door', `
+    <div class="sheet-head">
+      <div><h2 class="sheet-title">${tr('ui.door.title')}</h2><p class="sheet-sub">${tr('ui.door.sub', { from: S.floor, to })}</p></div>
+      <button class="icon-btn sheet-close" data-sheet="skip" aria-label="${tr('ui.door.leave')}">${svg('close')}</button>
+    </div>
+    <div class="gold-line">${svg('down')}<span>${tr('ui.door.depth')}</span><b>${to}</b></div>
+    <p class="help-p">${tr('ui.door.note', { to })}</p>
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" data-sheet="skip">${tr('ui.door.leave')}</button>
+      <button class="btn btn-primary" data-sheet="doorGo" data-i="${i}">${svg('gate')}<span>${tr('ui.door.go')}</span></button>
+    </div>`);
+  audio.play('stairs');
+}
+
+function openShop() {  const p = S.player;
   const rows = G.SHOP.map((it) => {
     const price = G.shopPrice(S, it.id);
     const soldout = it.id === 'relic'
@@ -1060,6 +1154,11 @@ function openHelp() {
     ['potion', 'ui.help.lg.potion', '#7dff5a'],
     ['altar', 'ui.help.lg.altar', '#ff4fd8'],
     ['relic', 'ui.help.lg.relic', '#c9a3ff'],
+    ['wall', 'ui.help.lg.wall', '#b9a9c6'],
+    ['flame', 'ui.help.lg.fire', '#ff9f3a'],
+    ['totem', 'ui.help.lg.totem', '#c9a3ff'],
+    ['skull', 'ui.help.lg.totemDeath', '#ff6b8a'],
+    ['gate', 'ui.help.lg.door', '#8bff63'],
     ['stairs', 'ui.help.lg.stairs', '#3fe0ff'],
     ['dragon', 'ui.help.lg.dragon', '#ff8ae8'],
   ].map(([ic, k, c]) => `<div class="lg"><span class="lg-ic" style="color:${c}">${svg(ic)}</span><span class="lg-tx"><b>${tr(k + '.t')}</b><span>${tr(k + '.d')}</span></span></div>`).join('');
@@ -1076,6 +1175,12 @@ function openHelp() {
     every: G.BRAWLER_EVERY, hp: G.BRAWLER_HP, def: G.BRAWLER_DEF, atk: G.BRAWLER_ATK, heal: G.BRAWLER_HEAL,
     chestPct: Math.round(G.CHEST_RELIC_CHANCE * 100),
     healerHeal: G.HEALER_POTION_HEAL, healerHp: G.HEALER_POTION_MAXHP,
+    wallMin: G.WALL_MIN_FLOOR, wallCount: G.WALL_MIN, wallCountMax: G.WALL_MAX,
+    fireMin: G.FIRE_MIN_FLOOR, fireBase: G.FIRE_BASE, fireF: G.FIRE_F, fireCap: G.FIRE_CAP,
+    hazardTick: G.HAZARD_TICK, totemMin: G.TOTEM_MIN_FLOOR, totemCharges: G.TOTEM_MAGIC_CHARGES,
+    totemBase: G.TOTEM_MAGIC_BASE, totemF: G.TOTEM_MAGIC_F,
+    deathAtkStep: G.TOTEM_DEATH_ATK_STEP, deathDefStep: G.TOTEM_DEATH_DEF_STEP,
+    doorBack: G.DOOR_BACK,
   };
   openSheet('help', `
     <div class="sheet-head">
@@ -1118,6 +1223,13 @@ function openHelp() {
       <p class="help-p">${tr('ui.help.ambush.p1')}</p>
       <p class="help-p">${tr('ui.help.ambush.p2')}</p>
       <p class="help-p">${tr('ui.help.ambush.p3')}</p>
+    </div>
+    <div class="help-sec">
+      <h3 class="help-h">${tr('ui.help.machine.h')}</h3>
+      <p class="help-p">${tr('ui.help.machine.wall', P)}</p>
+      <p class="help-p">${tr('ui.help.machine.fire', P)}</p>
+      <p class="help-p">${tr('ui.help.machine.totem', P)}</p>
+      <p class="help-p">${tr('ui.help.machine.door', P)}</p>
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.solve.h')}</h3>
@@ -1453,6 +1565,7 @@ el.sheetBody.addEventListener('click', (e) => {
     case 'bomb': { const i = +b.dataset.i; forceClose(); G.setMode(S, 'bomb'); apply(G.tapTile(S, i)); break; }
     case 'potion': { const i = +b.dataset.i; consume(G.usePotion(S)); render(); saveRun(); openCombat(i); break; }
     case 'altar': { const i = +b.dataset.i; closeSheet(); apply(G.altarChoose(S, i, b.dataset.choice)); break; }
+    case 'doorGo': { const i = +b.dataset.i; closeSheet(); apply(G.useDoor(S, i)); break; }
     case 'buy': {
       const evs = G.buy(S, b.dataset.id);
       if (S.relicChoices) apply(evs);

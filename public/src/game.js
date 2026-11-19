@@ -37,6 +37,29 @@ export const RELIC_RECOIL = 3;         // 反震甲：每次被反击反弹的�
 export const STRATA_DEF = 1;           // 层岩誓约：每下行一层的防御成长
 export const STRATA_HP = 3;            // 层岩誓约：每下行一层的生命上限成长
 
+// ---------- 地城机关 ----------
+// 机关是叠加在地板之上的额外层级：不替代格子内容，也不改变「数字只数威胁」的规则。
+// 每 5 次有效操作结算一次地城时钟：魔法图腾脉冲、火势蔓延都挂在这一拍上。
+export const HAZARD_TICK = 5;
+export const WALL_MIN_FLOOR = 3;       // 石墙从第 3 层出现
+export const WALL_MIN = 3;             // 一簇石墙的格数
+export const WALL_MAX = 5;
+export const FIRE_MIN_FLOOR = 4;       // 火焰地板从第 4 层出现
+export const FIRE_BASE = 3;            // 火焰：基础灼烧
+export const FIRE_F = 1.5;             // 火焰：每点深度的加成
+export const FIRE_CAP = 12;            // 同层同时燃烧的格数上限
+export const TOTEM_MIN_FLOOR = 5;      // 魔法图腾：每 3 层一座
+export const TOTEM_EVERY = 3;
+export const TOTEM_MAGIC_CHARGES = 6;  // 魔法图腾的脉冲次数
+export const TOTEM_MAGIC_BASE = 3;     // 魔法图腾：每次脉冲的基础伤害
+export const TOTEM_MAGIC_F = 1.2;      // 魔法图腾：每点深度的加成
+export const TOTEM_DEATH_MIN_FLOOR = 6;// 死亡图腾：每 4 层的非 Boss 层
+export const TOTEM_DEATH_EVERY = 4;
+export const TOTEM_DEATH_ATK_STEP = 5; // 死亡图腾：每 5 深度 +1 怪物攻击
+export const TOTEM_DEATH_DEF_STEP = 6; // 死亡图腾：每 6 深度 +1 怪物防御
+export const DOOR_MIN_FLOOR = 8;       // 大地之门：回退 5 层
+export const DOOR_BACK = 5;
+
 export const SHOP = [
   { id: 'potion', icon: 'potion', base: 30, step: 10 },
   { id: 'whet', icon: 'sword', base: 30, step: 15 },
@@ -355,6 +378,21 @@ function shuffle(s, arr) {
   return arr;
 }
 
+// 大地之门的位置必须与随机数无关：planFloor 在选天赋时会重跑一次，
+// 若在这里消耗 rand，同一层的门会换位置，甚至影响后续生成。
+function hash32(a, b) {
+  let h = (a | 0) ^ Math.imul(b | 0, 0x9e3779b1);
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+// 一局只开一扇门：由种子挑一个 8..30 的非 Boss 层
+export function doorFloorFor(seed) {
+  let f = DOOR_MIN_FLOOR + (hash32(seed | 0, 0x51ed) % (MAX_FLOOR - DOOR_MIN_FLOOR + 1));
+  while (isBossFloor(f)) f--;
+  return f;
+}
+
 // ---------- geometry ----------
 export const idx = (x, y) => y * COLS + x;
 export const xy = (i) => ({ x: i % COLS, y: Math.floor(i / COLS) });
@@ -444,6 +482,8 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
     stairsFound: false,
     stairsIndex: -1,
     bossDown: false,
+    doorUsed: false,
+    hazardClock: 0,
     mode: 'explore',
     flags: 0,
     flagBonus: 0,
@@ -453,6 +493,7 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
     pendingCombat: -1,
     forcedCombat: -1,
     pendingAltar: -1,
+    pendingDoor: -1,
     stats: { kills: 0, revealed: 0, goldEarned: 0, damage: 0, turns: 0, chests: 0, chestRelics: 0 },
     log: [],
     logId: 0,
@@ -486,7 +527,7 @@ export function chooseTalent(s, id) {
 
 function blankTiles() {
   return Array.from({ length: SIZE }, (_, i) => ({
-    i, kind: 'empty', revealed: false, flagged: false, n: 0, mob: null, used: false, chest: null, relicDrop: false,
+    i, kind: 'empty', revealed: false, flagged: false, n: 0, mob: null, used: false, chest: null, relicDrop: false, fire: false,
   }));
 }
 
@@ -506,6 +547,8 @@ export function buildFloor(s) {
   s.pendingCombat = -1;
   s.forcedCombat = -1;
   s.pendingAltar = -1;
+  s.pendingDoor = -1;
+  s.hazardClock = 0;
   s.relicState.firstKill = false;
   // 祭坛「贪婪低语」借走的防御只借一层，下楼就还——代价是周转的，不是永久的
   if (s.defDebt > 0) {
@@ -530,7 +573,18 @@ function planFloor(s, f, d) {
   const extraChests = (hunter ? 1 : 0) + (hasRelic(s, 'treasureBell') ? RELIC_BELL_CHEST : 0);
   const chests = Math.min(8 + extraChests, Math.max(2, Math.round((3 + f * 0.15) * d.loot)) + extraChests);
   const potions = Math.max(1, d.potions);
-  return { monsters, traps, chests, potions, elite: boss || f < 2 ? 0 : 1, boss: boss ? 1 : 0, altar: f >= 2 ? 1 : 0, stairs: 1 };
+  // 机关只出现在普通层：Boss 层保持一对一的决斗空间，不再叠额外压力。
+  const machines = !boss;
+  return {
+    monsters, traps, chests, potions,
+    elite: boss || f < 2 ? 0 : 1, boss: boss ? 1 : 0,
+    altar: f >= 2 ? 1 : 0, stairs: 1,
+    walls: machines && f >= WALL_MIN_FLOOR ? Math.min(WALL_MAX, WALL_MIN + Math.floor((f - WALL_MIN_FLOOR) / 8)) : 0,
+    fire: machines && f >= FIRE_MIN_FLOOR,
+    totemMagic: machines && f >= TOTEM_MIN_FLOOR && (f - TOTEM_MIN_FLOOR) % TOTEM_EVERY === 0,
+    totemDeath: machines && f >= TOTEM_DEATH_MIN_FLOOR && (f - TOTEM_DEATH_MIN_FLOOR) % TOTEM_DEATH_EVERY === 0,
+    door: !s.doorUsed && f === doorFloorFor(s.seed),
+  };
 }
 
 export const BAL = {
@@ -589,15 +643,114 @@ export function ensureBoard(s, safeIndex) {
     t.revealed = true;
     say(s, 'log.boss.spawn', { mob: ref('mob.' + t.mob.id + '.name') }, 'bad');
   }
-  if (p.elite) { const i = take(far); s.tiles[i].kind = 'elite'; s.tiles[i].mob = makeMob(s, f, d, 'elite'); }
+  // 大地之门先占位：它要离首点远一点，也得避开阶梯与龙王的落点
+  if (p.door) {
+    const t = s.tiles[take(far)];
+    t.kind = 'door';
+    t.revealed = true;
+    say(s, 'log.door.spawn', 'magic');
+  }
+  if (p.totemMagic) {
+    const t = s.tiles[take(far)];
+    t.kind = 'totemMagic';
+    t.revealed = true;
+    t.totem = { charges: TOTEM_MAGIC_CHARGES, dmg: magicTotemDamage(f) };
+    say(s, 'log.totem.spawn', { dmg: t.totem.dmg, charges: TOTEM_MAGIC_CHARGES, tick: HAZARD_TICK }, 'bad');
+  }
+  // 死亡图腾必须在所有怪物之前落位，才能把增幅一次性写进本层所有怪物的面板
+  let deathTotem = null;
+  if (p.totemDeath) {
+    const t = s.tiles[take(far)];
+    t.kind = 'totemDeath';
+    t.revealed = true;
+    t.totem = { atk: deathAuraAtk(f), def: deathAuraDef(f) };
+    deathTotem = t;
+    say(s, 'log.totem.death.spawn', { atk: t.totem.atk, def: t.totem.def }, 'bad');
+  }
+  // 石墙与火场先于内容落位：墙需要连成一片，晚于怪物就会只剩零散空格可长；
+  // 火留在候选池里，怪物/陷阱/宝箱照常落在火上——火是叠加层，不挤走内容。
+  if (p.walls) growWallCluster(s, pool, p.walls);
+  if (p.fire) layFire(s, pool);
   if (p.altar) s.tiles[take()].kind = 'altar';
-  for (let k = 0; k < p.monsters; k++) { const i = take(); s.tiles[i].kind = 'monster'; s.tiles[i].mob = makeMob(s, f, d, 'monster'); }
+  if (p.elite) {
+    const t = s.tiles[take(far)];
+    t.kind = 'elite';
+    t.mob = makeMob(s, f, d, 'elite');
+    applyDeathAura(t, deathTotem);
+  }
+  for (let k = 0; k < p.monsters; k++) {
+    const t = s.tiles[take()];
+    t.kind = 'monster';
+    t.mob = makeMob(s, f, d, 'monster');
+    applyDeathAura(t, deathTotem);
+  }
   for (let k = 0; k < p.traps; k++) s.tiles[take()].kind = 'trap';
   for (let k = 0; k < p.chests; k++) { const i = take(); s.tiles[i].kind = 'chest'; s.tiles[i].chest = rollChest(s, f, d); }
   for (let k = 0; k < p.potions; k++) s.tiles[take()].kind = 'potion';
 
   recalc(s);
   s.generated = true;
+}
+
+function magicTotemDamage(f) {
+  return Math.max(2, Math.round(TOTEM_MAGIC_BASE + TOTEM_MAGIC_F * depthOf(f)));
+}
+const deathAuraAtk = (f) => Math.max(1, Math.ceil(depthOf(f) / TOTEM_DEATH_ATK_STEP));
+const deathAuraDef = (f) => Math.max(1, Math.ceil(depthOf(f) / TOTEM_DEATH_DEF_STEP));
+
+function applyDeathAura(t, totem) {
+  if (!totem || !t.mob) return;
+  t.mob.atk += totem.totem.atk;
+  t.mob.def += totem.totem.def;
+  t.mob.aura = { atk: totem.totem.atk, def: totem.totem.def };
+}
+
+// 从随机一点开始长出一簇四连通石墙，避免出现零散的单个墙把路堵成猜谜
+function growWallCluster(s, pool, count) {
+  if (!pool.length || count <= 0) return;
+  const avail = new Set(pool);
+  const cluster = [pool[Math.floor(rand(s) * pool.length)]];
+  while (cluster.length < count) {
+    const frontier = [];
+    for (const i of cluster) {
+      for (const j of neighbors(i)) if (avail.has(j) && !cluster.includes(j)) frontier.push(j);
+    }
+    if (!frontier.length) break;
+    cluster.push(frontier[Math.floor(rand(s) * frontier.length)]);
+  }
+  for (const i of cluster) {
+    s.tiles[i].kind = 'wall';
+    const k = pool.indexOf(i);
+    if (k >= 0) pool.splice(k, 1);
+  }
+}
+
+// 火场只铺形状：横条、竖条或 3×3。格子仍留在候选池里，内容照常落在火上。
+function layFire(s, pool) {
+  if (!pool.length) return;
+  const avail = new Set(pool);
+  const anchor = pool[Math.floor(rand(s) * pool.length)];
+  const { x, y } = xy(anchor);
+  const cells = [];
+  const shape = Math.floor(rand(s) * 3);
+  if (shape === 0) {
+    const len = 3 + Math.floor(rand(s) * 3);
+    const x0 = Math.min(x, COLS - len);
+    for (let k = 0; k < len; k++) { const j = idx(x0 + k, y); if (avail.has(j)) cells.push(j); }
+  } else if (shape === 1) {
+    const len = 3 + Math.floor(rand(s) * 3);
+    const y0 = Math.min(y, ROWS - len);
+    for (let k = 0; k < len; k++) { const j = idx(x, y0 + k); if (avail.has(j)) cells.push(j); }
+  } else {
+    const ox = Math.min(x, COLS - 3), oy = Math.min(y, ROWS - 3);
+    for (let dy = 0; dy < 3; dy++) {
+      for (let dx = 0; dx < 3; dx++) {
+        const j = idx(ox + dx, oy + dy);
+        if (avail.has(j)) cells.push(j);
+      }
+    }
+  }
+  for (const j of cells) s.tiles[j].fire = true;
 }
 
 function rollChest(s, f, d) {
@@ -630,8 +783,87 @@ export function flagCap(s) {
 }
 // 剩余暗格全是威胁＝安全格已全部翻开，等价于扫雷已经解出。
 // 这时还让玩家自己踩陷阱，是在惩罚一次成功的推理。
+// 石墙是明面上的结构、永远不是威胁，不提它不构成信息缺口，不该拖住识破。
 export function boardSolved(s) {
-  return s.generated && s.tiles.every((t) => t.revealed || isThreat(t));
+  return s.generated && s.tiles.every((t) => t.revealed || isThreat(t) || t.kind === 'wall');
+}
+
+// 石墙的解锁只看非墙邻居：墙簇内部若全是墙，也视为已满足条件，
+// 否则中心格永远等不到「邻格全部揭示」，整簇就成了死结。
+// 插旗等同「这一格已经处理过」：旗子挡的是误踩，不该把相邻石墙一起锁死。
+export function wallOpen(s, i) {
+  return neighbors(i).every((j) => {
+    const t = s.tiles[j];
+    return t.kind === 'wall' || t.revealed || t.flagged;
+  });
+}
+
+// 火焰的灼烧：随深度成长，防御只能抵掉一半。踩一次就熄灭，不追着人烧。
+export function fireDamage(s) {
+  return Math.max(2, Math.round(FIRE_BASE + FIRE_F * depthOf(s.floor) - Math.floor(s.player.def / 2)));
+}
+
+export function doorTarget(s) {
+  let f = Math.max(1, s.floor - DOOR_BACK);
+  if (isBossFloor(f)) f--;
+  return Math.max(1, f);
+}
+
+// ---------- 机关时钟 ----------
+// 只按「花掉的操作」走表：标记、切换模式、查看预演都不推进机关，
+// 所以玩家永远能通过思考换时间，压力只来自真正落子。
+export function tickHazards(s, out) {
+  s.hazardClock = (s.hazardClock || 0) + 1;
+  if (s.hazardClock < HAZARD_TICK) return out;
+  s.hazardClock = 0;
+  pulseMagicTotems(s, out);
+  if (s.status === 'playing') spreadFire(s, out);
+  return out;
+}
+
+function pulseMagicTotems(s, out) {
+  for (const t of s.tiles) {
+    if (s.status !== 'playing') return;
+    if (t.kind !== 'totemMagic' || t.used || !t.totem) continue;
+    t.totem.charges--;
+    say(s, 'log.totem.pulse', { dmg: t.totem.dmg, left: t.totem.charges }, 'bad');
+    ev(out, 'totemPulse', { i: t.i, dmg: t.totem.dmg, left: t.totem.charges });
+    hurt(s, t.totem.dmg, out, 'totem', t.i);
+    if (t.totem.charges <= 0) {
+      t.used = true;
+      say(s, 'log.totem.spent', 'good');
+      ev(out, 'totemSpent', { i: t.i });
+    }
+  }
+}
+
+// 火只烧还没翻开的砖：顺着已有火场往相邻暗格爬，遇到墙、阶梯、祭坛、图腾、门自动绕开。
+function spreadFire(s, out) {
+  const active = s.tiles.filter((t) => t.fire && !t.revealed);
+  if (!active.length || active.length >= FIRE_CAP) return;
+  const blocked = (n) => n.revealed || n.fire || n.kind === 'wall' || n.kind === 'stairs'
+    || n.kind === 'altar' || n.kind === 'door' || n.kind === 'totemMagic' || n.kind === 'totemDeath' || n.kind === 'boss';
+  const cand = [];
+  for (const t of active) for (const j of neighbors(t.i)) if (!blocked(s.tiles[j])) cand.push(j);
+  if (!cand.length) return;
+  const j = cand[Math.floor(rand(s) * cand.length)];
+  s.tiles[j].fire = true;
+  say(s, 'log.fire.spread', 'bad');
+  ev(out, 'fireSpread', { i: j });
+}
+
+function breakDeathTotem(s, i, out) {
+  const t = s.tiles[i];
+  const atk = t.totem ? t.totem.atk : 0, def = t.totem ? t.totem.def : 0;
+  for (const u of s.tiles) {
+    const m = u.mob;
+    if (!m || m.hp <= 0 || !m.aura) continue;
+    m.atk = Math.max(0, m.atk - m.aura.atk);
+    m.def = Math.max(0, m.def - m.aura.def);
+    m.aura = null;
+  }
+  say(s, 'log.totem.death.break', { atk, def }, 'good');
+  ev(out, 'totemBreak', { i });
 }
 
 function revealSolved(s, out) {
@@ -645,6 +877,7 @@ function revealSolved(s, out) {
   s.flags = 0;
   for (const t of hidden) {
     t.revealed = true;
+    t.fire = false;
     s.stats.revealed++;
     if (t.kind === 'trap') { t.used = true; ev(out, 'disarm', { i: t.i }); }
     else ev(out, 'reveal', { i: t.i, kind: t.kind });
@@ -863,11 +1096,27 @@ function pickPotion(s, i, out) {
 function openTile(s, i, out, opts = {}) {
   const t = s.tiles[i];
   if (t.revealed) return;
+  // 石墙只能等相邻非墙格全部翻开后手动拆，或者被炸弹强制轰开
+  if (t.kind === 'wall' && !opts.force && !wallOpen(s, i)) return;
+  const wasFire = t.fire;
+  if (wasFire) t.fire = false;
   t.revealed = true;
   if (t.flagged) { t.flagged = false; s.flags--; }
   s.stats.revealed++;
   ev(out, 'reveal', { i, kind: t.kind });
   const p = s.player;
+
+  // 火是叠在地板上的额外层级：只有玩家亲手踩上去才会灼烧。
+  // 卷轴、识破、连锁展开都是「探明」而不是「落脚」，因此安全。
+  if (wasFire && !opts.silent) {
+    const dmg = fireDamage(s);
+    say(s, 'log.fire.burn', { dmg }, 'bad');
+    ev(out, 'fireBurn', { i, dmg });
+    hurt(s, dmg, out, 'fire', i);
+    if (s.status !== 'playing') return;
+  }
+
+  if (t.kind === 'wall') return;
 
   if (t.kind === 'monster' || t.kind === 'elite' || t.kind === 'boss') {
     if (!opts.silent) {
@@ -944,7 +1193,7 @@ function flood(s, start, out, opts) {
     for (const j of neighbors(cur)) {
       const t = s.tiles[j];
       if (t.revealed || t.flagged) continue;
-      if (isThreat(t)) continue;
+      if (isThreat(t) || t.kind === 'wall') continue;
       openTile(s, j, out, { ...opts, silent: true });
       if (s.status !== 'playing') return;
       if (t.kind === 'empty' && hiddenThreatCount(s, j) === 0) stack.push(j);
@@ -968,6 +1217,12 @@ export function toggleFlag(s, i) {
   if (s.status !== 'playing') return out;
   const t = s.tiles[i];
   if (t.revealed) return out;
+  // 石墙不是威胁，插旗只会浪费预算，直接拒绝并说明原因
+  if (t.kind === 'wall') {
+    say(s, 'log.wall.flag', 'warn');
+    ev(out, 'wallFlag', { i });
+    return out;
+  }
   // 上限是稀缺资源，拒绝时直接指出三条抬高上限的路，否则玩家只会觉得被卡住
   const cap = flagCap(s);
   if (!t.flagged && s.flags >= cap) {
@@ -983,7 +1238,10 @@ export function toggleFlag(s, i) {
 
 export function tapTile(s, i) {
   const r = tapInner(s, i);
-  if (r.spent) s.stats.turns++;
+  if (r.spent) {
+    s.stats.turns++;
+    if (s.status === 'playing') tickHazards(s, r.out);
+  }
   finish(s, r.out);
   return r.out;
 }
@@ -1000,10 +1258,11 @@ function tapInner(s, i) {
   if (s.mode === 'flag') return { out: toggleFlag(s, i), spent: false };
 
   if (s.mode === 'bomb') {
-    if (!t.revealed || !isThreat(t) || t.used) { say(s, 'log.bomb.invalid', 'warn'); return free; }
-    // 固定伤害打在所有会挡住路的威胁上：血少的杂兵一发带走，精英与龙王要好几枚
-    const wasMob = !!t.mob && t.mob.hp > 0;
-    const dmg = wasMob ? bombDamage(s, t.mob) : 0;
+    const isWall = t.kind === 'wall' && !t.revealed;
+    const isDeathTotem = t.revealed && t.kind === 'totemDeath' && !t.used;
+    // 魔法图腾不可摧毁：炸弹只能省下这枚，不能把机关拔掉
+    if (t.kind === 'totemMagic' && !t.used) { say(s, 'log.bomb.totem', 'warn'); return free; }
+    if (!isWall && !isDeathTotem && (!t.revealed || !isThreat(t) || t.used)) { say(s, 'log.bomb.invalid', 'warn'); return free; }
     s.player.bombs--;
     s.mode = 'explore';
     ev(out, 'bomb', { i });
@@ -1012,6 +1271,20 @@ function tapInner(s, i) {
       say(s, 'log.torch', { gold: got }, 'good');
     }
     if (hasRelic(s, 'blastWave')) sweepTraps(s, i, out);
+    if (isWall) {
+      openTile(s, i, out, { force: true, silent: true });
+      say(s, 'log.wall.break', 'magic');
+      ev(out, 'wallBreak', { i });
+      return { out, spent: true };
+    }
+    if (isDeathTotem) {
+      t.used = true;
+      breakDeathTotem(s, i, out);
+      return { out, spent: true };
+    }
+    // 固定伤害打在所有会挡住路的威胁上：血少的杂兵一发带走，精英与龙王要好几枚
+    const wasMob = !!t.mob && t.mob.hp > 0;
+    const dmg = wasMob ? bombDamage(s, t.mob) : 0;
     if (!wasMob) {
       t.used = true;
       say(s, 'log.bomb.hit', { target: ref('tile.trap') }, 'magic');
@@ -1057,14 +1330,34 @@ function tapInner(s, i) {
   // 对所有插旗格一视同仁，不根据格内类型给不同反馈，否则点一下就能白嫖「是不是怪物」的信息。
   if (!t.revealed) {
     ensureBoard(s, i);
+    // 石墙封着路时就地给出反馈，否则玩家会以为点击没生效
+    if (t.kind === 'wall' && !wallOpen(s, i)) {
+      say(s, 'log.wall.lock', 'warn');
+      ev(out, 'wallLock', { i });
+      return free;
+    }
     openTile(s, i, out);
     return { out, spent: true };
   }
 
   // 已探明格
+  if (t.kind === 'wall') return free;
   if ((t.kind === 'monster' || t.kind === 'elite' || t.kind === 'boss') && t.mob.hp > 0) {
     s.pendingCombat = i;
     ev(out, 'encounter', { i });
+    return free;
+  }
+  if (t.kind === 'totemMagic' && !t.used) {
+    say(s, 'log.totem.info', { dmg: t.totem.dmg, left: t.totem.charges }, 'warn');
+    return free;
+  }
+  if (t.kind === 'totemDeath' && !t.used) {
+    say(s, 'log.totem.death.info', { atk: t.totem.atk, def: t.totem.def }, 'warn');
+    return free;
+  }
+  if (t.kind === 'door' && !t.used) {
+    s.pendingDoor = i;
+    ev(out, 'door', { i });
     return free;
   }
   // 精英/龙王死后把遗物留在地上，玩家自己踩上去才开三选一
@@ -1121,6 +1414,7 @@ function sweepTraps(s, i, out) {
     const nt = s.tiles[j];
     if (nt.kind !== 'trap' || nt.used) continue;
     if (nt.flagged) { nt.flagged = false; s.flags--; }
+    nt.fire = false;
     nt.used = true; nt.revealed = true; swept++;
     ev(out, 'disarm', { i: j });
   }
@@ -1224,15 +1518,36 @@ export function attack(s, i) {
   if (t.kind === 'boss') {
     const beaten = defeatBoss(s, t, out);
     if (s.status !== 'playing') return beaten;
+    tickHazards(s, beaten);
     return finish(s, beaten);
   }
+  if (s.status === 'playing') tickHazards(s, out);
   return finish(s, out);
 }
 
 export function closePending(s) {
   s.pendingCombat = -1;
   s.pendingAltar = -1;
+  s.pendingDoor = -1;
   return [];
+}
+
+// 大地之门：回到 5 层之前补资源。它不给下楼奖励，只是把玩家送回一段已经走过的路。
+export function useDoor(s, i) {
+  const out = [];
+  if (s.status !== 'playing') return out;
+  const t = s.tiles[i];
+  if (!t || t.kind !== 'door' || t.used) return out;
+  if (s.doorUsed) { say(s, 'log.door.used', 'warn'); return out; }
+  t.used = true;
+  s.doorUsed = true;
+  s.pendingDoor = -1;
+  s.floor = doorTarget(s);
+  buildFloor(s);
+  say(s, 'log.door.go', { n: s.floor, name: ref('floor.' + s.floor) }, 'magic');
+  ev(out, 'doorUse', { floor: s.floor });
+  brewPotion(s, out);
+  return out;
 }
 
 export function usePotion(s) {
@@ -1582,12 +1897,25 @@ export function deserialize(text) {
     s.stats = s.stats && typeof s.stats === 'object' ? s.stats : {};
     s.stats.chests = Number.isFinite(s.stats.chests) ? Math.max(0, s.stats.chests) : 0;
     s.stats.chestRelics = Number.isFinite(s.stats.chestRelics) ? Math.max(0, s.stats.chestRelics) : 0;
+    // 机关字段同样是后加的：老存档补默认值，火层缺失就当没火
+    s.doorUsed = !!s.doorUsed;
+    s.hazardClock = Number.isFinite(s.hazardClock) ? Math.max(0, s.hazardClock) : 0;
+    s.pendingDoor = Number.isFinite(s.pendingDoor) ? s.pendingDoor : -1;
+    for (const t of s.tiles) t.fire = !!t.fire;
     return s;
   } catch { return null; }
 }
 
 export function tileLabel(t) {
-  if (!t.revealed) return tr(t.flagged ? 'tile.flagged' : 'tile.hidden');
+  if (!t.revealed) {
+    if (t.kind === 'wall') return tr('tile.wall');
+    if (t.fire) return tr('tile.fire');
+    return tr(t.flagged ? 'tile.flagged' : 'tile.hidden');
+  }
+  if (t.kind === 'wall') return tr('tile.wall.open');
+  if (t.kind === 'door') return tr(t.used ? 'tile.door.used' : 'tile.door');
+  if (t.kind === 'totemMagic') return t.used ? tr('tile.totem.magic.spent') : tr('tile.totem.magic', { dmg: t.totem.dmg, left: t.totem.charges });
+  if (t.kind === 'totemDeath') return t.used ? tr('tile.totem.death.spent') : tr('tile.totem.death', { atk: t.totem.atk, def: t.totem.def });
   if (t.mob && t.mob.hp > 0) return tr('tile.mob', { name: ref('mob.' + t.mob.id + '.name') });
   if (t.relicDrop) return tr('tile.relic.drop');
   if (t.kind === 'stairs') return t.n ? tr('tile.stairs.danger', { n: t.n }) : tr('tile.stairs');

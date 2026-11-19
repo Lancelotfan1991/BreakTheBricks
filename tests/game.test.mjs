@@ -44,6 +44,10 @@ test('每层实体数量符合规划，且阶梯/守卫/龙王存在', () => {
       assert.equal(find(s, 'boss').length, p.boss);
       assert.equal(find(s, 'stairs').length, p.stairs);
       assert.equal(find(s, 'altar').length, p.altar);
+      assert.equal(find(s, 'wall').length, p.walls);
+      assert.equal(find(s, 'totemMagic').length, p.totemMagic ? 1 : 0);
+      assert.equal(find(s, 'totemDeath').length, p.totemDeath ? 1 : 0);
+      assert.equal(find(s, 'door').length, p.door ? 1 : 0);
       assert.ok(s.stairsIndex >= 0, '每层都应有下行阶梯（含龙王层）');
       assert.equal(p.stairs, 1);
       const bossFloor = G.isBossFloor(f);
@@ -52,7 +56,8 @@ test('每层实体数量符合规划，且阶梯/守卫/龙王存在', () => {
       if (f >= 2 && !bossFloor) assert.equal(find(s, 'elite')[0].mob.elite, true);
       if (bossFloor) assert.equal(find(s, 'boss')[0].mob.boss, true);
       const occupied = s.tiles.filter((t) => t.kind !== 'empty').length;
-      assert.equal(occupied, p.monsters + p.traps + p.chests + p.potions + p.elite + p.boss + p.stairs + p.altar);
+      const specials = p.walls + (p.totemMagic ? 1 : 0) + (p.totemDeath ? 1 : 0) + (p.door ? 1 : 0);
+      assert.equal(occupied, p.monsters + p.traps + p.chests + p.potions + p.elite + p.boss + p.stairs + p.altar + specials);
       assert.ok(p.monsters <= 20, `第 ${f} 层怪物数量应封顶`);
       assert.ok(p.traps <= 6, `第 ${f} 层陷阱数量应封顶`);
       assert.ok(p.chests <= 8, `第 ${f} 层宝箱数量应封顶`);
@@ -1941,7 +1946,8 @@ test('三条渠道可叠加，加成跨层保留而旗子每层收回', () => {
   assert.equal(cap, base + G.FLAG_BONUS_CAP, '三条渠道恰好把加成加满');
   assert.equal(G.flagCap(s), cap, '三条渠道线性叠加');
 
-  const hidden = s.tiles.filter((t) => !t.revealed);
+  // 石墙不能插旗，排除掉才是在测旗数预算本身
+  const hidden = s.tiles.filter((t) => !t.revealed && t.kind !== 'wall');
   for (const t of hidden.slice(0, cap)) G.toggleFlag(s, t.i);
   assert.equal(s.flags, cap, '投资后真的能插满');
 

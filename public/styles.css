@@ -354,13 +354,46 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
   box-shadow:inset 0 0 18px rgba(63,224,255,.26),0 0 20px -4px rgba(63,224,255,.8);animation:portal 2.2s ease-in-out infinite}
 .tile-stairs>.ic{color:var(--cyan)}
 /* 阶梯格也要给出邻格威胁数：数字做成左上角徽章，阶梯大图与上锁角标各占一角，互不遮挡 */
-.tile-stairs .tile-num,.tile-drop .tile-num{position:absolute;top:1px;left:1px;display:flex;align-items:center;justify-content:center;
+.tile-stairs .tile-num,.tile-drop .tile-num,.tile-wall-open .tile-num,.tile-gate .tile-num,.tile-totem .tile-num{position:absolute;top:1px;left:1px;display:flex;align-items:center;justify-content:center;
   min-width:calc(var(--tile)*.44);height:calc(var(--tile)*.44);padding:0 calc(var(--tile)*.03);
   border-radius:calc(var(--tile)*.12);background:rgba(7,4,12,.88);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.14);font-size:calc(var(--tile)*.34);text-shadow:none}
 @keyframes portal{0%,100%{filter:brightness(1)}50%{filter:brightness(1.35)}}
 .tile-lock{position:absolute;right:2px;bottom:2px;width:calc(var(--tile)*.32);height:calc(var(--tile)*.32);color:var(--gold);opacity:.95}
 .tile-lock .ic{width:100%;height:100%}
+/* ── 地城机关 ─────────────────────────────── */
+/* 石墙：整面砖墙砌在暗格里，看得见但拆不开，只有邻格全亮或被炸才通 */
+.tile-wall{background:linear-gradient(158deg,#35313f,#211d29);border-color:rgba(185,169,198,.3);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12),inset 0 -2px 5px rgba(0,0,0,.55)}
+.tile-wall>.ic{color:#b9a9c6;width:calc(var(--tile)*.58);height:calc(var(--tile)*.58);opacity:.72}
+.tile-wall-open{background:linear-gradient(170deg,#211d29,#141018);border-color:rgba(255,255,255,.05)}
+.tile-wall-open>.ic{color:#5b5168;opacity:.5}
+/* 火焰：叠在暗格上的额外层级，砖面被火舌盖住，踩开才烧 */
+.tile-fire{background:linear-gradient(158deg,#4a2010,#2a0f06);border-color:rgba(255,159,58,.45);
+  box-shadow:inset 0 0 16px rgba(255,110,30,.3),0 0 16px -5px rgba(255,140,40,.85)}
+.tile-fire>.ic{color:#ff9f3a;animation:fireDance 1.1s ease-in-out infinite}
+@keyframes fireDance{0%,100%{transform:translateY(0) scale(1);filter:brightness(1)}
+  50%{transform:translateY(-1.5px) scale(1.07);filter:brightness(1.3)}}
+.tile-fire-flag{position:absolute;right:1px;bottom:1px;width:calc(var(--tile)*.3);height:calc(var(--tile)*.3);color:var(--amber)}
+.tile-fire-flag .ic{width:100%;height:100%;animation:none}
+/* 图腾：魔法紫、死亡红。亮在明面上，逼玩家算清剩余操作 */
+.tile-totem{box-shadow:inset 0 0 18px rgba(201,163,255,.22),0 0 18px -5px rgba(201,163,255,.75)}
+.tile-totem-magic{background:linear-gradient(165deg,#2a1c44,#150d22);border-color:rgba(201,163,255,.42)}
+.tile-totem-magic>.ic{color:#c9a3ff}
+.tile-totem-death{background:linear-gradient(165deg,#3a0f1c,#1d070d);border-color:rgba(255,107,138,.45);
+  box-shadow:inset 0 0 18px rgba(255,60,90,.26),0 0 18px -5px rgba(255,60,90,.85)}
+.tile-totem-death>.ic{color:#ff6b8a}
+.tile-totem.tile-used{filter:grayscale(.75) brightness(.55)}
+.tile-charge{position:absolute;right:1px;top:1px;display:flex;align-items:center;justify-content:center;
+  min-width:calc(var(--tile)*.32);height:calc(var(--tile)*.32);padding:0 .18em;border-radius:999px;
+  background:rgba(7,4,12,.9);border:1px solid rgba(201,163,255,.55);color:#d9c4ff;
+  font-family:var(--num);font-size:calc(var(--tile)*.24);font-weight:700;line-height:1}
+.tile-aura{position:absolute;right:1px;top:1px;width:calc(var(--tile)*.3);height:calc(var(--tile)*.3);color:#ff6b8a}
+.tile-aura .ic{width:100%;height:100%}
+/* 大地之门：绿色传送门，整局只有一次回头路 */
+.tile-gate{--pick:139,255,99;background:linear-gradient(165deg,#10331a,#071a0d);border-color:rgba(139,255,99,.45);
+  box-shadow:inset 0 0 18px rgba(139,255,99,.2),0 0 18px -5px rgba(139,255,99,.75)}
+.tile-gate>.ic{color:#8bff63}
 /* 怪物属性牌：生命一行、攻防一行。三项横排在 44px 格子里必然溢出被 overflow 裁掉，
    两行才放得下三位数血量。内嵌圆角实色牌比原来的全宽黑色渐变更像一张卡片，
    两行文字都有足够对比度；怪物图标退到牌后面当底纹，不再和属性挤在一起。 */
@@ -396,7 +429,8 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
 .tile.hint{animation:hintPulse .7s ease-out 2}
 @keyframes hintPulse{0%,100%{box-shadow:inset 0 0 0 0 rgba(63,224,255,0)}50%{box-shadow:inset 0 0 0 2px rgba(63,224,255,.9),0 0 14px rgba(63,224,255,.6)}}
 .tile.target{outline:2px dashed var(--amber);outline-offset:-2px}
-.board.mode-bomb .tile-mob,.board.mode-bomb .tile-elite,.board.mode-bomb .tile-boss,.board.mode-bomb .tile-trap:not(.tile-used){cursor:crosshair;animation:targetGlow 1.1s ease-in-out infinite}
+.board.mode-bomb .tile-mob,.board.mode-bomb .tile-elite,.board.mode-bomb .tile-boss,.board.mode-bomb .tile-trap:not(.tile-used),
+.board.mode-bomb .tile-wall,.board.mode-bomb .tile-totem-death:not(.tile-used){cursor:crosshair;animation:targetGlow 1.1s ease-in-out infinite}
 @keyframes targetGlow{0%,100%{outline:2px solid rgba(255,171,46,.25);outline-offset:-2px}50%{outline:2px solid rgba(255,171,46,.95);outline-offset:-2px}}
 .board.mode-scroll .tile-hidden{cursor:crosshair}
 .board.mode-flag .tile-hidden{cursor:cell}
