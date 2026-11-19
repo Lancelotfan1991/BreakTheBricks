@@ -45,8 +45,9 @@ test('每层实体数量符合规划，且阶梯/守卫/龙王存在', () => {
       assert.equal(find(s, 'stairs').length, p.stairs);
       assert.equal(find(s, 'altar').length, p.altar);
       assert.equal(find(s, 'wall').length, p.walls);
-      assert.equal(find(s, 'totemMagic').length, p.totemMagic ? 1 : 0);
-      assert.equal(find(s, 'totemDeath').length, p.totemDeath ? 1 : 0);
+      assert.equal(find(s, 'totemMagic').length, p.totemTypes.filter((k) => k === 'magic').length);
+      assert.equal(find(s, 'totemDeath').length, p.totemTypes.filter((k) => k === 'death').length);
+      assert.equal(find(s, 'totemSummon').length, p.totemTypes.filter((k) => k === 'summon').length);
       assert.equal(find(s, 'door').length, p.door ? 1 : 0);
       assert.ok(s.stairsIndex >= 0, '每层都应有下行阶梯（含龙王层）');
       assert.equal(p.stairs, 1);
@@ -56,7 +57,7 @@ test('每层实体数量符合规划，且阶梯/守卫/龙王存在', () => {
       if (f >= 2 && !bossFloor) assert.equal(find(s, 'elite')[0].mob.elite, true);
       if (bossFloor) assert.equal(find(s, 'boss')[0].mob.boss, true);
       const occupied = s.tiles.filter((t) => t.kind !== 'empty').length;
-      const specials = p.walls + (p.totemMagic ? 1 : 0) + (p.totemDeath ? 1 : 0) + (p.door ? 1 : 0);
+      const specials = p.walls + p.totemTypes.length + (p.door ? 1 : 0);
       assert.equal(occupied, p.monsters + p.traps + p.chests + p.potions + p.elite + p.boss + p.stairs + p.altar + specials);
       assert.ok(p.monsters <= 20, `第 ${f} 层怪物数量应封顶`);
       assert.ok(p.traps <= 6, `第 ${f} 层陷阱数量应封顶`);
@@ -686,6 +687,15 @@ test('第 10 层龙王倒下后继续探索：阶梯解封、不用钥匙、不�
   G.tapTile(s, boss.i);
   assert.ok(s.relicChoices, '拾取掉落才打开三选一');
   G.chooseRelic(s, s.relicChoices[0]);
+  assert.deepEqual(s.themeChoices, ['inferno', 'totem'], '打完第 10 层要从两个主题里选一个');
+  assert.equal(s.pendingTheme, 2);
+  const blocked = G.tryDescend(s);
+  assert.equal(blocked.some((e) => e.type === 'descend'), false, '没选主题不能进第 11 层');
+  assert.ok(blocked.some((e) => e.type === 'themeRequired' && e.act === 2));
+  assert.equal(s.floor, 10);
+  assert.ok(G.chooseTheme(s, 'inferno').some((e) => e.type === 'themePick'));
+  assert.equal(s.themeChoices, null);
+  assert.equal(s.actThemes[2], 'inferno');
   assert.ok(G.tryDescend(s).some((e) => e.type === 'descend'));
   assert.equal(s.floor, 11);
   assert.equal(s.bossDown, false, '新一层重置封印状态');
@@ -700,6 +710,86 @@ test('Boss 层的阶梯在龙王未倒时带锁，倒下后立即无锁', () => 
   assert.equal(G.canDescend(s), false);
   s.bossDown = true; G.recalc(s);
   assert.equal(G.canDescend(s), true, '封印只认龙王，不认钥匙');
+});
+
+test('主题分区：30 层分三区，第二区火/图腾二选一，第三区给未选项 + 墓园', () => {
+  const s = G.createRun('normal', 5);
+  assert.equal(G.ACTS, 3);
+  assert.deepEqual(G.themePairFor(s, 1), [], '首区固定常规，没有主题可选');
+  assert.deepEqual(G.themePairFor(s, 2), ['inferno', 'totem']);
+  s.actThemes[2] = 'inferno';
+  assert.deepEqual(G.themePairFor(s, 3), ['totem', 'grave'], '第三区不会重复第二区选过的主题');
+  s.actThemes[2] = 'totem';
+  assert.deepEqual(G.themePairFor(s, 3), ['inferno', 'grave']);
+  assert.equal(G.actOf(10), 1);
+  assert.equal(G.actOf(11), 2);
+  assert.equal(G.actOf(20), 2);
+  assert.equal(G.actOf(21), 3);
+  assert.equal(G.actOf(30), 3);
+  assert.equal(G.zoneDepth(11), 1);
+  assert.equal(G.zoneDepth(20), 10);
+  assert.equal(G.zoneDepth(21), 1);
+});
+
+test('选择主题：只能从当前两个选项里选，选完清空并写入对应区', () => {
+  const s = G.createRun('normal', 6);
+  s.pendingTheme = 2;
+  s.themeChoices = ['inferno', 'totem'];
+  assert.deepEqual(G.chooseTheme(s, 'grave'), [], '不在候选里的主题无效');
+  assert.equal(s.actThemes[2], null);
+  assert.deepEqual(s.themeChoices, ['inferno', 'totem'], '无效选择不清空候选');
+  const out = G.chooseTheme(s, 'totem');
+  assert.ok(out.some((e) => e.type === 'themePick' && e.id === 'totem' && e.act === 2));
+  assert.equal(s.actThemes[2], 'totem');
+  assert.equal(s.themeChoices, null);
+  assert.equal(s.pendingTheme, 0);
+  assert.deepEqual(G.chooseTheme(s, 'inferno'), [], '没有待选时不再触发');
+});
+
+test('第 20 层龙王倒下后：第三区主题含未选项与墓园，选完才进第 21 层', () => {
+  const s = G.createRun('normal', 88);
+  s.actThemes[2] = 'inferno';
+  s.floor = 20; G.buildFloor(s); G.ensureBoard(s, 30);
+  s.stairsFound = true;
+  s.bossDown = true;
+  const blocked = G.tryDescend(s);
+  assert.ok(blocked.some((e) => e.type === 'themeRequired' && e.act === 3));
+  assert.deepEqual(s.themeChoices, ['totem', 'grave']);
+  assert.equal(s.floor, 20, '没选主题不推进');
+  G.chooseTheme(s, 'grave');
+  assert.ok(G.tryDescend(s).some((e) => e.type === 'descend'));
+  assert.equal(s.floor, 21);
+  G.ensureBoard(s, 30);
+  const mobs = s.tiles.filter((t) => t.mob);
+  assert.ok(mobs.length > 0);
+  for (const t of mobs) {
+    assert.equal(t.mob.reviveHp, Math.ceil(t.mob.maxHp * G.GRAVE_REVIVE_PCT), '进入墓园即带半血复活');
+  }
+});
+
+test('主题状态可存档往返：已选区、待选区与候选都按白名单重建', () => {
+  const s = G.createRun('normal', 9);
+  s.floor = 11; G.buildFloor(s); G.ensureBoard(s, 30);
+  s.actThemes[2] = 'totem';
+  s.pendingTheme = 3;
+  s.themeChoices = ['inferno', 'grave'];
+  const back = G.deserialize(G.serialize(s));
+  assert.ok(back);
+  assert.equal(back.actThemes[2], 'totem');
+  assert.equal(back.actThemes[1], null, '首区永远常规');
+  assert.equal(back.pendingTheme, 3);
+  assert.deepEqual(back.themeChoices, ['inferno', 'grave']);
+
+  const raw = JSON.parse(G.serialize(s));
+  raw.actThemes = ['grave', 'inferno', 'grave', 'inferno'];
+  delete raw.pendingTheme; delete raw.themeChoices;
+  const dirty = G.deserialize(JSON.stringify(raw));
+  assert.ok(dirty);
+  assert.equal(dirty.actThemes[1], null, '首区的脏主题被清掉');
+  assert.equal(dirty.actThemes[2], 'grave');
+  assert.equal(dirty.actThemes[3], 'inferno');
+  assert.equal(dirty.pendingTheme, 0);
+  assert.equal(dirty.themeChoices, null);
 });
 
 test('遗物掉落有节奏：守卫每 2 层一次，走完全程也拿不满池子', () => {

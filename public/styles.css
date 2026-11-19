@@ -200,6 +200,13 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
 .chip-def.debt b{color:var(--amber-hi)}
 .chip-gold{color:#ffe08a}.chip-gold .ic{color:var(--gold)}
 .chip-threat{color:#e0b8ff;margin-left:auto}.chip-threat .ic{color:var(--magenta)}
+/* 主题徽章：常驻说明这一区的机关来源，颜色与棋盘描边同色 */
+.chip-theme{color:#d8c8ff;border-color:rgba(201,163,255,.36);background:rgba(201,163,255,.1)}
+.chip-theme.theme-inferno{color:#ffb37a;border-color:rgba(255,140,40,.4);background:rgba(255,110,30,.12)}
+.chip-theme.theme-inferno .ic{color:#ff9f3a}
+.chip-theme.theme-totem{color:#d9c4ff}.chip-theme.theme-totem .ic{color:#c9a3ff}
+.chip-theme.theme-grave{color:#9fe0c8;border-color:rgba(143,214,184,.4);background:rgba(143,214,184,.1)}
+.chip-theme.theme-grave .ic{color:#8fd6b8}
 .chip-key{color:#ffe08a;border-color:rgba(255,213,74,.4);background:rgba(255,213,74,.13);animation:keyPop .5s cubic-bezier(.2,1.6,.4,1)}
 .chip-key .ic{color:var(--gold)}
 .bb-atk{color:#ff9aab}.bb-atk .ic{color:var(--blood)}
@@ -383,7 +390,22 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
 .tile-totem-death{background:linear-gradient(165deg,#3a0f1c,#1d070d);border-color:rgba(255,107,138,.45);
   box-shadow:inset 0 0 18px rgba(255,60,90,.26),0 0 18px -5px rgba(255,60,90,.85)}
 .tile-totem-death>.ic{color:#ff6b8a}
+/* 召唤图腾：青绿，和魔法紫、死亡红区分开；满 3 次后熄灭 */
+.tile-totem-summon{background:linear-gradient(165deg,#0f3a34,#071c19);border-color:rgba(120,255,214,.42);
+  box-shadow:inset 0 0 18px rgba(80,255,200,.2),0 0 18px -5px rgba(80,255,200,.8)}
+.tile-totem-summon>.ic{color:#7dffd4}
 .tile-totem.tile-used{filter:grayscale(.75) brightness(.55)}
+/* 召唤出来的精锐：紫纹角标 + 淡紫描边，和钥匙守卫一眼分得开 */
+.tile-summoned{border-color:rgba(201,163,255,.5);box-shadow:inset 0 0 12px rgba(201,163,255,.18)}
+.tile-sum{position:absolute;left:1px;top:1px;width:calc(var(--tile)*.28);height:calc(var(--tile)*.28);color:#c9a3ff}
+.tile-sum .ic{width:100%;height:100%}
+/* 墓园复活：整格覆一层冷绿，右下角小骷髅标出「还有一管血」 */
+.tile-revive{box-shadow:inset 0 0 14px rgba(143,214,184,.22),0 0 12px -5px rgba(143,214,184,.7)}
+.tile-revive-badge{position:absolute;left:1px;bottom:1px;width:calc(var(--tile)*.26);height:calc(var(--tile)*.26);color:#8fd6b8;opacity:.9}
+.tile-revive-badge .ic{width:100%;height:100%}
+.board-wrap[data-theme="inferno"] .board-frame{border-color:rgba(255,140,40,.32);box-shadow:0 0 26px -10px rgba(255,110,30,.75)}
+.board-wrap[data-theme="totem"] .board-frame{border-color:rgba(201,163,255,.32);box-shadow:0 0 26px -10px rgba(201,163,255,.65)}
+.board-wrap[data-theme="grave"] .board-frame{border-color:rgba(143,214,184,.3);box-shadow:0 0 26px -10px rgba(143,214,184,.55)}
 .tile-charge{position:absolute;right:1px;top:1px;display:flex;align-items:center;justify-content:center;
   min-width:calc(var(--tile)*.32);height:calc(var(--tile)*.32);padding:0 .18em;border-radius:999px;
   background:rgba(7,4,12,.9);border:1px solid rgba(201,163,255,.55);color:#d9c4ff;
@@ -586,6 +608,15 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
 .opt-tx span{display:block;font-size:11px;color:var(--ink-3);margin-top:2px;line-height:1.5}
 .opt-talent{border-color:color-mix(in srgb,var(--rc) 45%,transparent);background:linear-gradient(160deg,color-mix(in srgb,var(--rc) 14%,transparent),rgba(0,0,0,.28))}
 .opt-talent .opt-ic .ic{color:var(--rc)}
+/* 主题卡：每张卡用自己的主色，选哪条路一眼可见 */
+.theme-opt{min-height:74px}
+.theme-opt .opt-tx b{font-size:15px}
+.theme-opt.theme-inferno{border-color:rgba(255,140,40,.45);background:linear-gradient(160deg,rgba(255,110,30,.14),rgba(0,0,0,.28))}
+.theme-opt.theme-inferno .opt-ic .ic{color:#ff9f3a}
+.theme-opt.theme-totem{border-color:rgba(201,163,255,.45);background:linear-gradient(160deg,rgba(160,107,255,.15),rgba(0,0,0,.28))}
+.theme-opt.theme-totem .opt-ic .ic{color:#c9a3ff}
+.theme-opt.theme-grave{border-color:rgba(143,214,184,.45);background:linear-gradient(160deg,rgba(143,214,184,.13),rgba(0,0,0,.28))}
+.theme-opt.theme-grave .opt-ic .ic{color:#8fd6b8}
 .opt-tx .opt-note{color:var(--amber-hi)}
 .opt-price{font-family:var(--num);font-size:14px;font-weight:700;color:var(--gold);display:flex;align-items:center;gap:3px;flex:none}
 .opt-price .ic{width:13px;height:13px}

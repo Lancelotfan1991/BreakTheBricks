@@ -7,9 +7,28 @@ export const ROWS = 9;
 export const SIZE = COLS * ROWS;
 export const MAX_FLOOR = 30;
 export const BOSS_EVERY = 10;
-export const SAVE_VERSION = 13;
+export const SAVE_VERSION = 14;
 export const isBossFloor = (f) => f % BOSS_EVERY === 0;
 export const isFinalFloor = (f) => f >= MAX_FLOOR;
+
+// ---------- 主题区域 ----------
+// 30 层分三个区域，每 10 层一换。首区只做常规扫雷；之后每次击破 Boss，
+// 玩家从两个主题里挑一个进入下一区，主题决定这 10 层叠哪种地城机制。
+export const ACTS = 3;
+export const THEMES = ['inferno', 'totem', 'grave'];
+export const actOf = (f) => Math.min(ACTS, Math.ceil(f / BOSS_EVERY));
+export const zoneDepth = (f) => ((f - 1) % BOSS_EVERY) + 1;
+export const themeOf = (s) => (s.actThemes && s.actThemes[actOf(s.floor)]) || null;
+export const themeAt = (s, f) => (s.actThemes && s.actThemes[actOf(f)]) || null;
+export const themeName = (id) => tr('theme.' + id + '.name');
+export const themeDesc = (id) => tr('theme.' + id + '.desc');
+export const themeIcon = (id) => (id === 'inferno' ? 'flame' : id === 'totem' ? 'totem' : 'skull');
+// 第二区固定「火 / 图腾」二选一；第三区给第二区没选的那个 + 墓园。
+export function themePairFor(s, act) {
+  if (act <= 1) return [];
+  if (act === 2) return ['inferno', 'totem'];
+  return [s.actThemes[2] === 'inferno' ? 'totem' : 'inferno', 'grave'];
+}
 
 export const DIFFICULTIES = {
   easy: { id: 'easy', threat: 0.78, power: 0.82, loot: 1.35, hp: 38, gold: 25, potions: 2, flags: 4 },
@@ -41,23 +60,24 @@ export const STRATA_HP = 3;            // 层岩誓约：每下行一层的生�
 // 机关是叠加在地板之上的额外层级：不替代格子内容，也不改变「数字只数威胁」的规则。
 // 每 5 次有效操作结算一次地城时钟：魔法图腾脉冲、火势蔓延都挂在这一拍上。
 export const HAZARD_TICK = 5;
-export const WALL_MIN_FLOOR = 3;       // 石墙从第 3 层出现
+export const WALL_MIN_FLOOR = 3;       // 石墙是全地城共有的结构，从第 3 层起每层都有
 export const WALL_MIN = 3;             // 一簇石墙的格数
 export const WALL_MAX = 5;
-export const FIRE_MIN_FLOOR = 4;       // 火焰地板从第 4 层出现
 export const FIRE_BASE = 3;            // 火焰：基础灼烧
 export const FIRE_F = 1.5;             // 火焰：每点深度的加成
 export const FIRE_CAP = 12;            // 同层同时燃烧的格数上限
-export const TOTEM_MIN_FLOOR = 5;      // 魔法图腾：每 3 层一座
-export const TOTEM_EVERY = 3;
+// 灼热地狱：区内第 d 层铺几片火（Boss 层不铺）。越深铺得越多，但总格数受 FIRE_CAP 约束。
+export const INFERNO_FIRE_PATCHES = [1, 1, 2, 2, 3, 3, 3, 4, 4, 0];
 export const TOTEM_MAGIC_CHARGES = 6;  // 魔法图腾的脉冲次数
 export const TOTEM_MAGIC_BASE = 3;     // 魔法图腾：每次脉冲的基础伤害
 export const TOTEM_MAGIC_F = 1.2;      // 魔法图腾：每点深度的加成
-export const TOTEM_DEATH_MIN_FLOOR = 6;// 死亡图腾：每 4 层的非 Boss 层
-export const TOTEM_DEATH_EVERY = 4;
 export const TOTEM_DEATH_ATK_STEP = 5; // 死亡图腾：每 5 深度 +1 怪物攻击
 export const TOTEM_DEATH_DEF_STEP = 6; // 死亡图腾：每 6 深度 +1 怪物防御
-export const DOOR_MIN_FLOOR = 8;       // 大地之门：回退 5 层
+export const SUMMON_TOTEM_CHARGES = 3; // 召唤图腾：最多召唤 3 只精锐
+// 图腾遗迹：区内非 Boss 层按 魔法→死亡→召唤 轮换；Boss 层三座齐上。
+export const TOTEM_CYCLE = ['magic', 'death', 'summon'];
+export const GRAVE_REVIVE_PCT = 0.5;   // 寂静墓园：怪物以半血复活一次
+export const DOOR_MIN_FLOOR = 11;      // 大地之门只出现在主题区，回退 5 层
 export const DOOR_BACK = 5;
 
 export const SHOP = [
@@ -386,9 +406,10 @@ function hash32(a, b) {
   h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
   return (h ^ (h >>> 16)) >>> 0;
 }
-// 一局只开一扇门：由种子挑一个 8..30 的非 Boss 层
+// 一局只开一扇门：由种子挑一个主题区（11..29）的非 Boss 层
 export function doorFloorFor(seed) {
-  let f = DOOR_MIN_FLOOR + (hash32(seed | 0, 0x51ed) % (MAX_FLOOR - DOOR_MIN_FLOOR + 1));
+  const span = MAX_FLOOR - 1 - DOOR_MIN_FLOOR + 1;
+  let f = DOOR_MIN_FLOOR + (hash32(seed | 0, 0x51ed) % span);
   while (isBossFloor(f)) f--;
   return f;
 }
@@ -437,17 +458,21 @@ export function ambushDamage(p, mob) {
 export function forecast(p, mob, atk = p.atk) {
   const deal = hitDamage(atk, mob.def) + (mob.elite || mob.boss ? (p.eliteAtkBonus || 0) : 0);
   const T = p.thorns;
+  // 墓园的复活是这场战斗的第二管血：预演直接把两段生命一起算进去，
+  // 否则玩家看到「三回合击杀」，结算时却多挨一轮反击，数字就撒了谎。
+  const reviveHp = mob.reviveHp && !mob.revived ? mob.reviveHp : 0;
+  const hp = mob.hp + reviveHp;
   // 反震跟着反击走：第 r 回合玩家打 deal，怪物若没死就反击一次并吃 T 点反震。
   // 于是它可能死在第 r 次挥剑，也可能死在第 r 次反击的反震上——后者玩家仍要挨这一口。
   // 两种死法取先到的那个，回合数因此是 ceil(hp/(deal+T))，而挨打次数要多算一次。
-  const rounds = Math.ceil(mob.hp / (deal + T));
-  const byThorns = T > 0 && rounds * deal + (rounds - 1) * T < mob.hp;
+  const rounds = Math.ceil(hp / (deal + T));
+  const byThorns = T > 0 && rounds * deal + (rounds - 1) * T < hp;
   const counters = rounds - 1 + (byThorns ? 1 : 0);
   const perHit = hitDamage(mob.atk, p.def);
   let take = counters * perHit;
   take = Math.max(0, Math.round(take * p.takeMul) - p.takeFlat);
   if (p.freeKill) take = 0;
-  return { deal, rounds, counters, take, lethal: take >= p.hp, perHit };
+  return { deal, rounds, counters, take, lethal: take >= p.hp, perHit, reviveHp };
 }
 
 // ---------- 遭遇 ----------
@@ -483,6 +508,10 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
     stairsIndex: -1,
     bossDown: false,
     doorUsed: false,
+    // 按区域存主题：[1]=首区永远常规，[2]/[3] 由 Boss 后的二选一写入
+    actThemes: [null, null, null, null],
+    pendingTheme: 0,
+    themeChoices: null,
     hazardClock: 0,
     mode: 'explore',
     flags: 0,
@@ -566,6 +595,8 @@ const depthOf = (f) => (f <= 8 ? f : 8 + (f - 8) * 0.5);
 
 function planFloor(s, f, d) {
   const boss = isBossFloor(f);
+  const theme = themeAt(s, f);
+  const zd = zoneDepth(f);
   // 63 格里要塞下整层内容：深层靠更狠的怪而不是更多怪施压，否则满盘都是威胁，数字就不再提供信息
   const monsters = Math.round(Math.min(20, Math.max(5, (6 + f * 1.3) * d.threat)) * (boss ? 0.7 : 1));
   const traps = Math.min(6, Math.max(1, Math.round((1 + f * 0.35) * d.threat)));
@@ -573,16 +604,21 @@ function planFloor(s, f, d) {
   const extraChests = (hunter ? 1 : 0) + (hasRelic(s, 'treasureBell') ? RELIC_BELL_CHEST : 0);
   const chests = Math.min(8 + extraChests, Math.max(2, Math.round((3 + f * 0.15) * d.loot)) + extraChests);
   const potions = Math.max(1, d.potions);
-  // 机关只出现在普通层：Boss 层保持一对一的决斗空间，不再叠额外压力。
-  const machines = !boss;
+  // 火只铺在灼热地狱的普通层；图腾按区内的固定轮换出现，Boss 层三座齐上；
+  // 墓园是整层被动，Boss 与精英同样会复活一次。
+  const firePatches = !boss && theme === 'inferno' ? INFERNO_FIRE_PATCHES[zd - 1] : 0;
+  const totemTypes = theme === 'totem'
+    ? (boss ? ['magic', 'death', 'summon'] : [TOTEM_CYCLE[(zd - 1) % TOTEM_CYCLE.length]])
+    : [];
   return {
     monsters, traps, chests, potions,
     elite: boss || f < 2 ? 0 : 1, boss: boss ? 1 : 0,
     altar: f >= 2 ? 1 : 0, stairs: 1,
-    walls: machines && f >= WALL_MIN_FLOOR ? Math.min(WALL_MAX, WALL_MIN + Math.floor((f - WALL_MIN_FLOOR) / 8)) : 0,
-    fire: machines && f >= FIRE_MIN_FLOOR,
-    totemMagic: machines && f >= TOTEM_MIN_FLOOR && (f - TOTEM_MIN_FLOOR) % TOTEM_EVERY === 0,
-    totemDeath: machines && f >= TOTEM_DEATH_MIN_FLOOR && (f - TOTEM_DEATH_MIN_FLOOR) % TOTEM_DEATH_EVERY === 0,
+    // 石墙是全地城的结构，不随主题走；Boss 层保持一对一的决斗空间。
+    walls: !boss && f >= WALL_MIN_FLOOR ? Math.min(WALL_MAX, WALL_MIN + Math.floor((f - WALL_MIN_FLOOR) / 8)) : 0,
+    firePatches,
+    totemTypes,
+    revive: theme === 'grave',
     door: !s.doorUsed && f === doorFloorFor(s.seed),
   };
 }
@@ -634,6 +670,7 @@ export function ensureBoard(s, safeIndex) {
   const far = (i) => { const a = xy(i), b = xy(safeIndex); return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) >= 4; };
 
   if (p.stairs) { const i = take(far); s.tiles[i].kind = 'stairs'; s.stairsIndex = i; }
+  let bossTile = null;
   if (p.boss) {
     const i = take(far), t = s.tiles[i];
     t.kind = 'boss';
@@ -641,6 +678,7 @@ export function ensureBoard(s, safeIndex) {
     // 龙王不藏在砖下：它是这一层的压力来源，生成即亮在棋盘上，由玩家决定何时开战。
     // 现身不等于「已探明」以外的特权：它只是不再计入邻格数字，其余规则照旧。
     t.revealed = true;
+    bossTile = t;
     say(s, 'log.boss.spawn', { mob: ref('mob.' + t.mob.id + '.name') }, 'bad');
   }
   // 大地之门先占位：它要离首点远一点，也得避开阶梯与龙王的落点
@@ -650,27 +688,32 @@ export function ensureBoard(s, safeIndex) {
     t.revealed = true;
     say(s, 'log.door.spawn', 'magic');
   }
-  if (p.totemMagic) {
-    const t = s.tiles[take(far)];
-    t.kind = 'totemMagic';
-    t.revealed = true;
-    t.totem = { charges: TOTEM_MAGIC_CHARGES, dmg: magicTotemDamage(f) };
-    say(s, 'log.totem.spawn', { dmg: t.totem.dmg, charges: TOTEM_MAGIC_CHARGES, tick: HAZARD_TICK }, 'bad');
-  }
-  // 死亡图腾必须在所有怪物之前落位，才能把增幅一次性写进本层所有怪物的面板
+  // 图腾按主题落位。死亡图腾必须早于所有怪物，增幅才能一次性写进本层面板；
+  // Boss 层的三座图腾里，死亡图腾随后也要把 Boss 本身算进去。
   let deathTotem = null;
-  if (p.totemDeath) {
+  for (const type of p.totemTypes) {
     const t = s.tiles[take(far)];
-    t.kind = 'totemDeath';
     t.revealed = true;
-    t.totem = { atk: deathAuraAtk(f), def: deathAuraDef(f) };
-    deathTotem = t;
-    say(s, 'log.totem.death.spawn', { atk: t.totem.atk, def: t.totem.def }, 'bad');
+    if (type === 'magic') {
+      t.kind = 'totemMagic';
+      t.totem = { charges: TOTEM_MAGIC_CHARGES, dmg: magicTotemDamage(f) };
+      say(s, 'log.totem.spawn', { dmg: t.totem.dmg, charges: TOTEM_MAGIC_CHARGES, tick: HAZARD_TICK }, 'bad');
+    } else if (type === 'death') {
+      t.kind = 'totemDeath';
+      t.totem = { atk: deathAuraAtk(f), def: deathAuraDef(f) };
+      deathTotem = t;
+      say(s, 'log.totem.death.spawn', { atk: t.totem.atk, def: t.totem.def }, 'bad');
+    } else {
+      t.kind = 'totemSummon';
+      t.totem = { charges: SUMMON_TOTEM_CHARGES };
+      say(s, 'log.totem.summon.here', { charges: SUMMON_TOTEM_CHARGES, tick: HAZARD_TICK }, 'bad');
+    }
   }
+  if (deathTotem && bossTile) applyDeathAura(bossTile, deathTotem);
   // 石墙与火场先于内容落位：墙需要连成一片，晚于怪物就会只剩零散空格可长；
   // 火留在候选池里，怪物/陷阱/宝箱照常落在火上——火是叠加层，不挤走内容。
   if (p.walls) growWallCluster(s, pool, p.walls);
-  if (p.fire) layFire(s, pool);
+  if (p.firePatches) layFire(s, pool, p.firePatches);
   if (p.altar) s.tiles[take()].kind = 'altar';
   if (p.elite) {
     const t = s.tiles[take(far)];
@@ -687,6 +730,12 @@ export function ensureBoard(s, safeIndex) {
   for (let k = 0; k < p.traps; k++) s.tiles[take()].kind = 'trap';
   for (let k = 0; k < p.chests; k++) { const i = take(); s.tiles[i].kind = 'chest'; s.tiles[i].chest = rollChest(s, f, d); }
   for (let k = 0; k < p.potions; k++) s.tiles[take()].kind = 'potion';
+  // 墓园：整层怪物都带一管半血复活，Boss 与精英也不例外。
+  if (p.revive) {
+    for (const t of s.tiles) {
+      if (t.mob) t.mob.reviveHp = Math.max(1, Math.ceil(t.mob.maxHp * GRAVE_REVIVE_PCT));
+    }
+  }
 
   recalc(s);
   s.generated = true;
@@ -726,10 +775,19 @@ function growWallCluster(s, pool, count) {
 }
 
 // 火场只铺形状：横条、竖条或 3×3。格子仍留在候选池里，内容照常落在火上。
-function layFire(s, pool) {
+// 灼热地狱越深铺的片数越多，但同层燃烧格数始终不超过 FIRE_CAP。
+function layFire(s, pool, count = 1) {
+  for (let k = 0; k < count; k++) {
+    if (s.tiles.filter((t) => t.fire).length >= FIRE_CAP) return;
+    layFirePatch(s, pool);
+  }
+}
+function layFirePatch(s, pool) {
   if (!pool.length) return;
   const avail = new Set(pool);
-  const anchor = pool[Math.floor(rand(s) * pool.length)];
+  const dry = pool.filter((i) => !s.tiles[i].fire);
+  const src = dry.length ? dry : pool;
+  const anchor = src[Math.floor(rand(s) * src.length)];
   const { x, y } = xy(anchor);
   const cells = [];
   const shape = Math.floor(rand(s) * 3);
@@ -817,6 +875,7 @@ export function tickHazards(s, out) {
   if (s.hazardClock < HAZARD_TICK) return out;
   s.hazardClock = 0;
   pulseMagicTotems(s, out);
+  if (s.status === 'playing') pulseSummonTotems(s, out);
   if (s.status === 'playing') spreadFire(s, out);
   return out;
 }
@@ -837,12 +896,43 @@ function pulseMagicTotems(s, out) {
   }
 }
 
+// 召唤图腾：每拍召一只精锐。精锐必须落在已探明的空格上——亮着的格子不参与数字，
+// 否则召唤会凭空改掉玩家刚推理出的邻雷数。找不到空地就跳过这一拍，不消耗次数。
+const findDeathTotem = (s) => s.tiles.find((t) => t.kind === 'totemDeath' && !t.used && t.totem) || null;
+function summonSpot(s) {
+  const cand = s.tiles.filter((t) => t.revealed && t.kind === 'empty' && !t.mob && !t.used && !t.fire && !t.relicDrop);
+  if (!cand.length) return -1;
+  return cand[Math.floor(rand(s) * cand.length)].i;
+}
+function pulseSummonTotems(s, out) {
+  for (const t of s.tiles) {
+    if (s.status !== 'playing') return;
+    if (t.kind !== 'totemSummon' || t.used || !t.totem) continue;
+    const at = summonSpot(s);
+    if (at < 0) { say(s, 'log.totem.summon.nospace', 'warn'); continue; }
+    t.totem.charges--;
+    const u = s.tiles[at];
+    u.kind = 'elite';
+    u.summoned = true;
+    u.mob = makeMob(s, s.floor, DIFFICULTIES[s.difficulty], 'elite');
+    applyDeathAura(u, findDeathTotem(s));
+    say(s, 'log.totem.summon.call', { mob: ref('mob.' + u.mob.id + '.name'), left: t.totem.charges }, 'bad');
+    ev(out, 'summon', { i: t.i, at });
+    if (t.totem.charges <= 0) {
+      t.used = true;
+      say(s, 'log.totem.summon.spent', 'good');
+      ev(out, 'totemSpent', { i: t.i });
+    }
+  }
+}
+
 // 火只烧还没翻开的砖：顺着已有火场往相邻暗格爬，遇到墙、阶梯、祭坛、图腾、门自动绕开。
 function spreadFire(s, out) {
   const active = s.tiles.filter((t) => t.fire && !t.revealed);
   if (!active.length || active.length >= FIRE_CAP) return;
   const blocked = (n) => n.revealed || n.fire || n.kind === 'wall' || n.kind === 'stairs'
-    || n.kind === 'altar' || n.kind === 'door' || n.kind === 'totemMagic' || n.kind === 'totemDeath' || n.kind === 'boss';
+    || n.kind === 'altar' || n.kind === 'door' || n.kind === 'totemMagic' || n.kind === 'totemDeath'
+    || n.kind === 'totemSummon' || n.kind === 'boss';
   const cand = [];
   for (const t of active) for (const j of neighbors(t.i)) if (!blocked(s.tiles[j])) cand.push(j);
   if (!cand.length) return;
@@ -1260,9 +1350,10 @@ function tapInner(s, i) {
   if (s.mode === 'bomb') {
     const isWall = t.kind === 'wall' && !t.revealed;
     const isDeathTotem = t.revealed && t.kind === 'totemDeath' && !t.used;
+    const isSummonTotem = t.revealed && t.kind === 'totemSummon' && !t.used;
     // 魔法图腾不可摧毁：炸弹只能省下这枚，不能把机关拔掉
     if (t.kind === 'totemMagic' && !t.used) { say(s, 'log.bomb.totem', 'warn'); return free; }
-    if (!isWall && !isDeathTotem && (!t.revealed || !isThreat(t) || t.used)) { say(s, 'log.bomb.invalid', 'warn'); return free; }
+    if (!isWall && !isDeathTotem && !isSummonTotem && (!t.revealed || !isThreat(t) || t.used)) { say(s, 'log.bomb.invalid', 'warn'); return free; }
     s.player.bombs--;
     s.mode = 'explore';
     ev(out, 'bomb', { i });
@@ -1282,6 +1373,12 @@ function tapInner(s, i) {
       breakDeathTotem(s, i, out);
       return { out, spent: true };
     }
+    if (isSummonTotem) {
+      t.used = true;
+      say(s, 'log.totem.summon.break', { left: t.totem.charges }, 'good');
+      ev(out, 'totemBreak', { i });
+      return { out, spent: true };
+    }
     // 固定伤害打在所有会挡住路的威胁上：血少的杂兵一发带走，精英与龙王要好几枚
     const wasMob = !!t.mob && t.mob.hp > 0;
     const dmg = wasMob ? bombDamage(s, t.mob) : 0;
@@ -1294,6 +1391,15 @@ function tapInner(s, i) {
     ev(out, 'mobHurt', { i, amount: dmg });
     // 固定伤害：砸得死就按正常击杀结算（经验、金币、击杀类遗物），砸不死就只削血
     if (t.mob.hp <= 0) {
+      // 墓园的复活要按真实血量结算：这一枚炸弹只打掉第一管血，它半血站起来，炸弹照样消耗。
+      if (t.mob.reviveHp && !t.mob.revived) {
+        t.mob.revived = true;
+        t.mob.hp = t.mob.reviveHp;
+        say(s, 'log.revive', { mob: ref('mob.' + t.mob.id + '.name'), hp: t.mob.reviveHp }, 'bad');
+        ev(out, 'revive', { i, hp: t.mob.reviveHp });
+        if (s.forcedCombat === i) s.pendingCombat = i;
+        return { out, spent: true };
+      }
       const xp = killMob(s, t, out, { bomb: true });
       say(s, 'log.bomb.kill', { mob: ref('mob.' + t.mob.id + '.name'), xp }, 'good');
       if (hasRelic(s, 'forge')) say(s, 'log.forge', { n: RELIC_FORGE_GROW, dmg: bombBase(s) }, 'magic');
@@ -1353,6 +1459,10 @@ function tapInner(s, i) {
   }
   if (t.kind === 'totemDeath' && !t.used) {
     say(s, 'log.totem.death.info', { atk: t.totem.atk, def: t.totem.def }, 'warn');
+    return free;
+  }
+  if (t.kind === 'totemSummon' && !t.used) {
+    say(s, 'log.totem.summon.info', { left: t.totem.charges, tick: HAZARD_TICK }, 'warn');
     return free;
   }
   if (t.kind === 'door' && !t.used) {
@@ -1485,7 +1595,9 @@ function killMob(s, t, out, opts = {}) {
     const gain = addAtk(s, 1);
     say(s, 'log.whet', { n: gain, have: s.relicState.whet, cap: RELIC_WHET_CAP }, 'magic');
   }
-  if (t.kind === 'elite') {
+  // 召唤出来的精锐只是图腾的增援：给经验与金币，但不掉守卫钥匙、也不掉遗物，
+  // 否则召唤图腾反而成了稳定的白嫖来源。
+  if (t.kind === 'elite' && !t.summoned) {
     s.hasKey = true;
     say(s, 'log.key', 'magic');
     ev(out, 'key', { i: t.i });
@@ -1510,9 +1622,15 @@ export function attack(s, i) {
   // 普通遭遇会被必死预演拦下；偷袭战无路可退，硬拼就按必死结算
   if (f.lethal && !forced) { say(s, 'log.attack.lethal', 'bad'); ev(out, 'blocked', { i }); return out; }
   s.stats.turns++;
-  ev(out, 'combat', { i, rounds: f.rounds, take: f.take, deal: f.deal });
+  ev(out, 'combat', { i, rounds: f.rounds, take: f.take, deal: f.deal, revive: f.reviveHp });
   if (f.take > 0) hurt(s, f.take, out, 'mob', i, t.mob.id);
   if (s.status !== 'playing') return out;
+  // 墓园：预演已把第二管血算进回合与反击，这里只补一条叙事与动画，奖励仍然只结一次。
+  if (t.mob.reviveHp && !t.mob.revived) {
+    t.mob.revived = true;
+    say(s, 'log.revive', { mob: ref('mob.' + t.mob.id + '.name'), hp: t.mob.reviveHp }, 'bad');
+    ev(out, 'revive', { i, hp: t.mob.reviveHp });
+  }
   const xp = killMob(s, t, out);
   say(s, 'log.kill', { mob: ref('mob.' + t.mob.id + '.name'), rounds: f.rounds, take: f.take, xp }, 'good');
   if (t.kind === 'boss') {
@@ -1661,6 +1779,16 @@ export function tryDescend(s) {
   if (!s.stairsFound) { say(s, 'log.no.stairs', 'warn'); return out; }
   if (isBossFloor(s.floor) && !s.bossDown) { say(s, 'log.stairs.boss', 'warn'); ev(out, 'locked', { boss: true }); return out; }
   if (!isBossFloor(s.floor) && s.floor > 1 && !s.hasKey) { say(s, 'log.stairs.locked', 'warn'); ev(out, 'locked'); return out; }
+  // 跨区必须先定主题：这是整局仅有的两次路线选择，不能在没选的默认值上继续往下走。
+  const next = s.floor + 1;
+  const nextAct = actOf(next);
+  if (nextAct > actOf(s.floor) && !themeAt(s, next)) {
+    s.pendingTheme = nextAct;
+    s.themeChoices = themePairFor(s, nextAct);
+    say(s, 'log.theme.required', 'warn');
+    ev(out, 'themeRequired', { act: nextAct, choices: s.themeChoices.slice() });
+    return out;
+  }
   // 利息按下楼那一刻手里的金币结算，不滚入本层的通关奖励
   if (hasRelic(s, 'usury')) {
     const interest = Math.floor(s.player.gold * RELIC_INTEREST_RATE);
@@ -1719,6 +1847,28 @@ function defeatBoss(s, t, out) {
   t.relicDrop = true;
   say(s, 'log.relic.drop', 'magic');
   ev(out, 'relicDrop', { i: t.i });
+  // 击破第 10 / 20 层的 Boss 后，下一区的主题摆上来让玩家自己选。
+  const act = actOf(s.floor);
+  if (act < ACTS && s.floor % BOSS_EVERY === 0) {
+    s.pendingTheme = act + 1;
+    s.themeChoices = themePairFor(s, act + 1);
+    say(s, 'log.theme.offer', 'magic');
+    ev(out, 'themeOffer', { act: act + 1, choices: s.themeChoices.slice() });
+  }
+  return out;
+}
+
+// 主题二选一。选择立刻写入下一区，真正的换区发生在下楼那一刻。
+export function chooseTheme(s, id) {
+  const out = [];
+  if (s.status !== 'playing' || !s.themeChoices || !s.themeChoices.includes(id)) return out;
+  const act = s.pendingTheme;
+  if (act < 2 || act > ACTS) return out;
+  s.actThemes[act] = id;
+  s.themeChoices = null;
+  s.pendingTheme = 0;
+  say(s, 'log.theme.pick', { name: ref('theme.' + id + '.name'), desc: ref('theme.' + id + '.desc') }, 'magic');
+  ev(out, 'themePick', { id, act });
   return out;
 }
 
@@ -1901,7 +2051,17 @@ export function deserialize(text) {
     s.doorUsed = !!s.doorUsed;
     s.hazardClock = Number.isFinite(s.hazardClock) ? Math.max(0, s.hazardClock) : 0;
     s.pendingDoor = Number.isFinite(s.pendingDoor) ? s.pendingDoor : -1;
-    for (const t of s.tiles) t.fire = !!t.fire;
+    // 主题字段同样是后加的：按白名单重建，首区永远常规
+    const themes = Array.isArray(s.actThemes) ? s.actThemes : [];
+    s.actThemes = [null, null, null, null];
+    for (let a = 2; a <= ACTS; a++) s.actThemes[a] = THEMES.includes(themes[a]) ? themes[a] : null;
+    s.pendingTheme = Number.isFinite(s.pendingTheme) && s.pendingTheme >= 2 && s.pendingTheme <= ACTS ? s.pendingTheme : 0;
+    s.themeChoices = Array.isArray(s.themeChoices) ? s.themeChoices.filter((id) => THEMES.includes(id)) : null;
+    if (!s.pendingTheme || !s.themeChoices || !s.themeChoices.length) s.themeChoices = null;
+    for (const t of s.tiles) {
+      t.fire = !!t.fire;
+      t.summoned = !!t.summoned;
+    }
     return s;
   } catch { return null; }
 }
@@ -1916,7 +2076,11 @@ export function tileLabel(t) {
   if (t.kind === 'door') return tr(t.used ? 'tile.door.used' : 'tile.door');
   if (t.kind === 'totemMagic') return t.used ? tr('tile.totem.magic.spent') : tr('tile.totem.magic', { dmg: t.totem.dmg, left: t.totem.charges });
   if (t.kind === 'totemDeath') return t.used ? tr('tile.totem.death.spent') : tr('tile.totem.death', { atk: t.totem.atk, def: t.totem.def });
-  if (t.mob && t.mob.hp > 0) return tr('tile.mob', { name: ref('mob.' + t.mob.id + '.name') });
+  if (t.kind === 'totemSummon') return t.used ? tr('tile.totem.summon.spent') : tr('tile.totem.summon', { left: t.totem.charges });
+  if (t.mob && t.mob.hp > 0) {
+    const name = ref('mob.' + t.mob.id + '.name');
+    return t.mob.reviveHp && !t.mob.revived ? tr('tile.mob.revive', { name, hp: t.mob.reviveHp }) : tr('tile.mob', { name });
+  }
   if (t.relicDrop) return tr('tile.relic.drop');
   if (t.kind === 'stairs') return t.n ? tr('tile.stairs.danger', { n: t.n }) : tr('tile.stairs');
   const name = t.mob ? tr('tile.mob.cleared', { name: ref('mob.' + t.mob.id + '.name') })

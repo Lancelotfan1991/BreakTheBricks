@@ -30,6 +30,22 @@ function atFloor(s, f) {
   G.closePending(s);
   return s;
 }
+// 主题机关只出现在主题区：先写入对应区域的主题再生成楼层
+function themedFloor(s, f, theme) {
+  s.actThemes[G.actOf(f)] = theme;
+  return atFloor(s, f);
+}
+// 空棋盘 + 首点周围已探明，给召唤图腾留出可落脚的明面空格
+function summonArena(seed = 7, floor = 14) {
+  const s = arena(seed);
+  s.floor = floor;
+  s.tiles[30].revealed = true;
+  for (const j of G.neighbors(30)) s.tiles[j].revealed = true;
+  const t = s.tiles[0];
+  t.kind = 'totemSummon'; t.revealed = true; t.totem = { charges: G.SUMMON_TOTEM_CHARGES };
+  G.recalc(s);
+  return s;
+}
 
 // ---------- 石墙 ----------
 test('石墙：未解锁时点击与插旗都被拒绝，相邻非墙格全揭开后可以手动拆', () => {
@@ -192,9 +208,9 @@ test('火焰：每 5 个花费操作蔓延一格，封顶 12 格，且不蔓延�
 
 // ---------- 魔法图腾 ----------
 test('魔法图腾：每 5 回合脉冲一次、无视防御，6 次后耗尽且炸弹无效', () => {
-  const s = atFloor(G.createRun('normal', 7), 5);
+  const s = themedFloor(G.createRun('normal', 7), 11, 'totem');
   const totem = find(s, 'totemMagic')[0];
-  assert.ok(totem, '第 5 层应生成魔法图腾');
+  assert.ok(totem, '图腾遗迹首层应生成魔法图腾');
   assert.equal(totem.revealed, true, '图腾生成即可见');
   assert.equal(totem.totem.charges, G.TOTEM_MAGIC_CHARGES);
 
@@ -236,9 +252,9 @@ test('魔法图腾：每 5 回合脉冲一次、无视防御，6 次后耗尽且
 
 // ---------- 死亡图腾 ----------
 test('死亡图腾：在场时本层怪物获得攻防增幅，炸掉图腾后增幅被精确移除', () => {
-  const s = atFloor(G.createRun('normal', 7), 6);
+  const s = themedFloor(G.createRun('normal', 7), 12, 'totem');
   const totem = find(s, 'totemDeath')[0];
-  assert.ok(totem, '第 6 层应生成死亡图腾');
+  assert.ok(totem, '图腾遗迹第二层应生成死亡图腾');
   assert.equal(totem.revealed, true);
   const aura = { atk: totem.totem.atk, def: totem.totem.def };
   assert.ok(aura.atk > 0, '增幅至少 +1 攻击');
@@ -259,12 +275,168 @@ test('死亡图腾：在场时本层怪物获得攻防增幅，炸掉图腾后�
   }
 });
 
+// ---------- 召唤图腾 ----------
+test('图腾遗迹：区内按魔法→死亡→召唤轮换，Boss 层三座齐上', () => {
+  const magic = themedFloor(G.createRun('normal', 3), 11, 'totem');
+  assert.equal(find(magic, 'totemMagic').length, 1);
+  assert.equal(find(magic, 'totemDeath').length, 0);
+  const death = themedFloor(G.createRun('normal', 3), 12, 'totem');
+  assert.equal(find(death, 'totemDeath').length, 1);
+  const summon = themedFloor(G.createRun('normal', 3), 13, 'totem');
+  assert.equal(find(summon, 'totemSummon').length, 1);
+  assert.equal(G.TOTEM_CYCLE[0], 'magic');
+  const boss = themedFloor(G.createRun('normal', 3), 20, 'totem');
+  for (const k of ['totemMagic', 'totemDeath', 'totemSummon']) {
+    assert.equal(find(boss, k).length, 1, `Boss 层应有 ${k}`);
+  }
+  const b = find(boss, 'boss')[0];
+  assert.ok(b.mob.aura, '龙王也吃死亡图腾增幅');
+  assert.equal(b.mob.aura.atk, find(boss, 'totemDeath')[0].totem.atk);
+});
+
+test('召唤图腾：每 5 回合召一只精锐，最多 3 只；精锐给奖励但不掉钥匙与遗物', () => {
+  const s = summonArena(21, 14);
+  assert.equal(G.isRelicFloor(14), true, '14 层是守卫遗物层，用来验证召唤者不占下落');
+  const totem = find(s, 'totemSummon')[0];
+  assert.equal(totem.totem.charges, G.SUMMON_TOTEM_CHARGES);
+  s.player.hp = s.player.maxHp = 9999;
+  s.player.atk = 9999;
+  const tick = () => { s.hazardClock = G.HAZARD_TICK - 1; return G.tickHazards(s, []); };
+
+  for (let k = 1; k <= G.SUMMON_TOTEM_CHARGES; k++) {
+    const out = tick();
+    assert.ok(out.some((e) => e.type === 'summon'), `第 ${k} 拍应召来精锐`);
+    assert.equal(s.tiles.filter((t) => t.summoned).length, k);
+    assert.equal(totem.totem.charges, G.SUMMON_TOTEM_CHARGES - k);
+  }
+  assert.equal(totem.used, true, '三次用尽后失效');
+
+  const sums = s.tiles.filter((t) => t.summoned);
+  for (const u of sums) {
+    assert.equal(u.revealed, true, '召唤点必须已经探明，邻格数字才不会撒谎');
+    assert.equal(u.kind, 'elite');
+    assert.equal(u.mob.elite, true);
+    assert.equal(u.mob.summoned, undefined, '标记记在格子上，不写进怪物数据');
+  }
+  const target = sums[0];
+  const xp0 = s.player.xp, gold0 = s.player.gold;
+  G.attack(s, target.i);
+  assert.ok(s.player.xp > xp0, '召唤精锐照常给经验');
+  assert.ok(s.player.gold > gold0, '召唤精锐照常给金币');
+  assert.equal(s.hasKey, false, '召唤精锐不算守卫，不掉钥匙');
+  assert.ok(!target.relicDrop, '召唤精锐不掉遗物');
+
+  const before = s.tiles.filter((t) => t.summoned).length;
+  tick();
+  assert.equal(s.tiles.filter((t) => t.summoned).length, before, '耗尽后不再召');
+});
+
+test('召唤图腾：炸弹可直接毁掉，毁掉后不再召唤', () => {
+  const s = summonArena(23, 14);
+  const totem = find(s, 'totemSummon')[0];
+  s.player.bombs = 1;
+  G.setMode(s, 'bomb');
+  const out = G.tapTile(s, totem.i);
+  assert.equal(s.player.bombs, 0);
+  assert.equal(totem.used, true);
+  assert.ok(out.some((e) => e.type === 'totemBreak'));
+  assert.equal(s.log.at(-1).k, 'log.totem.summon.break');
+  s.hazardClock = G.HAZARD_TICK - 1;
+  G.tickHazards(s, []);
+  assert.equal(s.tiles.filter((t) => t.summoned).length, 0);
+});
+
+test('召唤图腾：没有已探明的空格就跳过这一拍，不消耗次数', () => {
+  const s = summonArena(25, 14);
+  const totem = find(s, 'totemSummon')[0];
+  for (const t of s.tiles) t.revealed = false;
+  totem.revealed = true;
+  s.hazardClock = G.HAZARD_TICK - 1;
+  const out = G.tickHazards(s, []);
+  assert.equal(totem.totem.charges, G.SUMMON_TOTEM_CHARGES);
+  assert.equal(s.tiles.filter((t) => t.summoned).length, 0);
+  assert.ok(!out.some((e) => e.type === 'summon'));
+  assert.equal(s.log.at(-1).k, 'log.totem.summon.nospace');
+});
+
+test('召唤图腾：死亡图腾在场时，召来的精锐也吃增幅', () => {
+  const s = summonArena(27, 14);
+  const death = s.tiles[1];
+  death.kind = 'totemDeath'; death.revealed = true; death.totem = { atk: 3, def: 2 };
+  G.recalc(s);
+  s.hazardClock = G.HAZARD_TICK - 1;
+  G.tickHazards(s, []);
+  const u = s.tiles.find((t) => t.summoned);
+  assert.ok(u, '应有精锐被召来');
+  assert.deepEqual(u.mob.aura, { atk: 3, def: 2 });
+});
+
+// ---------- 寂静墓园 ----------
+test('寂静墓园：整层怪物（含精英与 Boss）都带半血复活', () => {
+  const s = themedFloor(G.createRun('normal', 33), 25, 'grave');
+  const mobs = s.tiles.filter((t) => t.mob);
+  assert.ok(mobs.length > 0);
+  for (const t of mobs) {
+    assert.equal(t.mob.reviveHp, Math.ceil(t.mob.maxHp * G.GRAVE_REVIVE_PCT));
+  }
+  const elite = find(s, 'elite')[0];
+  assert.equal(elite.mob.reviveHp, Math.ceil(elite.mob.maxHp * G.GRAVE_REVIVE_PCT), '精英也要复活一次');
+  const boss = themedFloor(G.createRun('normal', 33), 30, 'grave');
+  const b = find(boss, 'boss')[0];
+  assert.equal(b.mob.reviveHp, Math.ceil(b.mob.maxHp * G.GRAVE_REVIVE_PCT), 'Boss 也是两条命');
+});
+
+test('寂静墓园：预演把第二管血算进回合与承伤，击杀只结算一次', () => {
+  const s = arena(41);
+  s.floor = 21;
+  s.actThemes[3] = 'grave';
+  const t = putMob(s, 0, { hp: 30, maxHp: 30, atk: 8, def: 0 });
+  t.mob.reviveHp = Math.ceil(t.mob.maxHp * G.GRAVE_REVIVE_PCT);
+  s.player.atk = 20;
+  s.player.def = 0;
+  s.player.hp = s.player.maxHp = 999;
+  const f = G.forecast(s.player, t.mob, G.atkOf(s));
+  assert.equal(f.reviveHp, 15);
+  assert.equal(f.rounds, Math.ceil(45 / f.deal), '回合数按 30 + 15 两条命算');
+  const xp0 = s.player.xp, gold0 = s.player.gold;
+  const out = G.attack(s, 0);
+  assert.ok(out.some((e) => e.type === 'revive' && e.hp === 15));
+  assert.equal(t.mob.revived, true);
+  assert.equal(t.mob.hp, 0);
+  assert.ok(s.player.xp > xp0);
+  assert.ok(s.player.gold > gold0);
+  assert.equal(out.filter((e) => e.type === 'kill').length, 1, '两条命只结算一次击杀');
+});
+
+test('寂静墓园：炸弹只打掉第一条命，怪物半血站起、炸弹照常消耗', () => {
+  const s = arena(43);
+  s.floor = 21;
+  s.actThemes[3] = 'grave';
+  const t = putMob(s, 0, { hp: 20, maxHp: 20, atk: 5, def: 0 });
+  t.revealed = true;
+  t.mob.reviveHp = Math.ceil(t.mob.maxHp * G.GRAVE_REVIVE_PCT);
+  s.player.bombs = 1;
+  G.setMode(s, 'bomb');
+  const out = G.tapTile(s, 0);
+  assert.equal(s.player.bombs, 0);
+  assert.equal(t.mob.revived, true);
+  assert.equal(t.mob.hp, t.mob.reviveHp);
+  assert.equal(t.used, false, '它还没死，格子没清空');
+  assert.ok(out.some((e) => e.type === 'revive'));
+
+  // 第二条命不再复活，下一枚炸弹或普攻就能真正击杀
+  G.attack(s, 0);
+  assert.equal(t.used, true);
+  assert.equal(t.mob.hp, 0);
+});
+
 // ---------- 大地之门 ----------
 test('大地之门：整局一扇、两步确认、回退 5 层且跳过 Boss 层，不给下行奖励', () => {
   const seed = 42;
   const doorFloor = G.doorFloorFor(seed);
-  assert.ok(doorFloor >= G.DOOR_MIN_FLOOR && doorFloor <= G.MAX_FLOOR);
+  assert.ok(doorFloor >= G.DOOR_MIN_FLOOR && doorFloor <= G.MAX_FLOOR - 1);
   assert.equal(G.isBossFloor(doorFloor), false, '门不会落在 Boss 层');
+  assert.ok(G.actOf(doorFloor) >= 2, '门只出现在已选主题的区域');
 
   const s = atFloor(G.createRun('normal', seed), doorFloor);
   const door = find(s, 'door')[0];

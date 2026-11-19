@@ -14,7 +14,7 @@ const el = {
   floorNum: $('#floorNum'), floorName: $('#floorName'), floorSub: $('#floorSub'),
   hpFill: $('#hpFill'), hpText: $('#hpText'), hpBar: document.querySelector('.hp-bar'),
   atk: $('#atkVal'), def: $('#defVal'), gold: $('#goldVal'), lv: $('#lvNum'), ring: $('#xpRing'),
-  threat: $('#threatVal'), threatChip: $('#threatChip'), keyChip: $('#keyChip'),
+  threat: $('#threatVal'), threatChip: $('#threatChip'), keyChip: $('#keyChip'), themeChip: $('#themeChip'),
   potion: $('#potionCount'), bomb: $('#bombCount'), scroll: $('#scrollCount'), flag: $('#flagCount'),
   descend: $('#btnDescend'), log: $('#logLine'), ticker: document.querySelector('.ticker'),
   scrim: $('#scrim'), sheet: $('#sheet'), sheetBody: $('#sheetBody'),
@@ -143,27 +143,33 @@ function tileView(t) {
     inner = svg('gate') + `<span class="tile-num${n ? '' : ' tile-zero'}">${n}</span>`;
     return { cls, inner, n, label };
   }
-  if (t.kind === 'totemMagic' || t.kind === 'totemDeath') {
-    cls += ` tile-totem ${t.kind === 'totemMagic' ? 'tile-totem-magic' : 'tile-totem-death'}${t.used ? ' tile-used' : ''}`;
+  if (t.kind === 'totemMagic' || t.kind === 'totemDeath' || t.kind === 'totemSummon') {
+    const kind = t.kind === 'totemMagic' ? 'magic' : t.kind === 'totemDeath' ? 'death' : 'summon';
+    cls += ` tile-totem tile-totem-${kind}${t.used ? ' tile-used' : ''}`;
     n = t.n;
     inner = svg('totem') + `<span class="tile-num${n ? '' : ' tile-zero'}">${n}</span>`;
     if (!t.used) {
-      inner += t.kind === 'totemMagic'
-        ? `<span class="tile-charge">${t.totem.charges}</span>`
-        : `<span class="tile-aura">${svg('skull')}</span>`;
+      inner += kind === 'death'
+        ? `<span class="tile-aura">${svg('skull')}</span>`
+        : `<span class="tile-charge">${t.totem.charges}</span>`;
     }
     return { cls, inner, n, label };
   }
   if (t.mob && t.mob.hp > 0) {
     const m = t.mob;
     cls += t.kind === 'boss' ? ' tile-boss' : t.kind === 'elite' ? ' tile-elite' : ' tile-mob';
+    if (t.summoned) cls += ' tile-summoned';
+    if (m.reviveHp && !m.revived) cls += ' tile-revive';
     // 裸数字会被误读成邻雷数，三项属性各带图标；防御为 0 的怪省略，省出横向空间
     inner = svg(m.icon) + '<span class="tile-stats">'
       + `<i class="ts-hp">${svg('heart')}<b>${m.hp}</b></i>`
       + `<span class="ts-row"><i class="ts-atk">${svg('sword')}<b>${m.atk}</b></i>`
       + (m.def ? `<i class="ts-def">${svg('shield')}<b>${m.def}</b></i>` : '')
       + '</span></span>';
-    if (t.kind !== 'monster') inner += `<span class="tile-crown">${svg(t.kind === 'boss' ? 'crown' : 'key')}</span>`;
+    // 召唤出来的精锐不掉钥匙：角标改成法术纹，避免玩家误以为它是钥匙守卫
+    if (t.summoned) inner += `<span class="tile-summon">${svg('sparkle')}</span>`;
+    else if (t.kind !== 'monster') inner += `<span class="tile-crown">${svg(t.kind === 'boss' ? 'crown' : 'key')}</span>`;
+    if (m.reviveHp && !m.revived) inner += `<span class="tile-revive-badge">${svg('skull')}</span>`;
     label += ' ' + tr('ui.board.stats', { hp: m.hp, atk: m.atk, def: m.def });
     return { cls, inner, n, label };
   }
@@ -333,6 +339,16 @@ function renderHud() {
   el.threatChip.setAttribute('aria-label', tr('ui.hud.threat.aria', { n: remain }));
   const cap = G.flagCap(S);
   el.keyChip.hidden = !S.hasKey;
+  // 主题是这一区所有机关的来源，必须在 HUD 常驻，否则玩家不知道火/图腾/复活为何出现
+  const theme = G.themeOf(S);
+  el.themeChip.hidden = !theme;
+  if (theme) {
+    el.themeChip.className = 'chip chip-theme theme-' + theme;
+    el.themeChip.querySelector('use').setAttribute('href', '#i-' + G.themeIcon(theme));
+    el.themeChip.querySelector('b').textContent = G.themeName(theme);
+    el.themeChip.setAttribute('aria-label', tr('ui.hud.theme.aria', { name: G.themeName(theme), desc: G.themeDesc(theme) }));
+  }
+  el.wrap.dataset.theme = theme || '';
   el.potion.textContent = p.potions; el.bomb.textContent = p.bombs; el.scroll.textContent = p.scrolls;
   el.potion.parentElement.classList.toggle('empty', p.potions === 0);
   el.bomb.parentElement.classList.toggle('empty', p.bombs === 0);
@@ -744,6 +760,25 @@ function consume(events) {
         toast(tr('ui.toast.totem.break'), 'magic');
         break;
       }
+      case 'summon': {
+        const c = tileCenter(e.at);
+        fx.ring(c.x, c.y, '#c9a3ff', 130); fx.magic(c.x, c.y);
+        audio.play('trap'); fx.shake(el.board); fx.haptic('medium');
+        toast(tr('ui.toast.summon'), 'bad');
+        break;
+      }
+      case 'revive': {
+        const c = tileCenter(e.i);
+        fx.ring(c.x, c.y, '#8fd6b8', 120); fx.magic(c.x, c.y);
+        audio.play('altar');
+        break;
+      }
+      case 'themePick': {
+        fx.flash('gold'); fx.ring(innerWidth / 2, innerHeight / 2, '#ffd54a', 220);
+        audio.play('levelup'); fx.haptic('heavy');
+        toast(tr('ui.toast.theme', { name: G.themeName(e.id) }), 'magic');
+        break;
+      }
       case 'door': audio.play('stairs'); break;
       case 'relicDrop': {
         const c = tileCenter(e.i);
@@ -861,6 +896,7 @@ function openDrawers() {
   if (S.pendingCombat >= 0) { openCombat(S.pendingCombat); return true; }
   if (S.pendingAltar >= 0) { openAltar(S.pendingAltar); return true; }
   if (S.pendingDoor >= 0) { openDoor(S.pendingDoor); return true; }
+  if (S.themeChoices) { openTheme(); return true; }
   return false;
 }
 
@@ -1030,6 +1066,10 @@ function openCombat(i) {
   const cutNote = cutParts.length
     ? `<p class="fc-note good">${tr('ui.combat.cut', { parts: cutParts.join(tr('ui.combat.cut.sep')) })}</p>`
     : '';
+  // 墓园的复活已经算进下面的回合与承伤，这里只说明它为什么多出一段血
+  const reviveNote = f.reviveHp
+    ? `<p class="fc-note danger">${tr('ui.combat.revive', { hp: f.reviveHp, rounds: f.rounds })}</p>`
+    : '';
   const ambushDmg = forced ? G.ambushDamage(p, m) : 0;
   const ambushNote = forced
     ? `<p class="fc-note${ambushDmg > 0 ? ' danger' : ''}">${tr(ambushDmg > 0 ? 'ui.combat.ambush.note' : 'ui.combat.ambush.note.block', { n: ambushDmg })}</p>`
@@ -1056,6 +1096,7 @@ function openCombat(i) {
       <div class="stat gold"><i>${tr('ui.combat.stat.gold')}</i><b>${m.gold}</b></div>
     </div>
     ${cutNote}
+    ${reviveNote}
     <div class="forecast">
       <div class="fc-row"><span>${tr('ui.combat.deal')}</span><b>${f.deal}</b></div>
       ${thornRow}
@@ -1119,6 +1160,25 @@ function openDoor(i) {
   audio.play('stairs');
 }
 
+// 主题二选一：只在击破 10 / 20 层 Boss 后出现。允许先关掉去拾取遗物，
+// 但没选之前楼梯不会放行（game.tryDescend 会再把这张纸推回来）。
+function openTheme() {
+  const choices = S.themeChoices || [];
+  const cards = choices.map((id) => `
+    <button class="opt theme-opt theme-${id}" data-sheet="theme" data-choice="${id}">
+      <span class="opt-ic">${svg(G.themeIcon(id))}</span>
+      <span class="opt-tx"><b>${G.themeName(id)}</b><span>${G.themeDesc(id)}</span></span>
+    </button>`).join('');
+  openSheet('theme', `
+    <div class="sheet-head">
+      <div><h2 class="sheet-title">${tr('ui.theme.title', { act: S.pendingTheme })}</h2><p class="sheet-sub">${tr('ui.theme.sub')}</p></div>
+      <button class="icon-btn sheet-close" data-sheet="close" aria-label="${tr('ui.btn.close')}">${svg('close')}</button>
+    </div>
+    <p class="help-p">${tr('ui.theme.note')}</p>
+    ${cards}`);
+  audio.play('altar');
+}
+
 function openShop() {  const p = S.player;
   const rows = G.SHOP.map((it) => {
     const price = G.shopPrice(S, it.id);
@@ -1158,6 +1218,7 @@ function openHelp() {
     ['flame', 'ui.help.lg.fire', '#ff9f3a'],
     ['totem', 'ui.help.lg.totem', '#c9a3ff'],
     ['skull', 'ui.help.lg.totemDeath', '#ff6b8a'],
+    ['sparkle', 'ui.help.lg.totemSummon', '#7dffd4'],
     ['gate', 'ui.help.lg.door', '#8bff63'],
     ['stairs', 'ui.help.lg.stairs', '#3fe0ff'],
     ['dragon', 'ui.help.lg.dragon', '#ff8ae8'],
@@ -1176,10 +1237,11 @@ function openHelp() {
     chestPct: Math.round(G.CHEST_RELIC_CHANCE * 100),
     healerHeal: G.HEALER_POTION_HEAL, healerHp: G.HEALER_POTION_MAXHP,
     wallMin: G.WALL_MIN_FLOOR, wallCount: G.WALL_MIN, wallCountMax: G.WALL_MAX,
-    fireMin: G.FIRE_MIN_FLOOR, fireBase: G.FIRE_BASE, fireF: G.FIRE_F, fireCap: G.FIRE_CAP,
-    hazardTick: G.HAZARD_TICK, totemMin: G.TOTEM_MIN_FLOOR, totemCharges: G.TOTEM_MAGIC_CHARGES,
+    fireBase: G.FIRE_BASE, fireF: G.FIRE_F, fireCap: G.FIRE_CAP, acts: G.ACTS,
+    hazardTick: G.HAZARD_TICK, totemCharges: G.TOTEM_MAGIC_CHARGES,
     totemBase: G.TOTEM_MAGIC_BASE, totemF: G.TOTEM_MAGIC_F,
     deathAtkStep: G.TOTEM_DEATH_ATK_STEP, deathDefStep: G.TOTEM_DEATH_DEF_STEP,
+    summonCharges: G.SUMMON_TOTEM_CHARGES, revivePct: Math.round(G.GRAVE_REVIVE_PCT * 100),
     doorBack: G.DOOR_BACK,
   };
   openSheet('help', `
@@ -1226,9 +1288,11 @@ function openHelp() {
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.machine.h')}</h3>
+      <p class="help-p">${tr('ui.help.machine.themes', P)}</p>
       <p class="help-p">${tr('ui.help.machine.wall', P)}</p>
       <p class="help-p">${tr('ui.help.machine.fire', P)}</p>
       <p class="help-p">${tr('ui.help.machine.totem', P)}</p>
+      <p class="help-p">${tr('ui.help.machine.grave', P)}</p>
       <p class="help-p">${tr('ui.help.machine.door', P)}</p>
     </div>
     <div class="help-sec">
@@ -1566,6 +1630,7 @@ el.sheetBody.addEventListener('click', (e) => {
     case 'potion': { const i = +b.dataset.i; consume(G.usePotion(S)); render(); saveRun(); openCombat(i); break; }
     case 'altar': { const i = +b.dataset.i; closeSheet(); apply(G.altarChoose(S, i, b.dataset.choice)); break; }
     case 'doorGo': { const i = +b.dataset.i; closeSheet(); apply(G.useDoor(S, i)); break; }
+    case 'theme': { const id = b.dataset.choice; closeSheet(); apply(G.chooseTheme(S, id)); break; }
     case 'buy': {
       const evs = G.buy(S, b.dataset.id);
       if (S.relicChoices) apply(evs);

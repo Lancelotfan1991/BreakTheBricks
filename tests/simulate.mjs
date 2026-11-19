@@ -3,7 +3,7 @@
 import {
   createRun, tapTile, attack, usePotion, buy, altarChoose, tryDescend, closePending, useDoor,
   forecast, neighbors, canDescend, SIZE, MAX_FLOOR, shopPrice, setMode, chooseRelic, chooseLevel,
-  levelChoiceStat, levelChoiceAmount, chooseTalent, atkOf, wallOpen,
+  levelChoiceStat, levelChoiceAmount, chooseTalent, atkOf, wallOpen, chooseTheme,
   toggleFlag, flagCap, flagBonusLeft, ALTAR_FLAG_BONUS, RELIC_SURVEY_CAP, RELIC_SHOP_CAP,
 } from '../public/src/game.js';
 
@@ -130,6 +130,12 @@ function pickLevel(s) {
   return s.levelChoices.slice().sort((a, b) => val(b) - val(a))[0];
 }
 
+// 主题按种子固定挑选，保证两种区域都会被跑到；第三区同样由种子决定拿哪个
+function pickTheme(s) {
+  const choices = s.themeChoices;
+  return choices[(s.seed >>> 1) % choices.length];
+}
+
 function pickRelic(s, prefer) {
   const table = BUILD_PREF[prefer] || RELIC_PREF;
   if (prefer && !BUILD_PREF[prefer]) {
@@ -177,6 +183,7 @@ export function playRun(difficulty, seed, verbose = false, prefer = null, build 
   while (s.status === 'playing' && guard++ < 12000) {
     if (s.levelChoices) { run(chooseLevel, pickLevel(s)); continue; }
     if (s.relicChoices) { run(chooseRelic, pickRelic(s, build || prefer)); continue; }
+    if (s.themeChoices) { run(chooseTheme, pickTheme(s)); continue; }
     if (s.pendingAltar >= 0) {
       const p = s.player;
       // 加满上限后旗帜祝福会被拒绝且不消耗祭坛，必须换一个选项，否则 pendingAltar 永远关不掉
@@ -190,10 +197,11 @@ export function playRun(difficulty, seed, verbose = false, prefer = null, build 
     if (s.pendingDoor >= 0) { run(useDoor, s.pendingDoor); continue; }
     const doorTile = s.tiles.find((t) => t.revealed && t.kind === 'door' && !t.used);
     if (doorTile) { run(tapTile, doorTile.i); continue; }
-    const deathTotem = s.tiles.find((t) => t.revealed && t.kind === 'totemDeath' && !t.used);
-    if (deathTotem && s.player.bombs >= 2 && s.player.hp > s.player.maxHp * 0.5) {
+    // 死亡/召唤图腾都可炸：血线尚可时用炸弹拔掉，别让增幅与增援滚起来
+    const dangerTotem = s.tiles.find((t) => t.revealed && !t.used && (t.kind === 'totemDeath' || t.kind === 'totemSummon'));
+    if (dangerTotem && s.player.bombs >= 2 && s.player.hp > s.player.maxHp * 0.5) {
       setMode(s, 'bomb');
-      run(tapTile, deathTotem.i);
+      run(tapTile, dangerTotem.i);
       continue;
     }
     if (s.pendingCombat >= 0) {
@@ -286,6 +294,7 @@ export function playRun(difficulty, seed, verbose = false, prefer = null, build 
     relics: s.relics.slice(), whet: s.relicState.whet, solves, solveFlags, perfect,
     thorns: s.player.thorns, survey: s.relicState.survey, atkBonus: s.player.atkBonus, flagBonus: s.flagBonus,
     chests: s.stats.chests, chestRelics: s.stats.chestRelics,
+    themes: s.actThemes.slice(),
   };
   if (verbose) { console.log(res); for (const f of floors) console.log(JSON.stringify(f)); }
   return res;
@@ -320,7 +329,12 @@ if (process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('simulate.mj
       const avgAtk = out.reduce((a, r) => a + r.atk, 0) / out.length;
       const avgDef = out.reduce((a, r) => a + r.def, 0) / out.length;
       const avgChestRelics = out.reduce((a, r) => a + r.chestRelics, 0) / out.length;
-      console.log(`${((build || 'mixed') + '/' + talent).padEnd(16)} ${d.padEnd(7)} 胜率 ${(wins / runs * 100).toFixed(1)}%  层数 ${avgFloor.toFixed(2)}  等级 ${avgLv.toFixed(1)}  遗物 ${avgRelics.toFixed(1)}  箱中遗物 ${avgChestRelics.toFixed(2)}  血上限 ${avgMaxHp.toFixed(0)}  攻 ${avgAtk.toFixed(1)}  防 ${avgDef.toFixed(1)}  操作 ${avgTurns.toFixed(0)}  受伤 ${avgDmg.toFixed(0)}  偷袭 ${avgAmbush.toFixed(1)}次  治疗 ${avgHeal.toFixed(0)}  识破 ${avgSolves.toFixed(2)}(旗${avgSolveFlags.toFixed(1)},完美${perfects})  卡死 ${stuck}  分布 ${JSON.stringify(hist)}`);
+      const themeCount = {};
+      for (const r of out) {
+        const k = `${r.themes[2] || '-'}/${r.themes[3] || '-'}`;
+        themeCount[k] = (themeCount[k] || 0) + 1;
+      }
+      console.log(`${((build || 'mixed') + '/' + talent).padEnd(16)} ${d.padEnd(7)} 胜率 ${(wins / runs * 100).toFixed(1)}%  层数 ${avgFloor.toFixed(2)}  等级 ${avgLv.toFixed(1)}  遗物 ${avgRelics.toFixed(1)}  箱中遗物 ${avgChestRelics.toFixed(2)}  血上限 ${avgMaxHp.toFixed(0)}  攻 ${avgAtk.toFixed(1)}  防 ${avgDef.toFixed(1)}  操作 ${avgTurns.toFixed(0)}  受伤 ${avgDmg.toFixed(0)}  偷袭 ${avgAmbush.toFixed(1)}次  治疗 ${avgHeal.toFixed(0)}  识破 ${avgSolves.toFixed(2)}(旗${avgSolveFlags.toFixed(1)},完美${perfects})  主题 ${JSON.stringify(themeCount)}  卡死 ${stuck}  分布 ${JSON.stringify(hist)}`);
     }
   }
 }
