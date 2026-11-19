@@ -98,6 +98,29 @@ test('怪物文案覆盖所有会生成的怪', () => {
   }
 });
 
+test('主题区怪物文案与种族齐全', () => {
+  const races = new Set();
+  for (const theme of G.THEMES) {
+    const run = G.createRun('normal', 11);
+    run.player.hp = 99999; run.player.maxHp = 99999;
+    run.actThemes[2] = theme; run.actThemes[3] = theme;
+    for (let f = 11; f <= G.MAX_FLOOR; f++) {
+      run.floor = f;
+      G.buildFloor(run);
+      G.tapTile(run, 30);
+      for (const t of run.tiles) {
+        if (!t.mob) continue;
+        assert.ok(zhCN[`mob.${t.mob.id}.name`], `缺 mob.${t.mob.id}.name`);
+        assert.ok(zhCN[`mob.${t.mob.id}.flavor`], `缺 mob.${t.mob.id}.flavor`);
+        assert.ok(G.RACES.includes(t.mob.race), `${t.mob.id} 的种族无效：${t.mob.race}`);
+        races.add(t.mob.race);
+      }
+    }
+  }
+  for (const id of G.RACES) assert.ok(zhCN[`race.${id}`], `缺 race.${id}`);
+  assert.ok(races.size >= 5, `主题区覆盖的种族过少：${[...races].join(',')}`);
+});
+
 test('源码不再夹带面向玩家的中文（注释除外）', () => {
   for (const f of ['game.js', 'ui.js', 'main.js', 'fx.js', 'audio.js', 'i18n.js']) {
     const code = stripComments(read(f));

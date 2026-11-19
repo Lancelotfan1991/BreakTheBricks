@@ -99,19 +99,67 @@ export const shopDesc = (it, s) => {
   return tr('shop.' + it.id + '.desc', it.id === 'bomb' && s ? { dmg: bombBase(s) } : SHOP_PARAMS[it.id]);
 };
 
-const BESTIARY = [
-  { id: 'bat', icon: 'bat', hp: 0.7, atk: 1.15, def: 0, min: 1, max: 3 },
-  { id: 'slime', icon: 'slime', hp: 1.35, atk: 0.78, def: 0, min: 1, max: 4 },
-  { id: 'skeleton', icon: 'skeleton', hp: 1, atk: 1, def: 1, min: 2, max: 6 },
-  { id: 'spider', icon: 'spider', hp: 0.85, atk: 1.28, def: 0, min: 3, max: 7 },
-  { id: 'orc', icon: 'orc', hp: 1.12, atk: 1.18, def: 1, min: 4, max: 8 },
-  { id: 'golem', icon: 'golem', hp: 1.55, atk: 0.9, def: 3, min: 5, max: 8 },
-  { id: 'wraith', icon: 'wraith', hp: 0.92, atk: 1.12, def: 4, min: 6, max: 8 },
-];
+// 每个区域一套怪物：换区换的不只是名字，还有族群构成与首领。
+// min/max 读的是区内深度（1–10），所以每个区域都从低阶怪起步、到高阶怪收尾；
+// 数值模板保持同一套，区域只改变敌人的面孔，不额外抬高或压低这 10 层的强度。
+const ROSTERS = {
+  base: [
+    { id: 'bat', icon: 'bat', race: 'beast', hp: 0.7, atk: 1.15, def: 0, min: 1, max: 3 },
+    { id: 'slime', icon: 'slime', race: 'ooze', hp: 1.35, atk: 0.78, def: 0, min: 1, max: 4 },
+    { id: 'skeleton', icon: 'skeleton', race: 'undead', hp: 1, atk: 1, def: 1, min: 2, max: 6 },
+    { id: 'spider', icon: 'spider', race: 'beast', hp: 0.85, atk: 1.28, def: 0, min: 3, max: 7 },
+    { id: 'orc', icon: 'orc', race: 'humanoid', hp: 1.12, atk: 1.18, def: 1, min: 4, max: 8 },
+    { id: 'golem', icon: 'golem', race: 'construct', hp: 1.55, atk: 0.9, def: 3, min: 5, max: 8 },
+    { id: 'wraith', icon: 'wraith', race: 'undead', hp: 0.92, atk: 1.12, def: 4, min: 6, max: 8 },
+  ],
+  inferno: [
+    { id: 'emberBat', icon: 'bat', race: 'beast', hp: 0.7, atk: 1.15, def: 0, min: 1, max: 3 },
+    { id: 'magmaSlime', icon: 'slime', race: 'elemental', hp: 1.35, atk: 0.78, def: 0, min: 1, max: 4 },
+    { id: 'cinderBone', icon: 'skeleton', race: 'undead', hp: 1, atk: 1, def: 1, min: 2, max: 6 },
+    { id: 'ashSpider', icon: 'spider', race: 'beast', hp: 0.85, atk: 1.28, def: 0, min: 3, max: 7 },
+    { id: 'emberImp', icon: 'orc', race: 'demon', hp: 1.12, atk: 1.18, def: 1, min: 4, max: 8 },
+    { id: 'obsidianGolem', icon: 'golem', race: 'construct', hp: 1.55, atk: 0.9, def: 3, min: 5, max: 8 },
+    { id: 'emberWraith', icon: 'wraith', race: 'elemental', hp: 0.92, atk: 1.12, def: 4, min: 6, max: 8 },
+  ],
+  totem: [
+    { id: 'altarBat', icon: 'bat', race: 'beast', hp: 0.7, atk: 1.15, def: 0, min: 1, max: 3 },
+    { id: 'mudPuppet', icon: 'slime', race: 'construct', hp: 1.35, atk: 0.78, def: 0, min: 1, max: 4 },
+    { id: 'runeBone', icon: 'skeleton', race: 'undead', hp: 1, atk: 1, def: 1, min: 2, max: 6 },
+    { id: 'totemSpider', icon: 'spider', race: 'beast', hp: 0.85, atk: 1.28, def: 0, min: 3, max: 7 },
+    { id: 'totemOrc', icon: 'orc', race: 'humanoid', hp: 1.12, atk: 1.18, def: 1, min: 4, max: 8 },
+    { id: 'stoneWarden', icon: 'golem', race: 'construct', hp: 1.55, atk: 0.9, def: 3, min: 5, max: 8 },
+    { id: 'oathWraith', icon: 'wraith', race: 'undead', hp: 0.92, atk: 1.12, def: 4, min: 6, max: 8 },
+  ],
+  grave: [
+    { id: 'cryptBat', icon: 'bat', race: 'beast', hp: 0.7, atk: 1.15, def: 0, min: 1, max: 3 },
+    { id: 'corpseWax', icon: 'slime', race: 'ooze', hp: 1.35, atk: 0.78, def: 0, min: 1, max: 4 },
+    { id: 'risenBone', icon: 'skeleton', race: 'undead', hp: 1, atk: 1, def: 1, min: 2, max: 6 },
+    { id: 'cryptSpider', icon: 'spider', race: 'beast', hp: 0.85, atk: 1.28, def: 0, min: 3, max: 7 },
+    { id: 'ghoul', icon: 'orc', race: 'undead', hp: 1.12, atk: 1.18, def: 1, min: 4, max: 8 },
+    { id: 'tombGolem', icon: 'golem', race: 'construct', hp: 1.55, atk: 0.9, def: 3, min: 5, max: 8 },
+    { id: 'wailWraith', icon: 'wraith', race: 'undead', hp: 0.92, atk: 1.12, def: 4, min: 6, max: 8 },
+  ],
+};
+// 精英都持钥、穿同一副守卫甲，只换族群与名号；Boss 的图标随区域换，血条上能直接看出换了敌人。
+const ELITES = {
+  base: { id: 'guardian', icon: 'guardian', race: 'construct', hp: 1, atk: 1, def: 0 },
+  inferno: { id: 'emberWarden', icon: 'guardian', race: 'construct', hp: 1, atk: 1, def: 0 },
+  totem: { id: 'totemWarden', icon: 'guardian', race: 'construct', hp: 1, atk: 1, def: 0 },
+  grave: { id: 'graveKeeper', icon: 'guardian', race: 'undead', hp: 1, atk: 1, def: 0 },
+};
+const BOSSES = {
+  base: { id: 'dragon', icon: 'dragon', race: 'dragon', hp: 1, atk: 1, def: 0 },
+  inferno: { id: 'infernoLord', icon: 'flame', race: 'demon', hp: 1, atk: 1, def: 0 },
+  totem: { id: 'totemColossus', icon: 'totem', race: 'construct', hp: 1, atk: 1, def: 0 },
+  grave: { id: 'graveLord', icon: 'skull', race: 'undead', hp: 1, atk: 1, def: 0 },
+};
 
+export const RACES = ['beast', 'ooze', 'undead', 'humanoid', 'construct', 'demon', 'elemental', 'dragon'];
 export const floorName = (f) => tr('floor.' + f);
 export const mobName = (m) => tr('mob.' + m.id + '.name');
 export const mobFlavor = (m) => tr('mob.' + m.id + '.flavor');
+export const raceName = (id) => tr('race.' + id);
+export const mobRace = (m) => (m && RACES.includes(m.race) ? raceName(m.race) : '');
 
 // ---------- 遗物 ----------
 // 设计红线：遗物只改变「代价与收益」，不改变「信息量」——不自动标雷、不透视威胁，
@@ -636,11 +684,14 @@ export const BAL = {
 };
 
 function makeMob(s, f, d, type) {
-  // 只读深度、难度与怪种：世界规则不因玩家面板变化，打不过就是打不过。
-  const pool = BESTIARY.filter((b) => f >= b.min && f <= b.max);
-  const b = type === 'elite' ? { id: 'guardian', icon: 'guardian', hp: 1, atk: 1, def: 0 }
-    : type === 'boss' ? { id: 'dragon', icon: 'dragon', hp: 1, atk: 1, def: 0 }
-      : pick(s, pool.length ? pool : BESTIARY);
+  // 只读深度、难度、区域与怪种：世界规则不因玩家面板变化，打不过就是打不过。
+  const region = themeAt(s, f) || 'base';
+  const roster = ROSTERS[region];
+  const zd = zoneDepth(f);
+  const pool = roster.filter((b) => zd >= b.min && zd <= b.max);
+  const b = type === 'elite' ? ELITES[region]
+    : type === 'boss' ? BOSSES[region]
+      : pick(s, pool.length ? pool : roster);
   const P = d.power;
   const B = BAL;
   const depth = depthOf(f);
@@ -652,7 +703,7 @@ function makeMob(s, f, d, type) {
   let gold = Math.round((BAL.mobGold + BAL.mobGoldF * f) * d.loot);
   if (type === 'elite') { hp = Math.round(hp * 1.9); atk = Math.round(atk * 1.3); xp *= 3; gold = Math.round(gold * 3.2); }
   if (type === 'boss') { hp = Math.round(hp * 3.4); atk = Math.round(atk * 1.45); xp = 120; gold = 260; }
-  return { id: b.id, icon: b.icon, hp, maxHp: hp, atk, def, xp, gold, elite: type === 'elite', boss: type === 'boss' };
+  return { id: b.id, icon: b.icon, race: b.race, hp, maxHp: hp, atk, def, xp, gold, elite: type === 'elite', boss: type === 'boss' };
 }
 
 export function ensureBoard(s, safeIndex) {
@@ -1842,7 +1893,7 @@ export function tryDescend(s) {
 function defeatBoss(s, t, out) {
   if (isFinalFloor(s.floor)) return out.concat(winRun(s));
   s.bossDown = true;
-  say(s, 'log.boss.down', { mob: ref('mob.dragon.name') }, 'good');
+  say(s, 'log.boss.down', { mob: ref('mob.' + t.mob.id + '.name') }, 'good');
   ev(out, 'bossDown', { floor: s.floor });
   t.relicDrop = true;
   say(s, 'log.relic.drop', 'magic');

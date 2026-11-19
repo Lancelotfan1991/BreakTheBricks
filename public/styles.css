@@ -565,6 +565,7 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
 .mob-name{font-family:var(--display);font-size:19px;letter-spacing:.08em;margin:0;display:flex;align-items:center;gap:6px}
 .mob-tag{font-family:var(--font);font-size:9px;letter-spacing:.14em;padding:2px 6px;border-radius:5px;background:var(--gold);color:#2a1c00}
 .mob-tag.boss{background:var(--magenta);color:#2a0020}
+.mob-race{font-family:var(--font);font-size:9px;letter-spacing:.12em;padding:2px 6px;border-radius:5px;border:1px solid rgba(201,163,255,.34);color:var(--ink-3)}
 .mob-flavor{margin:3px 0 0;font-size:11px;color:var(--ink-3);line-height:1.6}
 .stat-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
 .stat{padding:7px 3px;border-radius:10px;background:rgba(0,0,0,.32);border:1px solid rgba(255,255,255,.06);text-align:center}

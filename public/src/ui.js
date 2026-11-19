@@ -1053,6 +1053,8 @@ function openCombat(i) {
   const lossPct = Math.min(100, f.take / p.maxHp * 100);
   const kind = t.kind === 'boss' ? 'boss' : t.kind === 'elite' ? 'elite' : '';
   const tag = t.kind === 'boss' ? `<span class="mob-tag boss">${tr('ui.combat.tag.boss')}</span>` : t.kind === 'elite' ? `<span class="mob-tag">${tr('ui.combat.tag.elite')}</span>` : '';
+  const race = G.mobRace(m);
+  const raceTag = race ? `<span class="mob-race">${race}</span>` : '';
   const note = f.lethal
     ? `<p class="fc-note danger">${tr(forced ? 'ui.combat.note.doom' : 'ui.combat.note.lethal', { take: f.take, hp: p.hp })}</p>`
     : f.take === 0
@@ -1085,7 +1087,7 @@ function openCombat(i) {
     </div>
     <div class="mob-card ${kind}">
       <div class="mob-portrait">${svg(m.icon)}</div>
-      <div class="mob-info"><h3 class="mob-name">${G.mobName(m)}${tag}</h3><p class="mob-flavor">${G.mobFlavor(m)}</p></div>
+      <div class="mob-info"><h3 class="mob-name">${G.mobName(m)}${raceTag}${tag}</h3><p class="mob-flavor">${G.mobFlavor(m)}</p></div>
     </div>
     ${ambushNote}
     <div class="stat-grid">

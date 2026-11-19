@@ -331,6 +331,17 @@ test('召唤图腾：每 5 回合召一只精锐，最多 3 只；精锐给奖�
   assert.equal(s.tiles.filter((t) => t.summoned).length, before, '耗尽后不再召');
 });
 
+test('图腾遗迹：召唤出的精锐用本区名号与种族', () => {
+  const s = summonArena(31, 14);
+  s.actThemes[2] = 'totem';
+  s.hazardClock = G.HAZARD_TICK - 1;
+  G.tickHazards(s, []);
+  const u = s.tiles.find((t) => t.summoned);
+  assert.ok(u, '应召来精锐');
+  assert.equal(u.mob.id, 'totemWarden');
+  assert.equal(u.mob.race, 'construct');
+});
+
 test('召唤图腾：炸弹可直接毁掉，毁掉后不再召唤', () => {
   const s = summonArena(23, 14);
   const totem = find(s, 'totemSummon')[0];

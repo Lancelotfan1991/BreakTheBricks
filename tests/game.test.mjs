@@ -792,6 +792,33 @@ test('主题状态可存档往返：已选区、待选区与候选都按白名�
   assert.equal(dirty.themeChoices, null);
 });
 
+test('区域怪物：每个区域的杂兵、精英与首领都来自本区', () => {
+  const R = {
+    base: { boss: 'dragon', elite: 'guardian', ids: ['bat', 'slime', 'skeleton', 'spider', 'orc', 'golem', 'wraith'] },
+    inferno: { boss: 'infernoLord', elite: 'emberWarden', ids: ['emberBat', 'magmaSlime', 'cinderBone', 'ashSpider', 'emberImp', 'obsidianGolem', 'emberWraith'] },
+    totem: { boss: 'totemColossus', elite: 'totemWarden', ids: ['altarBat', 'mudPuppet', 'runeBone', 'totemSpider', 'totemOrc', 'stoneWarden', 'oathWraith'] },
+    grave: { boss: 'graveLord', elite: 'graveKeeper', ids: ['cryptBat', 'corpseWax', 'risenBone', 'cryptSpider', 'ghoul', 'tombGolem', 'wailWraith'] },
+  };
+  for (const [region, bossFloor] of [['base', 10], ['inferno', 20], ['totem', 20], ['grave', 30]]) {
+    const s = G.createRun('normal', 12);
+    s.actThemes[G.actOf(bossFloor)] = region === 'base' ? null : region;
+    s.floor = bossFloor; G.buildFloor(s); G.ensureBoard(s, 30);
+    const boss = find(s, 'boss')[0];
+    assert.equal(boss.mob.id, R[region].boss, `${region} 的首领用错了`);
+    assert.ok(G.RACES.includes(boss.mob.race), '首领必须有有效种族');
+    for (const t of find(s, 'monster')) {
+      assert.ok(R[region].ids.includes(t.mob.id), `${region} 出现外区杂兵 ${t.mob.id}`);
+      assert.ok(G.RACES.includes(t.mob.race), `${t.mob.id} 缺有效种族`);
+    }
+  }
+  for (const [region, floor] of [['base', 11], ['inferno', 11], ['totem', 21], ['grave', 21]]) {
+    const s = G.createRun('normal', 13);
+    s.actThemes[G.actOf(floor)] = region === 'base' ? null : region;
+    s.floor = floor; G.buildFloor(s); G.ensureBoard(s, 30);
+    assert.equal(find(s, 'elite')[0].mob.id, R[region].elite, `${region} 的精英用错了`);
+  }
+});
+
 test('遗物掉落有节奏：守卫每 2 层一次，走完全程也拿不满池子', () => {
   const all = Array.from({ length: G.MAX_FLOOR }, (_, k) => k + 1);
   const guardDrops = all.filter((f) => G.isRelicFloor(f));
