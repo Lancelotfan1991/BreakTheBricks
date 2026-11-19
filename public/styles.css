@@ -584,6 +584,11 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
 .fc-note{margin:0;font-size:11px;line-height:1.6;color:var(--ink-3)}
 .fc-note.danger{color:#ff9aab;font-weight:700}
 .fc-note.good{color:var(--acid)}
+/* 逐击战斗：预演藏到长按之后，面板默认只留属性 */
+.sheet-body [hidden]{display:none!important}
+.fc-preview{animation:fade .18s ease-out}
+.fc-hint{margin:0;text-align:center;font-size:10.5px;letter-spacing:.04em;color:var(--ink-3)}
+.sheet .btn{touch-action:manipulation;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
 .fc-toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
   padding:7px 11px;border-radius:10px;font-size:11.5px;letter-spacing:.04em;color:var(--ink-3);text-align:left;
   background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07)}

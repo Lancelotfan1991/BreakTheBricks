@@ -1661,6 +1661,81 @@ function killMob(s, t, out, opts = {}) {
   return xp;
 }
 
+// 单次交换的预演：只算这一刀与它这一口反击，供逐击战斗使用。
+export function forecastOnce(p, mob, atk = p.atk) {
+  const deal = hitDamage(atk, mob.def) + (mob.elite || mob.boss ? (p.eliteAtkBonus || 0) : 0);
+  const reviveHp = mob.reviveHp && !mob.revived ? mob.reviveHp : 0;
+  const kill = deal >= mob.hp && !reviveHp;
+  const revive = deal >= mob.hp && !!reviveHp;
+  const perHit = hitDamage(mob.atk, p.def);
+  let take = kill ? 0 : Math.max(0, Math.round(perHit * p.takeMul) - p.takeFlat);
+  if (p.freeKill) take = 0;
+  const mobAfter = kill ? 0 : revive ? reviveHp : Math.max(1, mob.hp - deal);
+  const thorns = kill ? 0 : p.thorns;
+  return { deal, take, kill, revive, lethal: take >= p.hp, perHit, thorns, thornsKill: thorns > 0 && thorns >= mobAfter, mobAfter, reviveHp };
+}
+
+function afterKill(s, t, out) {
+  if (t.kind === 'boss') {
+    const beaten = defeatBoss(s, t, out);
+    if (s.status !== 'playing') return beaten;
+    tickHazards(s, beaten);
+    return finish(s, beaten);
+  }
+  if (s.status === 'playing') tickHazards(s, out);
+  return finish(s, out);
+}
+
+// 逐击结算：你砍一刀，它若还活着就还手一次；击杀不挨反击，反震跟着还手触发。
+// 整场结算仍走 attack()，供模拟与测试使用。
+export function strike(s, i) {
+  const out = [];
+  if (s.status !== 'playing') return out;
+  const t = s.tiles[i];
+  if (!t || !t.mob || t.mob.hp <= 0) return out;
+  const p = s.player, m = t.mob;
+  const f = forecastOnce(p, m, atkOf(s));
+  const forced = s.forcedCombat === i;
+  // 普通遭遇不会被一击必死拖下水；偷袭战无路可退，只能硬吃。
+  if (f.lethal && !forced) { say(s, 'log.attack.lethal', 'bad'); ev(out, 'blocked', { i }); return out; }
+  s.stats.turns++;
+  ev(out, 'combat', { i, rounds: 1, take: f.take, deal: f.deal, revive: f.reviveHp });
+
+  const before = m.hp;
+  m.hp = Math.max(0, m.hp - f.deal);
+  ev(out, 'mobHurt', { i, amount: Math.min(f.deal, before) });
+  if (m.hp <= 0) {
+    // 墓园的第二管血：这一刀只打空第一管，它站起来后仍然会还手。
+    if (m.reviveHp && !m.revived) {
+      m.revived = true;
+      m.hp = m.reviveHp;
+      say(s, 'log.revive', { mob: ref('mob.' + m.id + '.name'), hp: m.reviveHp }, 'bad');
+      ev(out, 'revive', { i, hp: m.reviveHp });
+    } else {
+      const xp = killMob(s, t, out);
+      say(s, 'log.kill.strike', { mob: ref('mob.' + m.id + '.name'), xp }, 'good');
+      return afterKill(s, t, out);
+    }
+  }
+
+  if (f.take > 0) {
+    hurt(s, f.take, out, 'mob', i, m.id);
+    if (s.status !== 'playing') return out;
+  }
+  if (f.thorns > 0 && m.hp > 0) {
+    const had = m.hp;
+    m.hp = Math.max(0, m.hp - f.thorns);
+    ev(out, 'mobHurt', { i, amount: Math.min(f.thorns, had) });
+    say(s, 'log.strike.thorns', { n: Math.min(f.thorns, had) }, 'magic');
+    if (m.hp <= 0) {
+      const xp = killMob(s, t, out);
+      say(s, 'log.kill.strike', { mob: ref('mob.' + m.id + '.name'), xp }, 'good');
+      return afterKill(s, t, out);
+    }
+  }
+  return finish(s, out);
+}
+
 export function attack(s, i) {
   const out = [];
   if (s.status !== 'playing') return out;
@@ -1684,14 +1759,7 @@ export function attack(s, i) {
   }
   const xp = killMob(s, t, out);
   say(s, 'log.kill', { mob: ref('mob.' + t.mob.id + '.name'), rounds: f.rounds, take: f.take, xp }, 'good');
-  if (t.kind === 'boss') {
-    const beaten = defeatBoss(s, t, out);
-    if (s.status !== 'playing') return beaten;
-    tickHazards(s, beaten);
-    return finish(s, beaten);
-  }
-  if (s.status === 'playing') tickHazards(s, out);
-  return finish(s, out);
+  return afterKill(s, t, out);
 }
 
 export function closePending(s) {

@@ -2480,6 +2480,102 @@ test('反震甲：它省的是回合数，不是每击伤害', () => {
   assert.ok(b.take < a.take, '反震减少承伤');
 });
 
+test('逐击：strike 只走一刀一还手，预演与结算同值', () => {
+  const s = fresh('normal', 7);
+  const t = s.tiles.find((x) => x.mob && x.mob.hp > 0);
+  const p = s.player;
+  p.hp = p.maxHp = 500;
+  Object.assign(t.mob, { hp: 30, maxHp: 30, atk: 5, def: 1, reviveHp: 0 });
+  const f = G.forecastOnce(p, t.mob, G.atkOf(s));
+  assert.equal(f.kill, false);
+  const me = p.hp;
+  const evs = G.strike(s, t.i);
+  assert.equal(t.mob.hp, 30 - f.deal, '只掉这一刀的伤害');
+  assert.equal(p.hp, me - f.take, '只挨这一口反击');
+  assert.equal(evs.filter((e) => e.type === 'combat').length, 1);
+});
+
+test('逐击：击杀不挨反击，且只结算一次', () => {
+  const s = fresh('normal', 7);
+  const t = s.tiles.find((x) => x.mob && x.mob.hp > 0);
+  const p = s.player;
+  p.hp = p.maxHp = 500;
+  Object.assign(t.mob, { hp: 1, maxHp: 30, atk: 30, def: 0, reviveHp: 0 });
+  const me = p.hp, xp = t.mob.xp;
+  G.strike(s, t.i);
+  assert.equal(t.mob.hp, 0);
+  assert.equal(p.hp, me, '击杀回合不还手');
+  assert.ok(t.used);
+  assert.equal(s.stats.kills, 1);
+  assert.equal(s.tiles.filter((x) => x.i === t.i && x.mob.hp > 0).length, 0);
+  assert.ok(xp >= 0);
+});
+
+test('逐击：非强制遭遇会被必死的一击拦下，偷袭战才硬吃', () => {
+  const s = fresh('normal', 7);
+  const t = s.tiles.find((x) => x.mob && x.mob.hp > 0);
+  const p = s.player;
+  p.hp = 1;
+  Object.assign(t.mob, { hp: 30, maxHp: 30, atk: 9, def: 0, reviveHp: 0 });
+  const f = G.forecastOnce(p, t.mob, G.atkOf(s));
+  assert.equal(f.lethal, true);
+  const evs = G.strike(s, t.i);
+  assert.ok(evs.some((e) => e.type === 'blocked'));
+  assert.equal(t.mob.hp, 30);
+
+  s.forcedCombat = t.i;
+  const hp0 = t.mob.hp;
+  G.strike(s, t.i);
+  assert.ok(t.mob.hp < hp0 || s.status === 'dead', '偷袭战不退让');
+});
+
+test('逐击：墓园的复活在逐击里也是先站起来再还手', () => {
+  const s = fresh('normal', 7);
+  const t = s.tiles.find((x) => x.mob && x.mob.hp > 0);
+  const p = s.player;
+  p.hp = p.maxHp = 500;
+  Object.assign(t.mob, { hp: 5, maxHp: 40, atk: 6, def: 0, reviveHp: 8, revived: false });
+  const f = G.forecastOnce(p, t.mob, G.atkOf(s));
+  assert.equal(f.revive, true);
+  assert.equal(f.kill, false);
+  assert.equal(f.mobAfter, 8);
+  const me = p.hp;
+  G.strike(s, t.i);
+  assert.equal(t.mob.hp, 8, '第一管血打空后按复活量站起');
+  assert.equal(t.mob.revived, true);
+  assert.equal(p.hp, me - f.take, '站起来后照常还手');
+  t.mob.hp = 1;
+  p.hp = 500;
+  G.strike(s, t.i);
+  assert.ok(t.used, '第二条命打空才算击杀');
+});
+
+test('逐击：反震在它还手之后补刀，补刀击杀也先挨这一口', () => {
+  const s = fresh('normal', 7);
+  const t = s.tiles.find((x) => x.mob && x.mob.hp > 0);
+  const p = s.player;
+  p.hp = p.maxHp = 500;
+  p.thorns = 3;
+  Object.assign(t.mob, { hp: 20, maxHp: 20, atk: 5, def: 1, reviveHp: 0 });
+  const me = p.hp;
+  G.strike(s, t.i);
+  assert.equal(t.mob.hp, 13, '这一刀 4 点，反震 3 点');
+  assert.equal(p.hp, me - 4);
+
+  const s2 = fresh('normal', 7);
+  const t2 = s2.tiles.find((x) => x.mob && x.mob.hp > 0);
+  const p2 = s2.player;
+  p2.hp = p2.maxHp = 500;
+  p2.thorns = 3;
+  Object.assign(t2.mob, { hp: 6, maxHp: 20, atk: 5, def: 1, reviveHp: 0 });
+  const f2 = G.forecastOnce(p2, t2.mob, G.atkOf(s2));
+  assert.equal(f2.thornsKill, true);
+  const me2 = p2.hp;
+  G.strike(s2, t2.i);
+  assert.ok(t2.used, '反震补刀算击杀');
+  assert.equal(p2.hp, me2 - 4, '补刀之前仍然先吃反击');
+});
+
 test('血气方刚：攻击按生命上限派生，重复同步不叠加', () => {
   const s = fresh('normal', 5);
   const atk0 = s.player.atk;

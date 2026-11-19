@@ -918,15 +918,19 @@ function doFlag(i) {
 
 /* ─────────── 抽屉 ─────────── */
 function openSheet(kind, html, lock = false) {
+  const wasHidden = el.sheet.hidden;
   sheetKind = kind; sheetLock = lock;
   el.sheetBody.innerHTML = html;
   el.sheetBody.scrollTop = 0;
   el.scrim.hidden = false;
   el.sheet.hidden = false;
-  el.sheet.style.animation = 'none'; void el.sheet.offsetWidth; el.sheet.style.animation = '';
+  // 同一张面板原地刷新时不重播滑入动画，逐击战斗才不会每刀弹一次。
+  if (wasHidden) { el.sheet.style.animation = 'none'; void el.sheet.offsetWidth; el.sheet.style.animation = ''; }
 }
 function closeSheet() {
   if (sheetLock) return;
+  clearTimeout(attackHoldTimer);
+  attackHoldUsed = false;
   sheetKind = null;
   el.scrim.hidden = true;
   el.sheet.hidden = true;
@@ -936,9 +940,11 @@ function closeSheet() {
 function forceClose() { sheetLock = false; closeSheet(); }
 
 /* ─────────── 横版战斗演绎 ─────────── */
-// 只演绎 forecast() 已经算好的结果：刀数、承伤、回合数都不变，动画不参与任何判定。
+// 每次只演一刀一还手：敌我血量按 forecastOnce() 的结果走，动画不参与判定。
 const motionReduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 let battleSeq = 0;
+let attackHoldTimer = 0;
+let attackHoldUsed = false;
 
 function btFloat(node, text, cls) {
   const s = el.btStage.getBoundingClientRect(), r = node.getBoundingClientRect();
@@ -957,9 +963,9 @@ function btReplay(node, cls) {
   node.classList.add(cls);
 }
 
-function runBattle(i, done) {
+function runExchange(i, done) {
   const t = S.tiles[i], m = t.mob, p = S.player;
-  const f = G.forecast(p, m, G.atkOf(S));
+  const f = G.forecastOnce(p, m, G.atkOf(S));
   if (skipBattleAnim || motionReduced()) { done(); return; }
   const seq = ++battleSeq;
   const bo = el.battle;
@@ -988,7 +994,7 @@ function runBattle(i, done) {
   let finished = false;
   const alive = () => !finished && seq === battleSeq && !bo.hidden;
   const wait = (ms, fn) => timers.push(setTimeout(() => { if (alive()) fn(); }, ms));
-  const skip = () => { if (alive()) end(true); };
+  const skip = () => end(true);
   const end = (instant) => {
     if (finished) return;
     finished = true;
@@ -996,7 +1002,7 @@ function runBattle(i, done) {
     bo.removeEventListener('pointerdown', skip);
     if (instant) {
       mobHp = 0;
-      heroHp = Math.max(0, p.hp - f.take);
+      heroHp = 0;
       paintMob(); paintHero();
     }
     bo.hidden = true;
@@ -1005,62 +1011,64 @@ function runBattle(i, done) {
   };
   bo.addEventListener('pointerdown', skip);
 
-  const counters = Math.max(0, f.counters);
-  const shares = [];
-  for (let c = 1, acc = 0; c <= counters; c++) {
-    const upto = Math.round(f.take * c / counters);
-    shares.push(upto - acc);
-    acc = upto;
-  }
-  const rounds = Math.max(1, f.rounds);
-  const step = Math.max(110, Math.min(240, 1500 / (rounds * 2)));
-  let at = 60;
-  for (let r = 1; r <= rounds; r++) {
-    wait(at, () => btReplay(el.btHero, 'lunge-r'));
-    wait(at + 70, () => {
-      mobHp = r === rounds ? 0 : Math.max(0, mobHp - f.deal);
-      paintMob();
-      if (f.deal > 0) btFloat(el.btMob, '-' + f.deal, 'dmg');
-      if (r % 2 === 1) audio.play('swing');
-    });
-    if (r <= counters) {
-      const dmg = shares[r - 1] || 0;
-      wait(at + step, () => btReplay(el.btMob, 'lunge-l'));
-      if (dmg > 0) wait(at + step + 60, () => {
-        heroHp = Math.max(0, heroHp - dmg);
-        paintHero();
-        btFloat(el.btHero, '-' + dmg, 'hero-hit');
-        audio.play('hit');
-      });
-    }
-    at += step * 2;
-  }
-  wait(at + 30, () => {
-    btReplay(el.btMob, 'dying');
-    el.btKill.classList.add('on');
-    audio.play('kill');
-    fx.haptic('medium');
-    if (t.kind === 'boss' || t.kind === 'elite') fx.shake(el.board, t.kind === 'boss' ? 'heavy' : '');
-    wait(560, () => end(false));
+  wait(50, () => btReplay(el.btHero, 'lunge-r'));
+  wait(120, () => {
+    mobHp = f.revive ? 0 : Math.max(0, mobHp - f.deal);
+    paintMob();
+    if (f.deal > 0) btFloat(el.btMob, '-' + f.deal, 'dmg');
   });
+  if (f.kill) {
+    wait(220, () => {
+      btReplay(el.btMob, 'dying');
+      el.btKill.classList.add('on');
+      audio.play('kill');
+      fx.haptic('medium');
+      if (t.kind === 'boss' || t.kind === 'elite') fx.shake(el.board, t.kind === 'boss' ? 'heavy' : '');
+    });
+    wait(820, () => end(false));
+    return;
+  }
+
+  const at = f.revive ? 400 : 260;
+  if (f.revive) {
+    wait(340, () => {
+      mobHp = m.reviveHp || 0;
+      paintMob();
+      btFloat(el.btMob, tr('ui.battle.revive'), 'xp');
+      audio.play('altar');
+    });
+  }
+  wait(at, () => btReplay(el.btMob, 'lunge-l'));
+  wait(at + 110, () => {
+    heroHp = Math.max(0, heroHp - f.take);
+    paintHero();
+    if (f.take > 0) { btFloat(el.btHero, '-' + f.take, 'hero-hit'); audio.play('hit'); }
+  });
+  let endAt = at + 520;
+  if (f.thorns > 0) {
+    wait(at + 240, () => {
+      mobHp = Math.max(0, mobHp - f.thorns);
+      paintMob();
+      btFloat(el.btMob, '-' + f.thorns, 'dmg');
+      if (mobHp <= 0) {
+        btReplay(el.btMob, 'dying');
+        el.btKill.classList.add('on');
+        audio.play('kill');
+      }
+    });
+    endAt = at + 900;
+  }
+  wait(endAt, () => end(false));
 }
 
 function openCombat(i) {
   const t = S.tiles[i], m = t.mob, p = S.player;
-  const f = G.forecast(p, m, G.atkOf(S));
+  const f = G.forecastOnce(p, m, G.atkOf(S));
   const forced = S.forcedCombat === i;
-  const safePct = Math.max(0, (p.hp - f.take) / p.maxHp * 100);
-  const lossPct = Math.min(100, f.take / p.maxHp * 100);
   const kind = t.kind === 'boss' ? 'boss' : t.kind === 'elite' ? 'elite' : '';
   const tag = t.kind === 'boss' ? `<span class="mob-tag boss">${tr('ui.combat.tag.boss')}</span>` : t.kind === 'elite' ? `<span class="mob-tag">${tr('ui.combat.tag.elite')}</span>` : '';
   const race = G.mobRace(m);
   const raceTag = race ? `<span class="mob-race">${race}</span>` : '';
-  const note = f.lethal
-    ? `<p class="fc-note danger">${tr(forced ? 'ui.combat.note.doom' : 'ui.combat.note.lethal', { take: f.take, hp: p.hp })}</p>`
-    : f.take === 0
-      ? `<p class="fc-note">${tr('ui.combat.note.free')}</p>`
-      : `<p class="fc-note">${tr(p.thorns ? 'ui.combat.note.thorns' : 'ui.combat.note.normal', { rounds: f.rounds, counters: f.counters, recoil: f.counters * p.thorns })}</p>`;
-  const thornRow = p.thorns ? `<div class="fc-row free"><span>${tr('ui.combat.row.thorns')}</span><b>${p.thorns}</b></div>` : '';
   const cutParts = [
     m.cut && m.cut.def ? tr('ui.combat.cut.def', { n: m.cut.def }) : '',
     m.cut && m.cut.atk ? tr('ui.combat.cut.atk', { n: m.cut.atk }) : '',
@@ -1068,17 +1076,28 @@ function openCombat(i) {
   const cutNote = cutParts.length
     ? `<p class="fc-note good">${tr('ui.combat.cut', { parts: cutParts.join(tr('ui.combat.cut.sep')) })}</p>`
     : '';
-  // 墓园的复活已经算进下面的回合与承伤，这里只说明它为什么多出一段血
   const reviveNote = f.reviveHp
-    ? `<p class="fc-note danger">${tr('ui.combat.revive', { hp: f.reviveHp, rounds: f.rounds })}</p>`
+    ? `<p class="fc-note danger">${tr('ui.combat.revive', { hp: f.reviveHp })}</p>`
     : '';
   const ambushDmg = forced ? G.ambushDamage(p, m) : 0;
   const ambushNote = forced
     ? `<p class="fc-note${ambushDmg > 0 ? ' danger' : ''}">${tr(ambushDmg > 0 ? 'ui.combat.ambush.note' : 'ui.combat.ambush.note.block', { n: ambushDmg })}</p>`
     : '';
-  const bombRow = p.bombs > 0
-    ? `<div class="fc-row"><span>${tr('ui.combat.bombDmg')}</span><b>${G.bombDamage(S, m)}</b></div>`
-    : '';
+  const meAfter = Math.max(0, p.hp - f.take);
+  const onceNote = f.kill
+    ? tr('ui.combat.once.kill')
+    : f.lethal
+      ? tr(forced ? 'ui.combat.once.doom' : 'ui.combat.once.lethal', { take: f.take, hp: p.hp })
+      : f.revive
+        ? tr('ui.combat.once.revive', { hp: m.reviveHp, take: f.take })
+        : f.thornsKill
+          ? tr('ui.combat.once.thornsKill', { take: f.take })
+          : f.take === 0
+            ? tr('ui.combat.once.free')
+            : f.thorns > 0
+              ? tr('ui.combat.once.thorns', { n: f.thorns })
+              : '';
+  const onceCls = f.lethal || f.thornsKill ? ' danger' : f.kill ? ' good' : '';
   // 偷袭战没有逃跑：不渲染关闭/再想想，面板本身也锁住，直到把它打倒
   openSheet('combat', `
     <div class="sheet-head">
@@ -1099,16 +1118,15 @@ function openCombat(i) {
     </div>
     ${cutNote}
     ${reviveNote}
-    <div class="forecast">
-      <div class="fc-row"><span>${tr('ui.combat.deal')}</span><b>${f.deal}</b></div>
-      ${thornRow}
-      <div class="fc-row"><span>${tr('ui.combat.rounds')}</span><b>${f.rounds}</b></div>
-      <div class="fc-row ${f.take ? 'hurt' : 'free'}"><span>${tr('ui.combat.take')}</span><b>${f.take}</b></div>
-      ${bombRow}
-      <div class="fc-bar"><i class="fc-safe" style="width:${safePct}%"></i><i class="fc-loss" style="width:${lossPct}%"></i></div>
-      ${note}
+    <div class="forecast fc-preview" hidden>
+      <div class="fc-row"><span>${tr('ui.combat.once.deal')}</span><b>${f.deal}</b></div>
+      <div class="fc-row ${f.take ? 'hurt' : 'free'}"><span>${tr('ui.combat.once.take')}</span><b>${f.take}</b></div>
+      <div class="fc-row"><span>${tr('ui.combat.once.mobLeft')}</span><b>${f.mobAfter}</b></div>
+      <div class="fc-row ${meAfter > 0 ? '' : 'hurt'}"><span>${tr('ui.combat.once.youLeft')}</span><b>${meAfter}</b></div>
+      ${onceNote ? `<p class="fc-note${onceCls}">${onceNote}</p>` : ''}
     </div>
     <div class="sheet-foot">
+      <p class="fc-hint">${tr('ui.combat.hold')}</p>
       <button class="fc-toggle${skipBattleAnim ? ' on' : ''}" data-sheet="btAnim" aria-pressed="${skipBattleAnim}">
         <span>${tr('ui.combat.anim')}</span><i class="fc-sw" aria-hidden="true"></i>
       </button>
@@ -1603,6 +1621,26 @@ el.ticker.addEventListener('keydown', (e) => {
 
 el.scrim.addEventListener('click', () => { if (!sheetLock) { audio.play('ui'); closeSheet(); } });
 
+// 长按攻击只亮出这一击的预演，不落子；松手后的那次 click 被吞掉，要点第二下才真的挥剑。
+el.sheetBody.addEventListener('pointerdown', (e) => {
+  const b = e.target.closest && e.target.closest('[data-sheet="attack"]');
+  if (!b || busy) return;
+  clearTimeout(attackHoldTimer);
+  attackHoldUsed = false;
+  attackHoldTimer = setTimeout(() => {
+    const pv = el.sheetBody.querySelector('.fc-preview');
+    if (!pv) return;
+    attackHoldUsed = true;
+    pv.hidden = false;
+    el.sheetBody.scrollTop = el.sheetBody.scrollHeight;
+    fx.buzz(8);
+    audio.play('ui');
+  }, 220);
+});
+for (const evt of ['pointerup', 'pointercancel', 'pointerleave']) {
+  el.sheetBody.addEventListener(evt, () => clearTimeout(attackHoldTimer));
+}
+
 el.sheetBody.addEventListener('click', (e) => {
   const b = e.target.closest('[data-sheet]');
   if (!b) return;
@@ -1619,13 +1657,20 @@ el.sheetBody.addEventListener('click', (e) => {
       b.setAttribute('aria-pressed', String(skipBattleAnim));
       break;
     case 'attack': {
+      if (attackHoldUsed) { attackHoldUsed = false; break; }
       const i = +b.dataset.i;
+      const t = S.tiles[i];
+      if (!t || !t.mob || t.mob.hp <= 0) break;
       const forced = S.forcedCombat === i;
-      const lethal = G.forecast(S.player, S.tiles[i].mob, G.atkOf(S)).lethal;
-      forceClose();
-      // 偷袭战的必死一击不需要战斗演绎：演出会先「击破」怪物，与实际的一击即死相反
-      if (forced && lethal) { apply(G.attack(S, i)); break; }
-      runBattle(i, () => apply(G.attack(S, i)));
+      const f = G.forecastOnce(S.player, t.mob, G.atkOf(S));
+      // 必死的一击不演，直接交给 blocked 反馈
+      if (f.lethal && !forced) { apply(G.strike(S, i)); break; }
+      runExchange(i, () => {
+        const evs = G.strike(S, i);
+        const dead = !t.mob || t.mob.hp <= 0;
+        if (dead || S.status !== 'playing') forceClose();
+        apply(evs, { keepSheet: true });
+      });
       break;
     }
     case 'bomb': { const i = +b.dataset.i; forceClose(); G.setMode(S, 'bomb'); apply(G.tapTile(S, i)); break; }
@@ -1719,6 +1764,6 @@ window.__game = {
   tap: doTap, flag: doFlag,
   start: startRun, resume: resumeRun, toTitle,
   sheet: () => sheetKind,
-  closeSheet, openShop, openHelp, openCodex, openRelicDraw, openLevelDraw, openTalentDraw, openBonus, openCombat, openLog, battle: runBattle,
+  closeSheet, openShop, openHelp, openCodex, openRelicDraw, openLevelDraw, openTalentDraw, openBonus, openCombat, openLog, battle: runExchange,
   setDifficulty: (d) => { difficulty = d; renderTitle(); },
 };
