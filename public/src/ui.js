@@ -933,20 +933,11 @@ function closeSheet() {
 }
 function forceClose() { sheetLock = false; closeSheet(); }
 
-/* ─────────── 战斗反馈：面板内血量变化 + 震动 ─────────── */
-// 不切页：结算立即落到面板，命中与还手只用血条、飘字和轻震表现。
+/* ─────────── 战斗反馈：面板内血条变化 + 震动 ─────────── */
+// 不切页、不飘字：伤害只体现在玩家与怪物两条同高血条上，配轻震。
 const motionReduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 let attackHoldTimer = 0;
 let attackHoldUsed = false;
-
-function sheetPop(host, text, cls) {
-  if (!host || !host.isConnected || motionReduced()) return;
-  const s = document.createElement('span');
-  s.className = 'fc-float ' + cls;
-  s.textContent = text;
-  host.appendChild(s);
-  setTimeout(() => s.remove(), 720);
-}
 
 function sheetHit(node) {
   if (!node || motionReduced()) return;
@@ -955,30 +946,36 @@ function sheetHit(node) {
   node.classList.add('hit');
 }
 
-// f 是结算前的预演：数字已落到新状态，这里只补「刚刚发生了什么」的反馈。
-function playExchangeFx(f) {
+function slideBar(fill, fromPct, toPct) {
+  if (!fill) return;
+  fill.style.transition = 'none';
+  fill.style.width = Math.max(0, fromPct * 100) + '%';
+  void fill.offsetWidth;
+  fill.style.transition = 'width .3s cubic-bezier(.2,.9,.3,1)';
+  fill.style.width = Math.max(0, toPct * 100) + '%';
+}
+
+// b 记录结算前的双方血量；面板已重渲染到新值，这里把血条从旧值滑到新值。
+function playExchangeFx(f, b) {
   if (motionReduced()) return;
-  const card = el.sheetBody.querySelector('.mob-card');
-  sheetHit(card);
-  sheetPop(card, '-' + f.deal, 'dmg');
+  const q = (s) => el.sheetBody.querySelector(s);
+  sheetHit(q('.mob-card'));
+  slideBar(q('.hp-foe-fill'), b.mob / b.mobMax, S.tiles[b.i].mob.hp / b.mobMax);
   fx.haptic('light');
-  const counterAt = f.revive ? 320 : 170;
-  if (f.revive) setTimeout(() => sheetPop(el.sheetBody.querySelector('.mob-card'), tr('ui.combat.revive.tag'), 'xp'), 220);
+  // 玩家血条先停在旧值，等怪物还手那一下再落
+  const youFill = q('.hp-you-fill'), youNum = q('.hp-side.you .hp-num');
+  if (youFill) youFill.style.width = Math.max(0, b.me / b.meMax * 100) + '%';
+  if (youNum) youNum.textContent = b.me + '/' + b.meMax;
   if (f.take > 0) {
     setTimeout(() => {
       if (sheetKind !== 'combat') return;
-      const me = el.sheetBody.querySelector('.me-strip');
-      sheetHit(me);
-      sheetPop(me, '-' + f.take, 'hurt');
+      sheetHit(q('.hp-side.you'));
+      slideBar(q('.hp-you-fill'), b.me / b.meMax, S.player.hp / b.meMax);
+      const n = q('.hp-side.you .hp-num');
+      if (n) n.textContent = S.player.hp + '/' + b.meMax;
       fx.haptic('medium');
       audio.play('hit');
-    }, counterAt);
-  }
-  if (f.thorns > 0) {
-    setTimeout(() => {
-      if (sheetKind !== 'combat') return;
-      sheetPop(el.sheetBody.querySelector('.mob-card'), '-' + f.thorns, 'dmg');
-    }, counterAt + 150);
+    }, f.revive ? 300 : 160);
   }
 }
 
@@ -1025,18 +1022,22 @@ function openCombat(i) {
       <div><h2 class="sheet-title">${tr(forced ? 'ui.combat.title.ambush' : 'ui.combat.title')}</h2><p class="sheet-sub">${tr(forced ? 'ui.combat.sub.ambush' : 'ui.combat.sub')}</p></div>
       ${forced ? '' : `<button class="icon-btn sheet-close" data-sheet="close" aria-label="${tr('ui.btn.close')}">${svg('close')}</button>`}
     </div>
-    <div class="me-strip">
-      <span class="me-label">${tr('ui.combat.me')}</span>
-      <div class="me-bar"><i style="width:${Math.max(0, p.hp / p.maxHp * 100)}%"></i></div>
-      <b class="me-hp">${p.hp}/${p.maxHp}</b>
-    </div>
     <div class="mob-card ${kind}">
       <div class="mob-portrait">${svg(m.icon)}</div>
       <div class="mob-info"><h3 class="mob-name">${G.mobName(m)}${raceTag}${tag}</h3><p class="mob-flavor">${G.mobFlavor(m)}</p></div>
     </div>
+    <div class="hp-duel">
+      <div class="hp-side you">
+        <div class="hp-top"><span class="hp-name">${tr('ui.combat.me')}</span><b class="hp-num">${p.hp}/${p.maxHp}</b></div>
+        <div class="hp-bar"><i class="hp-you-fill" style="width:${Math.max(0, p.hp / p.maxHp * 100)}%"></i></div>
+      </div>
+      <div class="hp-side foe">
+        <div class="hp-top"><span class="hp-name">${G.mobName(m)}</span><b class="hp-num">${m.hp}/${m.maxHp}</b></div>
+        <div class="hp-bar"><i class="hp-foe-fill" style="width:${Math.max(0, m.hp / m.maxHp * 100)}%"></i></div>
+      </div>
+    </div>
     ${ambushNote}
     <div class="stat-grid">
-      <div class="stat hp"><i>${tr('ui.combat.stat.hp')}</i><b>${m.hp}</b></div>
       <div class="stat atk"><i>${tr('ui.combat.stat.atk')}</i><b>${m.atk}</b></div>
       <div class="stat def"><i>${tr('ui.combat.stat.def')}</i><b>${m.def}</b></div>
       <div class="stat xp"><i>${tr('ui.combat.stat.xp')}</i><b>${m.xp}</b></div>
@@ -1582,11 +1583,12 @@ el.sheetBody.addEventListener('click', (e) => {
       const f = G.forecastOnce(S.player, t.mob, G.atkOf(S));
       // 必死的一击直接交给 blocked 反馈
       if (f.lethal && !forced) { apply(G.strike(S, i)); break; }
+      const snap = { i, mob: t.mob.hp, me: S.player.hp, mobMax: t.mob.maxHp, meMax: S.player.maxHp };
       const evs = G.strike(S, i);
       const dead = !t.mob || t.mob.hp <= 0;
       if (dead || S.status !== 'playing') forceClose();
       apply(evs, { keepSheet: true });
-      if (!dead && S.status === 'playing' && sheetKind === 'combat') playExchangeFx(f);
+      if (!dead && S.status === 'playing' && sheetKind === 'combat') playExchangeFx(f, snap);
       break;
     }
     case 'bomb': { const i = +b.dataset.i; forceClose(); G.setMode(S, 'bomb'); apply(G.tapTile(S, i)); break; }

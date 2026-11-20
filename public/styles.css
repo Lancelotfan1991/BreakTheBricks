@@ -567,7 +567,7 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
 .mob-tag.boss{background:var(--magenta);color:#2a0020}
 .mob-race{font-family:var(--font);font-size:9px;letter-spacing:.12em;padding:2px 6px;border-radius:5px;border:1px solid rgba(201,163,255,.34);color:var(--ink-3)}
 .mob-flavor{margin:3px 0 0;font-size:11px;color:var(--ink-3);line-height:1.6}
-.stat-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 .stat{padding:7px 3px;border-radius:10px;background:rgba(0,0,0,.32);border:1px solid rgba(255,255,255,.06);text-align:center}
 .stat i{font-style:normal;display:block;font-size:9px;letter-spacing:.1em;color:var(--ink-3);margin-bottom:2px}
 .stat b{font-family:var(--num);font-size:15px}
@@ -737,24 +737,25 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
 @keyframes countPop{0%{transform:scale(1)}35%{transform:scale(1.6)}100%{transform:scale(1)}}
 
 /* ── 战斗反馈：全部发生在战斗面板内，不切页 ───────────────────── */
-.me-strip{position:relative;display:flex;align-items:center;gap:8px;padding:8px 11px;border-radius:11px;
-  background:rgba(0,0,0,.26);border:1px solid rgba(125,255,90,.16)}
-.me-strip .me-label{font-size:11px;letter-spacing:.1em;color:var(--ink-2);flex:none}
-.me-strip .me-bar{flex:1;height:8px;border-radius:4px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.07);overflow:hidden}
-.me-strip .me-bar i{display:block;height:100%;background:linear-gradient(90deg,#2fbf4f,#7dff5a);transition:width .25s cubic-bezier(.2,.9,.3,1)}
-.me-strip .me-hp{font-family:var(--num);font-size:12px;color:var(--ink);flex:none}
-.me-strip.hit{animation:meHit .34s}
-@keyframes meHit{0%,100%{transform:none}30%{transform:translateX(-4px);border-color:rgba(255,59,92,.6);box-shadow:0 0 14px rgba(255,59,92,.3)}60%{transform:translateX(4px)}}
+/* 玩家与怪物血条同高并排，伤害只靠血条变化表现，不飘字 */
+.hp-duel{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.hp-side{position:relative;display:flex;flex-direction:column;gap:5px;padding:8px 10px;border-radius:11px;
+  background:rgba(0,0,0,.26);border:1px solid rgba(255,255,255,.07)}
+.hp-side.you{border-color:rgba(125,255,90,.18)}
+.hp-side.foe{border-color:rgba(255,59,92,.22)}
+.hp-top{display:flex;align-items:baseline;justify-content:space-between;gap:6px;min-width:0}
+.hp-name{font-size:10px;letter-spacing:.06em;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hp-num{font-family:var(--num);font-size:12px;color:var(--ink);flex:none}
+.hp-bar{height:10px;border-radius:5px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.08);overflow:hidden}
+.hp-bar i{display:block;height:100%}
+.hp-you-fill{background:linear-gradient(90deg,#2fbf4f,#7dff5a)}
+.hp-foe-fill{background:linear-gradient(90deg,#ff2d55,#ff7a3d)}
+.hp-side.hit{animation:hpHit .34s}
+@keyframes hpHit{0%,100%{transform:none}30%{transform:translateX(-3px);box-shadow:0 0 12px rgba(255,59,92,.3)}60%{transform:translateX(3px)}}
 .mob-card.hit{animation:mobHit .34s}
 @keyframes mobHit{0%,100%{transform:none}25%{transform:translateX(-4px);border-color:rgba(255,59,92,.7);box-shadow:0 0 16px rgba(255,59,92,.3)}55%{transform:translateX(4px)}}
 .mob-card.hit .mob-portrait .ic{animation:mobFlash .34s}
 @keyframes mobFlash{0%,100%{filter:none}30%{filter:brightness(2.4) saturate(.4)}}
-.fc-float{position:absolute;left:50%;top:6px;transform:translateX(-50%);font-family:var(--num);font-weight:700;font-size:16px;
-  pointer-events:none;z-index:4;text-shadow:0 2px 6px #000;animation:fcFloat .7s ease-out forwards}
-.fc-float.dmg{color:#ff8098}
-.fc-float.hurt{color:#ff9aab}
-.fc-float.xp{color:var(--acid);font-size:11px;letter-spacing:.1em}
-@keyframes fcFloat{0%{opacity:0;transform:translate(-50%,6px) scale(.8)}20%{opacity:1;transform:translate(-50%,0) scale(1.08)}100%{opacity:0;transform:translate(-50%,-22px) scale(1)}}
 
 /* ── 滚动条 ───────────────────────────────── */
 *{scrollbar-width:thin;scrollbar-color:#7a4fa0 rgba(0,0,0,.3)}
@@ -823,7 +824,7 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
 @media (max-width:340px){
   .act span{font-size:8.5px}
   .chip{padding:3px 5px 3px 4px;font-size:10.5px}
-  .stat-grid{grid-template-columns:repeat(3,1fr)}
+  .stat-grid{grid-template-columns:repeat(2,1fr)}
   .rcards{grid-template-columns:1fr}
   .rcard{flex-direction:row;flex-wrap:wrap;align-items:center;text-align:left;gap:4px 9px;padding:10px}
   .rcard-ic{width:38px;height:38px}

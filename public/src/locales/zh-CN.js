@@ -680,8 +680,6 @@ export default {
   'ui.combat.cut.def': '防御 −{n}',
   'ui.combat.cut.atk': '攻击 −{n}',
   'ui.combat.revive': '墓园的死者会复生：第一管血打空后，它会以 {hp} 点生命再站起来并还手。',
-  'ui.combat.revive.tag': '复活',
-  'ui.combat.stat.hp': '生命',
   'ui.combat.stat.atk': '攻击',
   'ui.combat.stat.def': '防御',
   'ui.combat.stat.xp': '经验',
