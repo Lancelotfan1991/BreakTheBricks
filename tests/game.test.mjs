@@ -1918,39 +1918,41 @@ test('军械箱：获得时立刻补充六枚炸弹', () => {
   assert.equal(s.player.bombs, 1 + G.RELIC_BOMB_CACHE);
 });
 
-test('遗物商店：亮出一件按品级计价、本局限购 3 次、集齐后拒绝', () => {
+test('遗物商店：摆出三件按品级计价、点选购买、本局限购 3 次、集齐后拒绝', () => {
   const s = fresh('normal', 606);
   s.player.gold = 1000;
   assert.equal(G.RELIC_SHOP_CAP, 3);
   const setup = () => {
     G.buildFloor(s); G.ensureBoard(s, 30);
     const t = s.tiles.find((x) => x.kind === 'empty');
-    t.kind = 'shopRelic'; t.revealed = true; t.stock = { relic: 1 };
+    t.kind = 'shopRelic'; t.revealed = true;
     const pool = G.relicPool(s);
-    t.relicOffer = pool.length ? pool[0].id : null;
-    if (!t.relicOffer) t.stock.relic = 0;
+    t.relicOffer = pool.slice(0, 3).map((r) => r.id);
+    t.stock = { relic: t.relicOffer.length };
     return t;
   };
-  for (let k = 0; k < 3; k++) {
-    const t = setup();
-    const r = G.relicById(t.relicOffer);
-    const price = G.relicPrice(s, r.rarity);
-    assert.equal(price, G.RELIC_PRICE[r.rarity], '按品级 100/150/200 定价');
-    const g0 = s.player.gold;
-    const evs = G.eventBuy(s, t.i, 'relic');
-    assert.ok(evs.some((e) => e.type === 'relicGain'), '购买后直接获得那件遗物');
-    assert.ok(!evs.some((e) => e.type === 'relicOffer'), '不弹出三选一');
-    assert.equal(s.player.gold, g0 - price);
-    assert.equal(s.bought.relic, k + 1);
-    assert.ok(G.hasRelic(s, t.relicOffer));
-    assert.equal(t.used, true, '买空即熄灭');
-  }
-  assert.equal(s.relics.length, 3);
+  const t0 = setup();
+  assert.equal(t0.relicOffer.length, 3, '应摆出三件');
+  const first = t0.relicOffer[0];
+  const r0 = G.relicById(first);
+  const price0 = G.relicPrice(s, r0.rarity);
+  assert.equal(price0, G.RELIC_PRICE[r0.rarity], '按品级 100/150/200 定价');
+  const g0 = s.player.gold;
+  const evs = G.eventBuy(s, t0.i, 'relic', first);
+  assert.ok(evs.some((e) => e.type === 'relicGain'), '购买后直接获得那件遗物');
+  assert.ok(!evs.some((e) => e.type === 'relicOffer'), '不弹出三选一');
+  assert.equal(s.player.gold, g0 - price0);
+  assert.ok(G.hasRelic(s, first));
+  assert.equal(t0.relicOffer.length, 2, '买走一件剩两件');
+  assert.equal(t0.used, false);
+  while (t0.relicOffer.length) G.eventBuy(s, t0.i, 'relic', t0.relicOffer[0]);
+  assert.equal(t0.used, true, '三件买空熄灭');
+  assert.equal(s.bought.relic, 3);
   assert.equal(new Set(s.relics).size, 3, '不会重复发已拥有的遗物');
 
   const t4 = setup();
   const gold = s.player.gold, buys = s.bought.relic;
-  const out = G.eventBuy(s, t4.i, 'relic');
+  const out = G.eventBuy(s, t4.i, 'relic', t4.relicOffer[0]);
   assert.ok(out.some((e) => e.type === 'deny'), '超过 3 次后拒绝');
   assert.equal(s.player.gold, gold, '拒绝时不扣钱');
   assert.equal(s.bought.relic, buys, '拒绝时不计数');
@@ -1958,8 +1960,8 @@ test('遗物商店：亮出一件按品级计价、本局限购 3 次、集齐�
   s.relics = G.RELICS.map((r) => r.id);
   s.bought.relic = 0;
   const t5 = setup();
-  assert.equal(t5.relicOffer, null, '集齐后无货可卖');
-  assert.ok(G.eventBuy(s, t5.i, 'relic').some((e) => e.type === 'deny'), '集齐后拒绝');
+  assert.equal(t5.relicOffer.length, 0, '集齐后无货可卖');
+  assert.ok(G.eventBuy(s, t5.i, 'relic', 'whatever').some((e) => e.type === 'deny'), '集齐后拒绝');
 });
 
 test('旗数预算：上限＝难度基数，超限拒绝，拔旗后归还', () => {

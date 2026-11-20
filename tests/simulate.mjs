@@ -5,6 +5,7 @@ import {
   forecast, neighbors, canDescend, SIZE, MAX_FLOOR, shopPrice, setMode, chooseRelic, chooseLevel,
   levelChoiceStat, levelChoiceAmount, chooseTalent, atkOf, wallOpen, chooseTheme,
   toggleFlag, flagCap, flagBonusLeft, ALTAR_FLAG_BONUS, RELIC_SURVEY_CAP, RELIC_SHOP_CAP, EVENT_ITEMS,
+  relicById, relicPrice,
 } from '../public/src/game.js';
 
 const isMob = (t) => t.mob && t.mob.hp > 0;
@@ -77,7 +78,19 @@ function shopPass(s, build) {
   };
   const tryBuy = (id) => {
     const t = tileFor(id);
-    if (t && (t.stock[id] || 0) > 0 && p.gold >= shopPrice(s, id)) {
+    if (!t) return false;
+    if (id === 'relic') {
+      const offers = (t.relicOffer || []).filter((rid) => !s.relics.includes(rid));
+      if (!offers.length || (s.bought.relic || 0) >= RELIC_SHOP_CAP) return false;
+      const saved = s.relicChoices;
+      s.relicChoices = offers;
+      const rid = pickRelic(s, build);
+      s.relicChoices = saved;
+      const r = relicById(rid);
+      if (r && p.gold >= relicPrice(s, r.rarity)) return eventBuy(s, t.i, 'relic', rid).some((e) => e.type === 'buy');
+      return false;
+    }
+    if ((t.stock[id] || 0) > 0 && p.gold >= shopPrice(s, id)) {
       return eventBuy(s, t.i, id).some((e) => e.type === 'buy');
     }
     return false;

@@ -72,7 +72,7 @@ export const EVENT_ITEMS = {
 // 永久属性（神龛）每格各 1 件，配合价格递增双重防止金币无限换战力。
 export const EVENT_STOCK = {
   shopSupply: { potion: 2, scroll: 2, bomb: 2 },
-  shopRelic: { relic: 1 },
+  shopRelic: { relic: 3 },
   shrine: { whet: 1, plate: 1, elixir: 1, pouch: 1 },
 };
 export const WALL_MIN_FLOOR = 3;       // 石墙是全地城共有的结构，从第 3 层起每层都有
@@ -805,11 +805,10 @@ export function ensureBoard(s, safeIndex) {
     t.kind = p.event;
     t.revealed = true;
     t.stock = { ...EVENT_STOCK[p.event] };
-    // 遗物商店亮出具体一件：生成时按当前层稀有度权重掷定，购买前可见品级与价格。
+    // 遗物商店摆出三件：生成时按当前层稀有度权重掷定，购买前可见品级与价格，点哪件买哪件。
     if (p.event === 'shopRelic') {
-      const pool = relicPool(s);
-      t.relicOffer = pool.length ? takeWeighted(s, pool, relicRarityWeights(s.floor)).id : null;
-      if (!t.relicOffer) t.stock.relic = 0;
+      t.relicOffer = rollRelicChoices(s);
+      t.stock.relic = t.relicOffer.length;
     }
     say(s, 'log.event.spawn', { name: ref('event.' + p.event + '.name') }, 'magic');
   }
@@ -1888,14 +1887,14 @@ export function buy(s, id) {
 
 // 事件格购买：校验类别与库存。消耗品/神龛走 buy()（固定价）；遗物按亮出的那件品级计价。
 // 成交后扣库存，整格买空即标记 used；下一层的新事件格才补满库存。
-export function eventBuy(s, i, id) {
+export function eventBuy(s, i, id, choice) {
   const out = [];
   if (s.status !== 'playing') return out;
   const t = s.tiles[i];
   if (!t || t.used || !EVENT_KINDS.includes(t.kind)) { ev(out, 'deny'); return out; }
   if (!EVENT_ITEMS[t.kind].includes(id)) { say(s, 'log.event.wrong', 'warn'); ev(out, 'deny'); return out; }
   if ((t.stock[id] || 0) <= 0) { say(s, 'log.event.soldout', 'warn'); ev(out, 'deny'); return out; }
-  if (id === 'relic') return buyRelicOffer(s, t, out);
+  if (id === 'relic') return buyRelicOffer(s, t, out, choice);
   const res = buy(s, id);
   if (res.some((e) => e.type === 'buy')) {
     t.stock[id] -= 1;
@@ -1904,16 +1903,18 @@ export function eventBuy(s, i, id) {
   return res;
 }
 
-// 遗物商店卖的是格子上亮出的那件遗物（t.relicOffer），按品级 100/150/200 计价，本局限购 RELIC_SHOP_CAP 件。
-function buyRelicOffer(s, t, out) {
-  const rid = t.relicOffer;
-  const r = rid ? relicById(rid) : null;
-  if (!r || hasRelic(s, rid) || relicShopLeft(s) <= 0) { say(s, 'log.relic.soldout', 'warn'); ev(out, 'deny'); return out; }
+// 遗物商店摆出三件（t.relicOffer），点选哪件就按那件品级 100/150/200 计价；
+// 买走后从货架移除，本局限购 RELIC_SHOP_CAP 件，三件买空即熄灭。
+function buyRelicOffer(s, t, out, rid) {
+  const offers = Array.isArray(t.relicOffer) ? t.relicOffer : [];
+  const r = rid && offers.includes(rid) ? relicById(rid) : null;
+  if (!r || hasRelic(s, rid) || relicShopLeft(s) <= 0 || flagRelicNeed(r) > flagBonusLeft(s)) { say(s, 'log.relic.soldout', 'warn'); ev(out, 'deny'); return out; }
   const price = relicPrice(s, r.rarity);
   if (s.player.gold < price) { say(s, 'log.no.gold', 'warn'); ev(out, 'deny'); return out; }
   s.player.gold -= price;
   s.bought.relic = (s.bought.relic || 0) + 1;
-  t.stock.relic = (t.stock.relic || 0) - 1;
+  t.relicOffer = offers.filter((x) => x !== rid);
+  t.stock.relic = t.relicOffer.length;
   if (t.stock.relic <= 0) t.used = true;
   say(s, 'log.buy', { item: ref('relic.' + rid + '.name'), price }, 'good');
   ev(out, 'buy', { id: 'relic', price });
@@ -2272,7 +2273,10 @@ export function deserialize(text) {
       t.fire = !!t.fire;
       t.summoned = !!t.summoned;
       if (EVENT_KINDS.includes(t.kind) && (!t.stock || typeof t.stock !== 'object')) t.stock = { ...EVENT_STOCK[t.kind] };
-      if (t.kind === 'shopRelic' && !relicById(t.relicOffer)) { t.relicOffer = null; t.stock.relic = 0; }
+      if (t.kind === 'shopRelic') {
+        t.relicOffer = Array.isArray(t.relicOffer) ? t.relicOffer.filter((id) => relicById(id)) : [];
+        t.stock.relic = t.relicOffer.length;
+      }
     }
     return s;
   } catch { return null; }

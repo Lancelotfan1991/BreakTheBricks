@@ -1132,19 +1132,26 @@ function openEvent(i) {
   const kind = t.kind;
   let rows, sub;
   if (kind === 'shopRelic') {
-    const rid = t.relicOffer, r = rid ? G.relicById(rid) : null;
-    const stock = (t.stock && t.stock.relic) || 0;
-    const price = r ? G.relicPrice(S, r.rarity) : 0;
-    const soldout = !r || stock <= 0 || G.relicShopLeft(S) <= 0 || G.hasRelic(S, rid);
-    const can = !soldout && p.gold >= price;
-    sub = tr('ui.event.shopRelic.sub', { cap: G.RELIC_SHOP_CAP, left: G.relicShopLeft(S) });
-    rows = r
-      ? `<button class="opt" data-sheet="eventBuy" data-i="${i}" data-id="relic" ${can ? '' : 'disabled'}>
-          <span class="opt-ic" style="color:${G.RELIC_RARITY[r.rarity].color}">${svg(r.icon)}</span>
-          <span class="opt-tx"><b>${G.relicName(r)}<span class="opt-rar" style="color:${G.RELIC_RARITY[r.rarity].color}">${G.rarityName(r.rarity)}</span></b><span>${G.relicDesc(r)}</span></span>
-          <span class="opt-stock">${tr('ui.event.stock', { n: stock })}</span>
-          <span class="opt-price ${can ? '' : 'no'}">${soldout ? tr('ui.shop.soldout') : `${svg('coin')}${price}`}</span>
-        </button>`
+    const offers = Array.isArray(t.relicOffer) ? t.relicOffer : [];
+    const left = G.relicShopLeft(S);
+    sub = tr('ui.event.shopRelic.sub', { cap: G.RELIC_SHOP_CAP, left });
+    rows = offers.length
+      ? `<div class="rcards">${offers.map((rid) => {
+          const r = G.relicById(rid);
+          const price = G.relicPrice(S, r.rarity);
+          const owned = G.hasRelic(S, rid);
+          const sold = owned || left <= 0;
+          const can = !sold && p.gold >= price;
+          const priceTx = owned ? tr('ui.event.relic.owned') : left <= 0 ? tr('ui.shop.soldout') : `${svg('coin')}${price}`;
+          return `<button class="rcard" data-sheet="eventBuy" data-i="${i}" data-id="relic" data-relic="${rid}" style="--rc:${G.RELIC_RARITY[r.rarity].color}" ${can ? '' : 'disabled'}>
+            <span class="rcard-rar">${G.rarityName(r.rarity)}</span>
+            <span class="rcard-ic">${svg(r.icon)}</span>
+            <b class="rcard-name">${G.relicName(r)}</b>
+            <span class="rcard-cat">${G.catName(r.cat)}</span>
+            <span class="rcard-desc">${G.relicDesc(r)}</span>
+            <span class="rcard-price ${can ? '' : 'no'}">${priceTx}</span>
+          </button>`;
+        }).join('')}</div>`
       : `<p class="fc-note">${tr('ui.event.relic.empty')}</p>`;
   } else {
     rows = G.EVENT_ITEMS[kind].map((id) => {
@@ -1637,7 +1644,7 @@ el.sheetBody.addEventListener('click', (e) => {
     case 'theme': { const id = b.dataset.choice; closeSheet(); apply(G.chooseTheme(S, id)); break; }
     case 'eventBuy': {
       const i = +b.dataset.i;
-      const evs = G.eventBuy(S, i, b.dataset.id);
+      const evs = G.eventBuy(S, i, b.dataset.id, b.dataset.relic);
       consume(evs); render(); saveRun();
       if (S.tiles[i] && !S.tiles[i].used && G.EVENT_KINDS.includes(S.tiles[i].kind)) openEvent(i);
       else closeSheet();
