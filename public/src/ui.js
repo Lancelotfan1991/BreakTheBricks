@@ -187,6 +187,9 @@ function tileView(t) {
     if (t.kind === 'chest') { cls += ' tile-chest tile-pick'; inner = svg('chest'); return { cls, inner, n, label }; }
     if (t.kind === 'potion') { cls += ' tile-potion tile-pick'; inner = svg('potion'); return { cls, inner, n, label }; }
     if (t.kind === 'altar') { cls += ' tile-altar'; inner = svg('altar'); return { cls, inner, n, label }; }
+    if (t.kind === 'shopSupply') { cls += ' tile-event tile-supply tile-pick'; inner = svg('coin'); return { cls, inner, n, label }; }
+    if (t.kind === 'shopRelic') { cls += ' tile-event tile-relicshop tile-pick'; inner = svg('relic'); return { cls, inner, n, label }; }
+    if (t.kind === 'shrine') { cls += ' tile-event tile-shrine tile-pick'; inner = svg('altar'); return { cls, inner, n, label }; }
   }
   // 占用失效后必须和空地一样给出邻雷数，否则这些格子会成为推断雷位的信息黑洞
   n = t.n;
@@ -816,6 +819,7 @@ function consume(events) {
       }
       case 'stairs': { const c = tileCenter(e.i); fx.portal(c.x, c.y); audio.play('stairs'); fx.haptic('medium'); toast(tr('ui.toast.stairs'), 'magic'); break; }
       case 'altar': audio.play('altar'); break;
+      case 'event': audio.play('altar'); break;
       case 'altarUsed': { const c = tileCenter(e.i); fx.magic(c.x, c.y); break; }
       case 'bomb': { const c = tileCenter(e.i); fx.boom(c.x, c.y); fx.shake(el.board); audio.play('bomb'); fx.haptic('heavy'); break; }
       case 'disarm': { if (solveSet.has(e.i)) break; const c = tileCenter(e.i); fx.dust(c.x, c.y); break; }
@@ -890,6 +894,7 @@ function openDrawers() {
   if (S.pendingCombat >= 0) { openCombat(S.pendingCombat); return true; }
   if (S.pendingAltar >= 0) { openAltar(S.pendingAltar); return true; }
   if (S.pendingDoor >= 0) { openDoor(S.pendingDoor); return true; }
+  if (S.pendingEvent >= 0) { openEvent(S.pendingEvent); return true; }
   if (S.themeChoices) { openTheme(); return true; }
   return false;
 }
@@ -1123,27 +1128,38 @@ function openTheme() {
   audio.play('altar');
 }
 
-function openShop() {  const p = S.player;
-  const rows = G.SHOP.map((it) => {
-    const price = G.shopPrice(S, it.id);
-    const soldout = it.id === 'relic'
+function openEvent(i) {
+  const t = S.tiles[i], p = S.player;
+  const kind = t.kind;
+  const rows = G.EVENT_ITEMS[kind].map((id) => {
+    const it = G.SHOP.find((x) => x.id === id);
+    const price = G.shopPrice(S, id);
+    const soldout = id === 'relic'
       ? G.relicShopLeft(S) <= 0 || G.relicPool(S).length === 0
-      : it.id === 'pouch' && G.flagBonusLeft(S) <= 0;
+      : id === 'pouch' && G.flagBonusLeft(S) <= 0;
     const can = !soldout && p.gold >= price;
-    return `<button class="opt" data-sheet="buy" data-id="${it.id}" ${can ? '' : 'disabled'}>
+    return `<button class="opt" data-sheet="eventBuy" data-i="${i}" data-id="${id}" ${can ? '' : 'disabled'}>
       <span class="opt-ic">${svg(it.icon)}</span>
       <span class="opt-tx"><b>${G.shopName(it)}</b><span>${G.shopDesc(it, S)}</span></span>
-      <span class="opt-price ${can ? '' : 'no'}">${soldout ? tr(it.id === 'pouch' ? 'ui.shop.full' : 'ui.shop.soldout') : `${svg('coin')}${price}`}</span>
+      <span class="opt-price ${can ? '' : 'no'}">${soldout ? tr(id === 'pouch' ? 'ui.shop.full' : 'ui.shop.soldout') : `${svg('coin')}${price}`}</span>
     </button>`;
   }).join('');
-  openSheet('shop', `
+  const sub = kind === 'shopRelic'
+    ? tr('ui.event.shopRelic.sub', { cap: G.RELIC_SHOP_CAP, left: G.relicShopLeft(S) })
+    : tr('ui.event.' + kind + '.sub');
+  const statline = kind === 'shrine'
+    ? `<div class="statline">${tr('ui.event.stat.atk')} <b>${p.atk}</b> · ${tr('ui.event.stat.def')} <b>${p.def}</b> · ${tr('ui.event.stat.hp')} <b>${p.maxHp}</b> · ${tr('ui.event.stat.flag')} <b>${p.flagBonus}/${G.FLAG_BONUS_CAP}</b></div>`
+    : '';
+  openSheet('event', `
     <div class="sheet-head">
-      <div><h2 class="sheet-title">${tr('ui.shop.title')}</h2><p class="sheet-sub">${tr('ui.shop.sub')}</p></div>
-      <button class="icon-btn sheet-close" data-sheet="close" aria-label="${tr('ui.btn.close')}">${svg('close')}</button>
+      <div><h2 class="sheet-title">${tr('event.' + kind + '.name')}</h2><p class="sheet-sub">${sub}</p></div>
+      <button class="icon-btn sheet-close" data-sheet="skip" aria-label="${tr('ui.btn.close')}">${svg('close')}</button>
     </div>
     <div class="gold-line">${svg('coin')}<span>${tr('ui.shop.hold')}</span><b>${p.gold}</b></div>
+    ${statline}
     ${rows}
-    <div class="sheet-actions"><button class="btn btn-ghost" data-sheet="close">${tr('ui.shop.leave')}</button></div>`);
+    <div class="sheet-actions"><button class="btn btn-ghost" data-sheet="skip">${tr('ui.event.leave')}</button></div>`);
+  audio.play('altar');
 }
 
 function openHelp() {
@@ -1157,6 +1173,9 @@ function openHelp() {
     ['chest', 'ui.help.lg.chest', '#ffd54a'],
     ['potion', 'ui.help.lg.potion', '#7dff5a'],
     ['altar', 'ui.help.lg.altar', '#ff4fd8'],
+    ['coin', 'ui.help.lg.supply', '#ffd54a'],
+    ['relic', 'ui.help.lg.relicShop', '#c9a3ff'],
+    ['altar', 'ui.help.lg.shrine', '#7dff5a'],
     ['relic', 'ui.help.lg.relic', '#c9a3ff'],
     ['wall', 'ui.help.lg.wall', '#b9a9c6'],
     ['flame', 'ui.help.lg.fire', '#ff9f3a'],
@@ -1238,6 +1257,10 @@ function openHelp() {
       <p class="help-p">${tr('ui.help.machine.totem', P)}</p>
       <p class="help-p">${tr('ui.help.machine.grave', P)}</p>
       <p class="help-p">${tr('ui.help.machine.door', P)}</p>
+    </div>
+    <div class="help-sec">
+      <h3 class="help-h">${tr('ui.help.event.h')}</h3>
+      <p class="help-p">${tr('ui.help.event.p', { min: G.EVENT_GAP_MIN, max: G.EVENT_GAP_MAX, shopCap: G.RELIC_SHOP_CAP })}</p>
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.solve.h')}</h3>
@@ -1531,7 +1554,6 @@ document.addEventListener('click', (e) => {
     case 'bonus': if (S && !S.levelChoices && !S.talentPending) openBonus(); break;
     case 'menu': if (S && !S.talentPending) openMenu(); break;
     case 'potion': if (S && !guard()) apply(G.usePotion(S)); break;
-    case 'shop': if (S && !guard()) openShop(); break;
     case 'descend': if (S && !guard()) apply(G.tryDescend(S)); break;
   }
 });
@@ -1596,10 +1618,12 @@ el.sheetBody.addEventListener('click', (e) => {
     case 'altar': { const i = +b.dataset.i; closeSheet(); apply(G.altarChoose(S, i, b.dataset.choice)); break; }
     case 'doorGo': { const i = +b.dataset.i; closeSheet(); apply(G.useDoor(S, i)); break; }
     case 'theme': { const id = b.dataset.choice; closeSheet(); apply(G.chooseTheme(S, id)); break; }
-    case 'buy': {
-      const evs = G.buy(S, b.dataset.id);
-      if (S.relicChoices) apply(evs);
-      else { consume(evs); render(); saveRun(); openShop(); }
+    case 'eventBuy': {
+      const i = +b.dataset.i;
+      const evs = G.eventBuy(S, i, b.dataset.id);
+      consume(evs); render(); saveRun();
+      if (S.tiles[i] && !S.tiles[i].used && G.EVENT_KINDS.includes(S.tiles[i].kind)) openEvent(i);
+      else closeSheet();
       break;
     }
     case 'talent': {
@@ -1647,7 +1671,6 @@ document.addEventListener('keydown', (e) => {
   else if (k === '3') apply(G.setMode(S, 'scroll'));
   else if (k === '4') apply(G.setMode(S, 'bomb'));
   else if (k === 'q') apply(G.usePotion(S));
-  else if (k === 'b') openShop();
   else if (k === 'h') openHelp();
   else if (k === 'r') openCodex();
 });
@@ -1682,6 +1705,6 @@ window.__game = {
   tap: doTap, flag: doFlag,
   start: startRun, resume: resumeRun, toTitle,
   sheet: () => sheetKind,
-  closeSheet, openShop, openHelp, openCodex, openRelicDraw, openLevelDraw, openTalentDraw, openBonus, openCombat, openLog,
+  closeSheet, openEvent, openHelp, openCodex, openRelicDraw, openLevelDraw, openTalentDraw, openBonus, openCombat, openLog,
   setDifficulty: (d) => { difficulty = d; renderTitle(); },
 };

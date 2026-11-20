@@ -1,10 +1,10 @@
 // 自动玩家：用于平衡性与稳定性验证
 // node tests/simulate.mjs [runs] [difficulty] [build] [talent]   build ∈ reason(推理流) / body(体魄流)，缺省为混合抓取；talent ∈ gladiator / brawler / treasureHunter / healer
 import {
-  createRun, tapTile, attack, usePotion, buy, altarChoose, tryDescend, closePending, useDoor,
+  createRun, tapTile, attack, usePotion, eventBuy, altarChoose, tryDescend, closePending, useDoor,
   forecast, neighbors, canDescend, SIZE, MAX_FLOOR, shopPrice, setMode, chooseRelic, chooseLevel,
   levelChoiceStat, levelChoiceAmount, chooseTalent, atkOf, wallOpen, chooseTheme,
-  toggleFlag, flagCap, flagBonusLeft, ALTAR_FLAG_BONUS, RELIC_SURVEY_CAP, RELIC_SHOP_CAP,
+  toggleFlag, flagCap, flagBonusLeft, ALTAR_FLAG_BONUS, RELIC_SURVEY_CAP, RELIC_SHOP_CAP, EVENT_ITEMS,
 } from '../public/src/game.js';
 
 const isMob = (t) => t.mob && t.mob.hp > 0;
@@ -70,16 +70,26 @@ function bestSafeTile(s) {
 
 function shopPass(s, build) {
   const p = s.player;
+  // 购买只能发生在当前层的事件格上：找到卖这件商品的那类格子再下单
+  const tileFor = (id) => {
+    const kind = Object.keys(EVENT_ITEMS).find((k) => EVENT_ITEMS[k].includes(id));
+    return s.tiles.find((t) => t.kind === kind && t.revealed && !t.used);
+  };
+  const tryBuy = (id) => {
+    const t = tileFor(id);
+    if (t && p.gold >= shopPrice(s, id)) { eventBuy(s, t.i, id); return true; }
+    return false;
+  };
   let guard = 0;
   while (guard++ < 12) {
-    if (p.hp < p.maxHp * 0.5 && p.potions === 0 && p.gold >= shopPrice(s, 'potion')) { buy(s, 'potion'); continue; }
-    if (build === 'reason' && flagBonusLeft(s) > 0 && p.gold >= shopPrice(s, 'pouch') + 20) { buy(s, 'pouch'); continue; }
-    if (build === 'body' && p.gold >= shopPrice(s, 'elixir') + 20) { buy(s, 'elixir'); continue; }
-    if (p.gold >= shopPrice(s, 'whet') + 20) { buy(s, 'whet'); continue; }
-    if (p.gold >= shopPrice(s, 'plate') + 20) { buy(s, 'plate'); continue; }
-    if (build === 'reason' && p.scrolls < 2 && p.gold >= shopPrice(s, 'scroll') + 20) { buy(s, 'scroll'); continue; }
-    if (p.potions < 2 && p.gold >= shopPrice(s, 'potion')) { buy(s, 'potion'); continue; }
-    if (s.bought.relic < RELIC_SHOP_CAP && p.gold >= shopPrice(s, 'relic') + 40) { buy(s, 'relic'); return; }
+    if (p.hp < p.maxHp * 0.5 && p.potions === 0 && tryBuy('potion')) continue;
+    if (build === 'reason' && flagBonusLeft(s) > 0 && p.gold >= shopPrice(s, 'pouch') + 20 && tryBuy('pouch')) continue;
+    if (build === 'body' && p.gold >= shopPrice(s, 'elixir') + 20 && tryBuy('elixir')) continue;
+    if (p.gold >= shopPrice(s, 'whet') + 20 && tryBuy('whet')) continue;
+    if (p.gold >= shopPrice(s, 'plate') + 20 && tryBuy('plate')) continue;
+    if (build === 'reason' && p.scrolls < 2 && p.gold >= shopPrice(s, 'scroll') + 20 && tryBuy('scroll')) continue;
+    if (p.potions < 2 && tryBuy('potion')) continue;
+    if ((s.bought.relic || 0) < RELIC_SHOP_CAP && p.gold >= shopPrice(s, 'relic') + 40 && tryBuy('relic')) return;
     break;
   }
 }

@@ -7,7 +7,7 @@ export const ROWS = 9;
 export const SIZE = COLS * ROWS;
 export const MAX_FLOOR = 30;
 export const BOSS_EVERY = 10;
-export const SAVE_VERSION = 14;
+export const SAVE_VERSION = 15;
 export const isBossFloor = (f) => f % BOSS_EVERY === 0;
 export const isFinalFloor = (f) => f >= MAX_FLOOR;
 
@@ -60,6 +60,16 @@ export const STRATA_HP = 3;            // 层岩誓约：每下行一层的生�
 // 机关是叠加在地板之上的额外层级：不替代格子内容，也不改变「数字只数威胁」的规则。
 // 每 5 次有效操作结算一次地城时钟：魔法图腾脉冲、火势蔓延都挂在这一拍上。
 export const HAZARD_TICK = 5;
+// 事件格：每 3-5 层落一个（消耗品商店 / 遗物商店 / 属性神龛），类型轮转保证三类都露面。
+// 事件不是威胁，不计入邻格数字；出现即亮在棋盘上，点开购买，价格沿用商店曲线。
+export const EVENT_GAP_MIN = 3;
+export const EVENT_GAP_MAX = 5;
+export const EVENT_KINDS = ['shopSupply', 'shopRelic', 'shrine'];
+export const EVENT_ITEMS = {
+  shopSupply: ['potion', 'scroll', 'bomb'],
+  shopRelic: ['relic'],
+  shrine: ['whet', 'plate', 'elixir', 'pouch'],
+};
 export const WALL_MIN_FLOOR = 3;       // 石墙是全地城共有的结构，从第 3 层起每层都有
 export const WALL_MIN = 3;             // 一簇石墙的格数
 export const WALL_MAX = 5;
@@ -571,10 +581,13 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
     forcedCombat: -1,
     pendingAltar: -1,
     pendingDoor: -1,
+    pendingEvent: -1,
+    eventSchedule: [],
     stats: { kills: 0, revealed: 0, goldEarned: 0, damage: 0, turns: 0, chests: 0, chestRelics: 0 },
     log: [],
     logId: 0,
   };
+  s.eventSchedule = planEvents(s);
   buildFloor(s);
   say(s, 'log.enter', { n: 1, name: ref('floor.1') }, 'info');
   return s;
@@ -625,6 +638,7 @@ export function buildFloor(s) {
   s.forcedCombat = -1;
   s.pendingAltar = -1;
   s.pendingDoor = -1;
+  s.pendingEvent = -1;
   s.hazardClock = 0;
   s.relicState.firstKill = false;
   // 祭坛「贪婪低语」借走的防御只借一层，下楼就还——代价是周转的，不是永久的
@@ -640,6 +654,20 @@ export function buildFloor(s) {
 // 怪物强度按「深度」而非层号成长：前 8 层保持原始曲线，之后每两层折算一层。
 // 若继续线性外推，第 30 层的怪物攻击会涨到八层的四倍，任何构筑都接不住。
 const depthOf = (f) => (f <= 8 ? f : 8 + (f - 8) * 0.5);
+
+// 事件落点表：首事件在第 3-5 层，之后每隔 3-5 层一个；类型洗匀轮转，三类都会出现。
+function planEvents(s) {
+  const list = [];
+  const gap = () => EVENT_GAP_MIN + Math.floor(rand(s) * (EVENT_GAP_MAX - EVENT_GAP_MIN + 1));
+  let f = gap();
+  let bag = [];
+  while (f <= MAX_FLOOR) {
+    if (!bag.length) bag = shuffle(s, EVENT_KINDS.slice());
+    list.push({ floor: f, kind: bag.pop() });
+    f += gap();
+  }
+  return list;
+}
 
 function planFloor(s, f, d) {
   const boss = isBossFloor(f);
@@ -662,6 +690,7 @@ function planFloor(s, f, d) {
     monsters, traps, chests, potions,
     elite: boss || f < 2 ? 0 : 1, boss: boss ? 1 : 0,
     altar: f >= 2 ? 1 : 0, stairs: 1,
+    event: (s.eventSchedule.find((e) => e.floor === f) || {}).kind || null,
     // 石墙是全地城的结构，不随主题走；Boss 层保持一对一的决斗空间。
     walls: !boss && f >= WALL_MIN_FLOOR ? Math.min(WALL_MAX, WALL_MIN + Math.floor((f - WALL_MIN_FLOOR) / 8)) : 0,
     firePatches,
@@ -766,6 +795,13 @@ export function ensureBoard(s, safeIndex) {
   if (p.walls) growWallCluster(s, pool, p.walls);
   if (p.firePatches) layFire(s, pool, p.firePatches);
   if (p.altar) s.tiles[take()].kind = 'altar';
+  // 事件格出现即亮：它是补给机会，不该藏在砖下让人错过；非威胁，不影响邻格数字。
+  if (p.event) {
+    const t = s.tiles[take()];
+    t.kind = p.event;
+    t.revealed = true;
+    say(s, 'log.event.spawn', { name: ref('event.' + p.event + '.name') }, 'magic');
+  }
   if (p.elite) {
     const t = s.tiles[take(far)];
     t.kind = 'elite';
@@ -1530,6 +1566,7 @@ function tapInner(s, i) {
     return free;
   }
   if (t.kind === 'altar' && !t.used) { s.pendingAltar = i; ev(out, 'altar', { i }); return free; }
+  if (EVENT_KINDS.includes(t.kind) && !t.used) { s.pendingEvent = i; ev(out, 'event', { i, kind: t.kind }); return free; }
   if (t.kind === 'chest' && !t.used) { lootChest(s, i, out); return { out, spent: true }; }
   if (t.kind === 'potion' && !t.used) { pickPotion(s, i, out); return { out, spent: true }; }
   if (t.kind === 'stairs') return { out: out.concat(tryDescend(s)), spent: false };
@@ -1766,6 +1803,7 @@ export function closePending(s) {
   s.pendingCombat = -1;
   s.pendingAltar = -1;
   s.pendingDoor = -1;
+  s.pendingEvent = -1;
   return [];
 }
 
@@ -1832,6 +1870,17 @@ export function buy(s, id) {
   ev(out, 'buy', { id, price });
   if (id === 'relic') grantRelic(s, takeWeighted(s, relicPool(s), relicRarityWeights(s.floor)).id, out);
   return out;
+}
+
+// 事件格购买：先校验格子类别允许这件商品，再走与商店同一套 buy()（价格/限购/涨价一致）。
+// 事件格可反复使用直到下楼；遗物限购仍由 buy() 的 RELIC_SHOP_CAP 把关。
+export function eventBuy(s, i, id) {
+  const out = [];
+  if (s.status !== 'playing') return out;
+  const t = s.tiles[i];
+  if (!t || t.used || !EVENT_KINDS.includes(t.kind)) { ev(out, 'deny'); return out; }
+  if (!EVENT_ITEMS[t.kind].includes(id)) { say(s, 'log.event.wrong', 'warn'); ev(out, 'deny'); return out; }
+  return buy(s, id);
 }
 
 export const ALTAR_GREED_GOLD = 45;
@@ -2170,6 +2219,10 @@ export function deserialize(text) {
     s.doorUsed = !!s.doorUsed;
     s.hazardClock = Number.isFinite(s.hazardClock) ? Math.max(0, s.hazardClock) : 0;
     s.pendingDoor = Number.isFinite(s.pendingDoor) ? s.pendingDoor : -1;
+    s.pendingEvent = Number.isFinite(s.pendingEvent) ? s.pendingEvent : -1;
+    s.eventSchedule = Array.isArray(s.eventSchedule)
+      ? s.eventSchedule.filter((e) => e && Number.isFinite(e.floor) && EVENT_KINDS.includes(e.kind))
+      : [];
     // 主题字段同样是后加的：按白名单重建，首区永远常规
     const themes = Array.isArray(s.actThemes) ? s.actThemes : [];
     s.actThemes = [null, null, null, null];
@@ -2207,6 +2260,7 @@ export function tileLabel(t) {
     : t.kind === 'altar' ? tr(t.used ? 'tile.altar.used' : 'tile.altar')
     : t.kind === 'chest' ? tr(t.used ? 'tile.chest.used' : 'tile.chest')
     : t.kind === 'potion' ? tr(t.used ? 'tile.potion.used' : 'tile.potion')
+    : EVENT_KINDS.includes(t.kind) ? tr('tile.' + t.kind)
     : null;
   if (name == null) return t.n ? tr('tile.danger', { n: t.n }) : tr('tile.empty');
   const spent = t.mob ? t.mob.hp <= 0 : t.used;

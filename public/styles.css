@@ -357,6 +357,14 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
 .tile-altar{background:linear-gradient(165deg,#3d1440,#1e0a24);border-color:rgba(255,79,216,.34)}
 .tile-altar .ic{color:var(--magenta)}
 .tile-altar.tile-used{filter:grayscale(.7) brightness(.6)}
+/* 事件格：消耗品（金）/ 遗物商店（紫）/ 属性神龛（绿），出现即亮、可点开交易 */
+.tile-event .ic{width:60%;height:60%}
+.tile-supply.tile-pick{--pick:255,213,74;background:linear-gradient(165deg,#3a2c0e,#1d1508)}
+.tile-supply .ic{color:var(--gold)}
+.tile-relicshop.tile-pick{--pick:201,163,255;background:linear-gradient(165deg,#2c1d3a,#160d1d)}
+.tile-relicshop .ic{color:#c9a3ff}
+.tile-shrine.tile-pick{--pick:125,255,90;background:linear-gradient(165deg,#16300f,#0a1808)}
+.tile-shrine .ic{color:var(--acid)}
 .tile-stairs{background:linear-gradient(165deg,#0d3a4a,#07202c);border-color:rgba(63,224,255,.5);
   box-shadow:inset 0 0 18px rgba(63,224,255,.26),0 0 20px -4px rgba(63,224,255,.8);animation:portal 2.2s ease-in-out infinite}
 .tile-stairs>.ic{color:var(--cyan)}
@@ -616,6 +624,8 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
   padding:7px;border-radius:10px;background:rgba(255,213,74,.09);border:1px solid rgba(255,213,74,.2)}
 .gold-line .ic{width:15px;height:15px;color:var(--gold)}
 .gold-line b{font-family:var(--num);font-size:16px;color:var(--gold)}
+.statline{display:flex;flex-wrap:wrap;gap:5px;justify-content:center;font-size:11px;color:var(--ink-3);padding:2px 0}
+.statline b{font-family:var(--num);color:var(--ink-2);font-weight:400}
 
 /* 说明 */
 .help-sec{display:flex;flex-direction:column;gap:7px}

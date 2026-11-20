@@ -57,7 +57,7 @@ test('每层实体数量符合规划，且阶梯/守卫/龙王存在', () => {
       if (f >= 2 && !bossFloor) assert.equal(find(s, 'elite')[0].mob.elite, true);
       if (bossFloor) assert.equal(find(s, 'boss')[0].mob.boss, true);
       const occupied = s.tiles.filter((t) => t.kind !== 'empty').length;
-      const specials = p.walls + p.totemTypes.length + (p.door ? 1 : 0);
+      const specials = p.walls + p.totemTypes.length + (p.door ? 1 : 0) + (p.event ? 1 : 0);
       assert.equal(occupied, p.monsters + p.traps + p.chests + p.potions + p.elite + p.boss + p.stairs + p.altar + specials);
       assert.ok(p.monsters <= 20, `第 ${f} 层怪物数量应封顶`);
       assert.ok(p.traps <= 6, `第 ${f} 层陷阱数量应封顶`);
@@ -170,7 +170,7 @@ test('下行阶梯保留邻雷数，标签带上危险数', () => {
     const s = G.createRun('normal', seed);
     G.tapTile(s, 30);
     const st = s.tiles.find((t) => t.kind === 'stairs');
-    if (!st) continue;
+    if (!st || st.revealed) continue;
     G.tapTile(s, st.i);
     assert.equal(st.revealed, true);
     const want = hiddenAround(s, st.i).length;
@@ -2478,6 +2478,54 @@ test('反震甲：它省的是回合数，不是每击伤害', () => {
   assert.equal(a.deal, b.deal, '反震不改变每击伤害');
   assert.ok(b.rounds < a.rounds, '反震缩短回合');
   assert.ok(b.take < a.take, '反震减少承伤');
+});
+
+test('事件调度：每 3-5 层一个，三类轮转都出现', () => {
+  for (const seed of [1, 7, 19, 42]) {
+    const s = G.createRun('normal', seed);
+    const sch = s.eventSchedule;
+    assert.ok(sch.length >= 4, '30 层应有数个事件');
+    let prev = 0;
+    const kinds = new Set();
+    for (const e of sch) {
+      const gap = e.floor - prev;
+      assert.ok(gap >= G.EVENT_GAP_MIN && gap <= G.EVENT_GAP_MAX, `间距 ${gap} 超出 3-5`);
+      assert.ok(G.EVENT_KINDS.includes(e.kind));
+      kinds.add(e.kind);
+      prev = e.floor;
+    }
+    assert.equal(kinds.size, 3, '三类事件都应出现');
+  }
+});
+
+test('事件格：出现即亮、非威胁，点开设置 pendingEvent', () => {
+  const s = G.createRun('normal', 7);
+  s.floor = s.eventSchedule[0].floor; G.buildFloor(s); G.ensureBoard(s, 30);
+  const t = s.tiles.find((x) => G.EVENT_KINDS.includes(x.kind));
+  assert.ok(t, '应落一个事件格');
+  assert.equal(t.revealed, true);
+  assert.equal(t.kind, s.plan.event);
+  const want = G.neighbors(t.i).filter((j) => { const u = s.tiles[j]; return !u.revealed && ['monster', 'elite', 'trap', 'boss'].includes(u.kind); }).length;
+  assert.equal(t.n, want, '事件格自身仍按隐藏威胁数读邻格');
+  G.tapTile(s, t.i);
+  assert.equal(s.pendingEvent, t.i);
+  G.closePending(s);
+  assert.equal(s.pendingEvent, -1);
+});
+
+test('事件购买：按格子类别 gating，价格与商店一致且可反复交易', () => {
+  const s = G.createRun('normal', 7);
+  s.floor = s.eventSchedule[0].floor; G.buildFloor(s); G.ensureBoard(s, 30);
+  const t = s.tiles.find((x) => G.EVENT_KINDS.includes(x.kind));
+  s.player.gold = 500;
+  const allowed = G.EVENT_ITEMS[t.kind][0];
+  const price = G.shopPrice(s, allowed);
+  const evs = G.eventBuy(s, t.i, allowed);
+  assert.ok(evs.some((e) => e.type === 'buy'));
+  assert.equal(s.player.gold, 500 - price);
+  const other = G.SHOP.find((it) => !G.EVENT_ITEMS[t.kind].includes(it.id)).id;
+  assert.ok(G.eventBuy(s, t.i, other).some((e) => e.type === 'deny'), '跨类别商品被拒');
+  assert.equal(t.used, false, '事件格可反复使用直到下楼');
 });
 
 test('逐击：strike 只走一刀一还手，预演与结算同值', () => {
