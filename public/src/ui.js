@@ -583,7 +583,7 @@ function openCodex() {
     ${mine}
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.codex.how')}</h3>
-      <p class="help-p">${tr('ui.codex.how.body', { draw: G.RELIC_DRAW_COUNT, total: G.RELICS.length, floor: floorNow, odds: oddsAt(floorNow), maxFloor: G.MAX_FLOOR, deepOdds: oddsAt(G.MAX_FLOOR), pCommon: G.RELIC_PRICE.common, pRare: G.RELIC_PRICE.rare, pEpic: G.RELIC_PRICE.epic, shopCap: G.RELIC_SHOP_CAP })}</p>
+      <p class="help-p">${tr('ui.codex.how.body', { draw: G.RELIC_DRAW_COUNT, total: G.RELICS.length, floor: floorNow, odds: oddsAt(floorNow), maxFloor: G.MAX_FLOOR, deepOdds: oddsAt(G.MAX_FLOOR), pCommon: G.RELIC_PRICE.common, pRare: G.RELIC_PRICE.rare, pEpic: G.RELIC_PRICE.epic })}</p>
     </div>
     ${groups}
     <div class="sheet-actions"><button class="btn btn-primary btn-lg" data-sheet="${back}">${S && S.relicChoices ? tr('ui.codex.back') : tr('ui.codex.close')}</button></div>`, !!(S && S.relicChoices));
@@ -1133,16 +1133,14 @@ function openEvent(i) {
   let rows, sub;
   if (kind === 'shopRelic') {
     const offers = Array.isArray(t.relicOffer) ? t.relicOffer : [];
-    const left = G.relicShopLeft(S);
-    sub = tr('ui.event.shopRelic.sub', { cap: G.RELIC_SHOP_CAP, left });
+    sub = tr('ui.event.shopRelic.sub');
     rows = offers.length
       ? `<div class="rcards">${offers.map((rid) => {
           const r = G.relicById(rid);
           const price = G.relicPrice(S, r.rarity);
           const owned = G.hasRelic(S, rid);
-          const sold = owned || left <= 0;
-          const can = !sold && p.gold >= price;
-          const priceTx = owned ? tr('ui.event.relic.owned') : left <= 0 ? tr('ui.shop.soldout') : `${svg('coin')}${price}`;
+          const can = !owned && p.gold >= price;
+          const priceTx = owned ? tr('ui.event.relic.owned') : `${svg('coin')}${price}`;
           return `<button class="rcard" data-sheet="eventBuy" data-i="${i}" data-id="relic" data-relic="${rid}" style="--rc:${G.RELIC_RARITY[r.rarity].color}" ${can ? '' : 'disabled'}>
             <span class="rcard-rar">${G.rarityName(r.rarity)}</span>
             <span class="rcard-ic">${svg(r.icon)}</span>
@@ -1284,7 +1282,7 @@ function openHelp() {
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.event.h')}</h3>
-      <p class="help-p">${tr('ui.help.event.p', { shopCap: G.RELIC_SHOP_CAP })}</p>
+      <p class="help-p">${tr('ui.help.event.p')}</p>
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.solve.h')}</h3>
@@ -1305,7 +1303,7 @@ function openHelp() {
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.relic.h')}</h3>
-      <p class="help-p">${tr('ui.help.relic.p', { every: G.RELIC_EVERY, total: G.RELICS.length, reroll: G.RELIC_REROLL_BASE, rerollStep: G.RELIC_REROLL_STEP, pCommon: G.RELIC_PRICE.common, pRare: G.RELIC_PRICE.rare, pEpic: G.RELIC_PRICE.epic, shopCap: G.RELIC_SHOP_CAP })}</p>
+      <p class="help-p">${tr('ui.help.relic.p', { every: G.RELIC_EVERY, total: G.RELICS.length, reroll: G.RELIC_REROLL_BASE, rerollStep: G.RELIC_REROLL_STEP, pCommon: G.RELIC_PRICE.common, pRare: G.RELIC_PRICE.rare, pEpic: G.RELIC_PRICE.epic })}</p>
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.legend.h')}</h3>

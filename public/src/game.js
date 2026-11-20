@@ -109,9 +109,7 @@ export const SHOP = [
 export const RELIC_PRICE = { common: 100, rare: 150, epic: 200 };
 const SHOP_PARAMS = { elixir: { hp: SHOP_ELIXIR_HP }, bomb: { dmg: BOMB_DAMAGE } };
 export const shopName = (it) => tr('shop.' + it.id + '.name');
-export const relicShopLeft = (s) => Math.max(0, RELIC_SHOP_CAP - ((s && s.bought && s.bought.relic) || 0));
 export const shopDesc = (it, s) => {
-  if (it.id === 'relic') return tr('shop.relic.desc', { cap: RELIC_SHOP_CAP, left: relicShopLeft(s) });
   if (it.id === 'pouch') return tr('shop.pouch.desc', { have: Math.min(FLAG_BONUS_CAP, (s && s.flagBonus) || 0), cap: FLAG_BONUS_CAP });
   return tr('shop.' + it.id + '.desc', it.id === 'bomb' && s ? { dmg: bombBase(s) } : SHOP_PARAMS[it.id]);
 };
@@ -190,8 +188,6 @@ export const RELIC_CATS = ['explore', 'combat', 'supply', 'pact'];
 export const rarityName = (id) => tr('rarity.' + id);
 export const catName = (id) => tr('cat.' + id);
 export const RELIC_DRAW_COUNT = 3;
-// 商店的遗物匣本局最多买 3 次：随机给一件，不给挑选，避免金币稳定换到最强永久收益。
-export const RELIC_SHOP_CAP = 3;
 // 一局能拿到的遗物必须远少于池子，构筑才有取舍。守卫每 2 层才掉一次，龙王另给一次。
 export const RELIC_EVERY = 2;
 export const isRelicFloor = (f) => !isBossFloor(f) && f % RELIC_EVERY === 0;
@@ -1904,11 +1900,11 @@ export function eventBuy(s, i, id, choice) {
 }
 
 // 遗物商店摆出三件（t.relicOffer），点选哪件就按那件品级 100/150/200 计价；
-// 买走后从货架移除，本局限购 RELIC_SHOP_CAP 件，三件买空即熄灭。
+// 纯商店模式：金币够就能买，买走从货架移除，三件买空熄灭，下一层补货（遗物不重复）。
 function buyRelicOffer(s, t, out, rid) {
   const offers = Array.isArray(t.relicOffer) ? t.relicOffer : [];
   const r = rid && offers.includes(rid) ? relicById(rid) : null;
-  if (!r || hasRelic(s, rid) || relicShopLeft(s) <= 0 || flagRelicNeed(r) > flagBonusLeft(s)) { say(s, 'log.relic.soldout', 'warn'); ev(out, 'deny'); return out; }
+  if (!r || hasRelic(s, rid) || flagRelicNeed(r) > flagBonusLeft(s)) { say(s, 'log.relic.soldout', 'warn'); ev(out, 'deny'); return out; }
   const price = relicPrice(s, r.rarity);
   if (s.player.gold < price) { say(s, 'log.no.gold', 'warn'); ev(out, 'deny'); return out; }
   s.player.gold -= price;

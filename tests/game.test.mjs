@@ -1918,10 +1918,9 @@ test('军械箱：获得时立刻补充六枚炸弹', () => {
   assert.equal(s.player.bombs, 1 + G.RELIC_BOMB_CACHE);
 });
 
-test('遗物商店：摆出三件按品级计价、点选购买、本局限购 3 次、集齐后拒绝', () => {
+test('遗物商店：摆出三件按品级计价、点选购买、金币够随意买、集齐后拒绝', () => {
   const s = fresh('normal', 606);
   s.player.gold = 1000;
-  assert.equal(G.RELIC_SHOP_CAP, 3);
   const setup = () => {
     G.buildFloor(s); G.ensureBoard(s, 30);
     const t = s.tiles.find((x) => x.kind === 'empty');
@@ -1950,12 +1949,13 @@ test('遗物商店：摆出三件按品级计价、点选购买、本局限购 3
   assert.equal(s.bought.relic, 3);
   assert.equal(new Set(s.relics).size, 3, '不会重复发已拥有的遗物');
 
+  s.player.gold = 1000;
   const t4 = setup();
-  const gold = s.player.gold, buys = s.bought.relic;
-  const out = G.eventBuy(s, t4.i, 'relic', t4.relicOffer[0]);
-  assert.ok(out.some((e) => e.type === 'deny'), '超过 3 次后拒绝');
-  assert.equal(s.player.gold, gold, '拒绝时不扣钱');
-  assert.equal(s.bought.relic, buys, '拒绝时不计数');
+  const more = t4.relicOffer[0];
+  const evs4 = G.eventBuy(s, t4.i, 'relic', more);
+  assert.ok(evs4.some((e) => e.type === 'relicGain'), '不再限购：第 4 件仍可购买');
+  assert.equal(s.bought.relic, 4);
+  assert.ok(G.hasRelic(s, more));
 
   s.relics = G.RELICS.map((r) => r.id);
   s.bought.relic = 0;

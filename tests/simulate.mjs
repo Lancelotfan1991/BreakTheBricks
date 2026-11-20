@@ -4,7 +4,7 @@ import {
   createRun, tapTile, attack, usePotion, eventBuy, altarChoose, tryDescend, closePending, useDoor,
   forecast, neighbors, canDescend, SIZE, MAX_FLOOR, shopPrice, setMode, chooseRelic, chooseLevel,
   levelChoiceStat, levelChoiceAmount, chooseTalent, atkOf, wallOpen, chooseTheme,
-  toggleFlag, flagCap, flagBonusLeft, ALTAR_FLAG_BONUS, RELIC_SURVEY_CAP, RELIC_SHOP_CAP, EVENT_ITEMS,
+  toggleFlag, flagCap, flagBonusLeft, ALTAR_FLAG_BONUS, RELIC_SURVEY_CAP, EVENT_ITEMS,
   relicById, relicPrice,
 } from '../public/src/game.js';
 
@@ -81,7 +81,7 @@ function shopPass(s, build) {
     if (!t) return false;
     if (id === 'relic') {
       const offers = (t.relicOffer || []).filter((rid) => !s.relics.includes(rid));
-      if (!offers.length || (s.bought.relic || 0) >= RELIC_SHOP_CAP) return false;
+      if (!offers.length) return false;
       const saved = s.relicChoices;
       s.relicChoices = offers;
       const rid = pickRelic(s, build);
@@ -104,7 +104,7 @@ function shopPass(s, build) {
     if (p.gold >= shopPrice(s, 'plate') + 20 && tryBuy('plate')) continue;
     if (build === 'reason' && p.scrolls < 2 && p.gold >= shopPrice(s, 'scroll') + 20 && tryBuy('scroll')) continue;
     if (p.potions < 2 && tryBuy('potion')) continue;
-    if ((s.bought.relic || 0) < RELIC_SHOP_CAP && p.gold >= shopPrice(s, 'relic') + 40 && tryBuy('relic')) return;
+    if (p.gold >= 100 && tryBuy('relic')) return;
     break;
   }
 }
