@@ -575,7 +575,6 @@ function openCodex() {
     }).join(tr('list.sep'));
   };
   const floorNow = S ? S.floor : 1;
-  const relicItem = G.SHOP.find((x) => x.id === 'relic');
   openSheet('codex', `
     <div class="sheet-head">
       <div><h2 class="sheet-title">${tr('ui.codex.title')}</h2><p class="sheet-sub">${tr('ui.codex.sub', { total: G.RELICS.length, own: owned.length })}</p></div>
@@ -584,7 +583,7 @@ function openCodex() {
     ${mine}
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.codex.how')}</h3>
-      <p class="help-p">${tr('ui.codex.how.body', { draw: G.RELIC_DRAW_COUNT, total: G.RELICS.length, floor: floorNow, odds: oddsAt(floorNow), maxFloor: G.MAX_FLOOR, deepOdds: oddsAt(G.MAX_FLOOR), shopPrice: relicItem.base, shopStep: relicItem.step, shopCap: G.RELIC_SHOP_CAP })}</p>
+      <p class="help-p">${tr('ui.codex.how.body', { draw: G.RELIC_DRAW_COUNT, total: G.RELICS.length, floor: floorNow, odds: oddsAt(floorNow), maxFloor: G.MAX_FLOOR, deepOdds: oddsAt(G.MAX_FLOOR), pCommon: G.RELIC_PRICE.common, pRare: G.RELIC_PRICE.rare, pEpic: G.RELIC_PRICE.epic, shopCap: G.RELIC_SHOP_CAP })}</p>
     </div>
     ${groups}
     <div class="sheet-actions"><button class="btn btn-primary btn-lg" data-sheet="${back}">${S && S.relicChoices ? tr('ui.codex.back') : tr('ui.codex.close')}</button></div>`, !!(S && S.relicChoices));
@@ -1131,26 +1130,40 @@ function openTheme() {
 function openEvent(i) {
   const t = S.tiles[i], p = S.player;
   const kind = t.kind;
-  const rows = G.EVENT_ITEMS[kind].map((id) => {
-    const it = G.SHOP.find((x) => x.id === id);
-    const price = G.shopPrice(S, id);
-    const stock = (t.stock && t.stock[id]) || 0;
-    const capped = id === 'relic'
-      ? G.relicShopLeft(S) <= 0 || G.relicPool(S).length === 0
-      : id === 'pouch' && G.flagBonusLeft(S) <= 0;
-    const soldout = stock <= 0 || capped;
+  let rows, sub;
+  if (kind === 'shopRelic') {
+    const rid = t.relicOffer, r = rid ? G.relicById(rid) : null;
+    const stock = (t.stock && t.stock.relic) || 0;
+    const price = r ? G.relicPrice(S, r.rarity) : 0;
+    const soldout = !r || stock <= 0 || G.relicShopLeft(S) <= 0 || G.hasRelic(S, rid);
     const can = !soldout && p.gold >= price;
-    const priceTx = soldout ? tr(id === 'pouch' && capped ? 'ui.shop.full' : 'ui.shop.soldout') : `${svg('coin')}${price}`;
-    return `<button class="opt" data-sheet="eventBuy" data-i="${i}" data-id="${id}" ${can ? '' : 'disabled'}>
-      <span class="opt-ic">${svg(it.icon)}</span>
-      <span class="opt-tx"><b>${G.shopName(it)}</b><span>${G.shopDesc(it, S)}</span></span>
-      <span class="opt-stock">${tr('ui.event.stock', { n: stock })}</span>
-      <span class="opt-price ${can ? '' : 'no'}">${priceTx}</span>
-    </button>`;
-  }).join('');
-  const sub = kind === 'shopRelic'
-    ? tr('ui.event.shopRelic.sub', { cap: G.RELIC_SHOP_CAP, left: G.relicShopLeft(S) })
-    : tr('ui.event.' + kind + '.sub');
+    sub = tr('ui.event.shopRelic.sub', { cap: G.RELIC_SHOP_CAP, left: G.relicShopLeft(S) });
+    rows = r
+      ? `<button class="opt" data-sheet="eventBuy" data-i="${i}" data-id="relic" ${can ? '' : 'disabled'}>
+          <span class="opt-ic" style="color:${G.RELIC_RARITY[r.rarity].color}">${svg(r.icon)}</span>
+          <span class="opt-tx"><b>${G.relicName(r)}<span class="opt-rar" style="color:${G.RELIC_RARITY[r.rarity].color}">${G.rarityName(r.rarity)}</span></b><span>${G.relicDesc(r)}</span></span>
+          <span class="opt-stock">${tr('ui.event.stock', { n: stock })}</span>
+          <span class="opt-price ${can ? '' : 'no'}">${soldout ? tr('ui.shop.soldout') : `${svg('coin')}${price}`}</span>
+        </button>`
+      : `<p class="fc-note">${tr('ui.event.relic.empty')}</p>`;
+  } else {
+    rows = G.EVENT_ITEMS[kind].map((id) => {
+      const it = G.SHOP.find((x) => x.id === id);
+      const price = G.shopPrice(S, id);
+      const stock = (t.stock && t.stock[id]) || 0;
+      const capped = id === 'pouch' && G.flagBonusLeft(S) <= 0;
+      const soldout = stock <= 0 || capped;
+      const can = !soldout && p.gold >= price;
+      const priceTx = soldout ? tr(id === 'pouch' && capped ? 'ui.shop.full' : 'ui.shop.soldout') : `${svg('coin')}${price}`;
+      return `<button class="opt" data-sheet="eventBuy" data-i="${i}" data-id="${id}" ${can ? '' : 'disabled'}>
+        <span class="opt-ic">${svg(it.icon)}</span>
+        <span class="opt-tx"><b>${G.shopName(it)}</b><span>${G.shopDesc(it, S)}</span></span>
+        <span class="opt-stock">${tr('ui.event.stock', { n: stock })}</span>
+        <span class="opt-price ${can ? '' : 'no'}">${priceTx}</span>
+      </button>`;
+    }).join('');
+    sub = tr('ui.event.' + kind + '.sub');
+  }
   const statline = kind === 'shrine'
     ? `<div class="statline">${tr('ui.event.stat.atk')} <b>${p.atk}</b> · ${tr('ui.event.stat.def')} <b>${p.def}</b> · ${tr('ui.event.stat.hp')} <b>${p.maxHp}</b> · ${tr('ui.event.stat.flag')} <b>${p.flagBonus}/${G.FLAG_BONUS_CAP}</b></div>`
     : '';
@@ -1285,7 +1298,7 @@ function openHelp() {
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.relic.h')}</h3>
-      <p class="help-p">${tr('ui.help.relic.p', { every: G.RELIC_EVERY, total: G.RELICS.length, reroll: G.RELIC_REROLL_BASE, rerollStep: G.RELIC_REROLL_STEP, shopPrice: G.SHOP.find((x) => x.id === 'relic').base, shopStep: G.SHOP.find((x) => x.id === 'relic').step, shopCap: G.RELIC_SHOP_CAP })}</p>
+      <p class="help-p">${tr('ui.help.relic.p', { every: G.RELIC_EVERY, total: G.RELICS.length, reroll: G.RELIC_REROLL_BASE, rerollStep: G.RELIC_REROLL_STEP, pCommon: G.RELIC_PRICE.common, pRare: G.RELIC_PRICE.rare, pEpic: G.RELIC_PRICE.epic, shopCap: G.RELIC_SHOP_CAP })}</p>
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.legend.h')}</h3>

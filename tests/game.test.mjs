@@ -387,7 +387,7 @@ test('怪物属性只由深度决定，不随玩家面板变化', () => {
   }
 });
 
-test('升级、商店涨价、祭坛三选一', () => {
+test('升级、商店固定价、祭坛三选一', () => {
   const s = fresh('normal', 4);
   const p = s.player;
   p.xp = p.xpNext - 1;
@@ -403,7 +403,7 @@ test('升级、商店涨价、祭坛三选一', () => {
   const price0 = G.shopPrice(s, 'whet');
   p.gold = 10000;
   G.buy(s, 'whet');
-  assert.equal(G.shopPrice(s, 'whet'), price0 + G.SHOP.find((x) => x.id === 'whet').step);
+  assert.equal(G.shopPrice(s, 'whet'), price0, '固定价，不随购买涨价');
   const poor = G.createRun('normal', 4);
   poor.player.gold = 0;
   assert.ok(G.buy(poor, 'whet').some((e) => e.type === 'deny'));
@@ -1107,7 +1107,7 @@ test('点金手：攻防随持有金币升降，花掉即收回且不重复叠�
   assert.equal(s.player.atk, 5 + 5);
   assert.equal(s.player.def, 1 + 5);
 
-  s.player.gold = 29;
+  s.player.gold = 79;
   G.buy(s, 'scroll');
   assert.equal(s.player.goldBonus, 0, '花到 30 以下，加成收回');
   assert.equal(s.player.atk, 5);
@@ -1444,8 +1444,7 @@ test('补给遗物：铁胃 / 铸币印 / 深口袋 / 神恩', () => {
   assert.equal(G.shopPrice(d, 'whet'), r5(before * 0.75));
   d.player.gold = 999;
   G.buy(d, 'whet');
-  const step = G.SHOP.find((x) => x.id === 'whet').step;
-  assert.equal(G.shopPrice(d, 'whet'), r5((before + step) * 0.75), '涨价后仍应打折');
+  assert.equal(G.shopPrice(d, 'whet'), r5(before * 0.75), '固定价，买后仍打折且不涨价');
 
   const e = fresh('normal', 98);
   atFloor(e, 3);
@@ -1919,39 +1918,48 @@ test('军械箱：获得时立刻补充六枚炸弹', () => {
   assert.equal(s.player.bombs, 1 + G.RELIC_BOMB_CACHE);
 });
 
-test('商店遗物匣：随机一件、价格递增、本局限购 3 次、集齐后拒绝', () => {
+test('遗物商店：亮出一件按品级计价、本局限购 3 次、集齐后拒绝', () => {
   const s = fresh('normal', 606);
   s.player.gold = 1000;
   assert.equal(G.RELIC_SHOP_CAP, 3);
-  assert.equal(G.shopPrice(s, 'relic'), 80);
-  const evs = G.buy(s, 'relic');
-  assert.ok(evs.some((e) => e.type === 'relicGain'), '购买后应直接获得一件遗物');
-  assert.ok(!evs.some((e) => e.type === 'relicOffer'), '商店不再弹出三选一');
-  assert.equal(s.relicChoices, null);
-  assert.equal(s.relics.length, 1);
-  assert.equal(s.player.gold, 920);
-  assert.equal(s.bought.relic, 1);
-
-  assert.equal(G.shopPrice(s, 'relic'), 130, '第二次购买涨价 50');
-  G.buy(s, 'relic');
-  assert.equal(G.shopPrice(s, 'relic'), 180, '第三次购买再涨 50');
-  G.buy(s, 'relic');
+  const setup = () => {
+    G.buildFloor(s); G.ensureBoard(s, 30);
+    const t = s.tiles.find((x) => x.kind === 'empty');
+    t.kind = 'shopRelic'; t.revealed = true; t.stock = { relic: 1 };
+    const pool = G.relicPool(s);
+    t.relicOffer = pool.length ? pool[0].id : null;
+    if (!t.relicOffer) t.stock.relic = 0;
+    return t;
+  };
+  for (let k = 0; k < 3; k++) {
+    const t = setup();
+    const r = G.relicById(t.relicOffer);
+    const price = G.relicPrice(s, r.rarity);
+    assert.equal(price, G.RELIC_PRICE[r.rarity], '按品级 100/150/200 定价');
+    const g0 = s.player.gold;
+    const evs = G.eventBuy(s, t.i, 'relic');
+    assert.ok(evs.some((e) => e.type === 'relicGain'), '购买后直接获得那件遗物');
+    assert.ok(!evs.some((e) => e.type === 'relicOffer'), '不弹出三选一');
+    assert.equal(s.player.gold, g0 - price);
+    assert.equal(s.bought.relic, k + 1);
+    assert.ok(G.hasRelic(s, t.relicOffer));
+    assert.equal(t.used, true, '买空即熄灭');
+  }
   assert.equal(s.relics.length, 3);
   assert.equal(new Set(s.relics).size, 3, '不会重复发已拥有的遗物');
-  assert.equal(s.player.gold, 1000 - 80 - 130 - 180);
 
+  const t4 = setup();
   const gold = s.player.gold, buys = s.bought.relic;
-  const out = G.buy(s, 'relic');
+  const out = G.eventBuy(s, t4.i, 'relic');
   assert.ok(out.some((e) => e.type === 'deny'), '超过 3 次后拒绝');
   assert.equal(s.player.gold, gold, '拒绝时不扣钱');
   assert.equal(s.bought.relic, buys, '拒绝时不计数');
-  assert.equal(s.log[s.log.length - 1].k, 'log.relic.cap');
 
   s.relics = G.RELICS.map((r) => r.id);
   s.bought.relic = 0;
-  const out2 = G.buy(s, 'relic');
-  assert.ok(out2.some((e) => e.type === 'deny'), '集齐后拒绝');
-  assert.equal(s.log[s.log.length - 1].k, 'log.relic.soldout');
+  const t5 = setup();
+  assert.equal(t5.relicOffer, null, '集齐后无货可卖');
+  assert.ok(G.eventBuy(s, t5.i, 'relic').some((e) => e.type === 'deny'), '集齐后拒绝');
 });
 
 test('旗数预算：上限＝难度基数，超限拒绝，拔旗后归还', () => {
@@ -1995,17 +2003,16 @@ test('旗子上限＝难度基数，且难度越高越少', () => {
   assert.ok(bases.hard < bases.normal && bases.normal < bases.easy, '炼狱 < 深渊 < 地窖');
 });
 
-test('商店旗囊：+1 上限，价格递增，可反复购买', () => {
+test('商店旗囊：+1 上限，固定价，可反复购买', () => {
   const s = fresh('normal', 21);
   const base = G.flagCap(s);
-  s.player.gold = 999;
-  const prices = [];
+  s.player.gold = 9999;
+  const price0 = G.shopPrice(s, 'pouch');
   for (let k = 0; k < 3; k++) {
-    prices.push(G.shopPrice(s, 'pouch'));
+    assert.equal(G.shopPrice(s, 'pouch'), price0, '旗囊固定价不涨');
     G.buy(s, 'pouch');
     assert.equal(G.flagCap(s), base + k + 1, `第 ${k + 1} 次购买后上限`);
   }
-  assert.ok(prices[1] > prices[0] && prices[2] > prices[1], '旗囊越买越贵');
   assert.equal(s.flags, 0, '买上限不会凭空插旗');
 
   for (let k = 0; k < G.FLAG_BONUS_CAP; k++) G.buy(s, 'pouch');
@@ -2649,7 +2656,7 @@ test('血气方刚：生命精粹涨血上限会跟着涨攻击，血之契扣�
   assert.equal(s.player.atk, atk1 + 4 - (Math.floor(hp1 / G.RELIC_VIGOR_STEP) - Math.floor((hp1 - 8) / G.RELIC_VIGOR_STEP)));
 });
 
-test('生命精粹：永久 +6 生命上限并立即恢复，价格递增', () => {
+test('生命精粹：永久 +10 生命上限并立即恢复，固定价', () => {
   const s = fresh('normal', 3);
   s.player.gold = 999; s.player.hp = 5;
   const hp0 = s.player.maxHp, p1 = G.shopPrice(s, 'elixir');
@@ -2657,7 +2664,7 @@ test('生命精粹：永久 +6 生命上限并立即恢复，价格递增', () =
   assert.equal(s.player.maxHp, hp0 + G.SHOP_ELIXIR_HP);
   assert.equal(s.player.hp, 5 + G.SHOP_ELIXIR_HP);
   assert.equal(s.bought.elixir, 1);
-  assert.ok(G.shopPrice(s, 'elixir') > p1, '越买越贵');
+  assert.equal(G.shopPrice(s, 'elixir'), p1, '固定价不涨');
 });
 
 test('测绘师：卷轴探明的新威胁换永久攻击，封顶后不再涨且跨层保留', () => {

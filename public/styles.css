@@ -621,6 +621,7 @@ body.boss-floor .vignette{background:radial-gradient(115% 85% at 50% 42%,transpa
 .opt-price .ic{width:13px;height:13px}
 .opt-price.no{color:#7c6a8c}
 .opt-stock{flex:none;font-size:10px;color:var(--ink-3);font-family:var(--num);padding:2px 6px;border-radius:6px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.07)}
+.opt-rar{font-size:9px;letter-spacing:.1em;margin-left:6px;font-family:var(--font);font-weight:400}
 .gold-line{display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;color:var(--ink-2);
   padding:7px;border-radius:10px;background:rgba(255,213,74,.09);border:1px solid rgba(255,213,74,.2)}
 .gold-line .ic{width:15px;height:15px;color:var(--gold)}
