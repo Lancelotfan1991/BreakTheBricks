@@ -7,7 +7,7 @@ export const ROWS = 9;
 export const SIZE = COLS * ROWS;
 export const MAX_FLOOR = 30;
 export const BOSS_EVERY = 10;
-export const SAVE_VERSION = 15;
+export const SAVE_VERSION = 16;
 export const isBossFloor = (f) => f % BOSS_EVERY === 0;
 export const isFinalFloor = (f) => f >= MAX_FLOOR;
 
@@ -60,15 +60,20 @@ export const STRATA_HP = 3;            // 层岩誓约：每下行一层的生�
 // 机关是叠加在地板之上的额外层级：不替代格子内容，也不改变「数字只数威胁」的规则。
 // 每 5 次有效操作结算一次地城时钟：魔法图腾脉冲、火势蔓延都挂在这一拍上。
 export const HAZARD_TICK = 5;
-// 事件格：每 3-5 层落一个（消耗品商店 / 遗物商店 / 属性神龛），类型轮转保证三类都露面。
+// 事件格：每层落一个（消耗品商店 / 遗物商店 / 属性神龛），遗物商店权重更低。
 // 事件不是威胁，不计入邻格数字；出现即亮在棋盘上，点开购买，价格沿用商店曲线。
-export const EVENT_GAP_MIN = 3;
-export const EVENT_GAP_MAX = 5;
 export const EVENT_KINDS = ['shopSupply', 'shopRelic', 'shrine'];
 export const EVENT_ITEMS = {
   shopSupply: ['potion', 'scroll', 'bomb'],
   shopRelic: ['relic'],
   shrine: ['whet', 'plate', 'elixir', 'pouch'],
+};
+// 每个事件格的库存：买一件少一件，买空售罄；下一层的新事件格才刷新。
+// 永久属性（神龛）每格各 1 件，配合价格递增双重防止金币无限换战力。
+export const EVENT_STOCK = {
+  shopSupply: { potion: 2, scroll: 2, bomb: 2 },
+  shopRelic: { relic: 1 },
+  shrine: { whet: 1, plate: 1, elixir: 1, pouch: 1 },
 };
 export const WALL_MIN_FLOOR = 3;       // 石墙是全地城共有的结构，从第 3 层起每层都有
 export const WALL_MIN = 3;             // 一簇石墙的格数
@@ -655,16 +660,13 @@ export function buildFloor(s) {
 // 若继续线性外推，第 30 层的怪物攻击会涨到八层的四倍，任何构筑都接不住。
 const depthOf = (f) => (f <= 8 ? f : 8 + (f - 8) * 0.5);
 
-// 事件落点表：首事件在第 3-5 层，之后每隔 3-5 层一个；类型洗匀轮转，三类都会出现。
+// 每层必落一个事件格，保证每层至少一个建筑；类型按权重随机，遗物商店明显更少。
 function planEvents(s) {
   const list = [];
-  const gap = () => EVENT_GAP_MIN + Math.floor(rand(s) * (EVENT_GAP_MAX - EVENT_GAP_MIN + 1));
-  let f = gap();
-  let bag = [];
-  while (f <= MAX_FLOOR) {
-    if (!bag.length) bag = shuffle(s, EVENT_KINDS.slice());
-    list.push({ floor: f, kind: bag.pop() });
-    f += gap();
+  for (let f = 1; f <= MAX_FLOOR; f++) {
+    const r = rand(s);
+    const kind = r < 0.4 ? 'shopSupply' : r < 0.8 ? 'shrine' : 'shopRelic';
+    list.push({ floor: f, kind });
   }
   return list;
 }
@@ -800,6 +802,7 @@ export function ensureBoard(s, safeIndex) {
     const t = s.tiles[take()];
     t.kind = p.event;
     t.revealed = true;
+    t.stock = { ...EVENT_STOCK[p.event] };
     say(s, 'log.event.spawn', { name: ref('event.' + p.event + '.name') }, 'magic');
   }
   if (p.elite) {
@@ -1872,15 +1875,21 @@ export function buy(s, id) {
   return out;
 }
 
-// 事件格购买：先校验格子类别允许这件商品，再走与商店同一套 buy()（价格/限购/涨价一致）。
-// 事件格可反复使用直到下楼；遗物限购仍由 buy() 的 RELIC_SHOP_CAP 把关。
+// 事件格购买：校验类别与库存，再走与商店同一套 buy()（价格/限购/涨价一致）。
+// 成交后扣库存，整格买空即标记 used；下一层的新事件格才补满库存。
 export function eventBuy(s, i, id) {
   const out = [];
   if (s.status !== 'playing') return out;
   const t = s.tiles[i];
   if (!t || t.used || !EVENT_KINDS.includes(t.kind)) { ev(out, 'deny'); return out; }
   if (!EVENT_ITEMS[t.kind].includes(id)) { say(s, 'log.event.wrong', 'warn'); ev(out, 'deny'); return out; }
-  return buy(s, id);
+  if ((t.stock[id] || 0) <= 0) { say(s, 'log.event.soldout', 'warn'); ev(out, 'deny'); return out; }
+  const res = buy(s, id);
+  if (res.some((e) => e.type === 'buy')) {
+    t.stock[id] -= 1;
+    if (EVENT_ITEMS[t.kind].every((x) => (t.stock[x] || 0) <= 0)) t.used = true;
+  }
+  return res;
 }
 
 export const ALTAR_GREED_GOLD = 45;
@@ -2233,6 +2242,7 @@ export function deserialize(text) {
     for (const t of s.tiles) {
       t.fire = !!t.fire;
       t.summoned = !!t.summoned;
+      if (EVENT_KINDS.includes(t.kind) && (!t.stock || typeof t.stock !== 'object')) t.stock = { ...EVENT_STOCK[t.kind] };
     }
     return s;
   } catch { return null; }

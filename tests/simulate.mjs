@@ -77,7 +77,9 @@ function shopPass(s, build) {
   };
   const tryBuy = (id) => {
     const t = tileFor(id);
-    if (t && p.gold >= shopPrice(s, id)) { eventBuy(s, t.i, id); return true; }
+    if (t && (t.stock[id] || 0) > 0 && p.gold >= shopPrice(s, id)) {
+      return eventBuy(s, t.i, id).some((e) => e.type === 'buy');
+    }
     return false;
   };
   let guard = 0;

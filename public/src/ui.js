@@ -1134,14 +1134,18 @@ function openEvent(i) {
   const rows = G.EVENT_ITEMS[kind].map((id) => {
     const it = G.SHOP.find((x) => x.id === id);
     const price = G.shopPrice(S, id);
-    const soldout = id === 'relic'
+    const stock = (t.stock && t.stock[id]) || 0;
+    const capped = id === 'relic'
       ? G.relicShopLeft(S) <= 0 || G.relicPool(S).length === 0
       : id === 'pouch' && G.flagBonusLeft(S) <= 0;
+    const soldout = stock <= 0 || capped;
     const can = !soldout && p.gold >= price;
+    const priceTx = soldout ? tr(id === 'pouch' && capped ? 'ui.shop.full' : 'ui.shop.soldout') : `${svg('coin')}${price}`;
     return `<button class="opt" data-sheet="eventBuy" data-i="${i}" data-id="${id}" ${can ? '' : 'disabled'}>
       <span class="opt-ic">${svg(it.icon)}</span>
       <span class="opt-tx"><b>${G.shopName(it)}</b><span>${G.shopDesc(it, S)}</span></span>
-      <span class="opt-price ${can ? '' : 'no'}">${soldout ? tr(id === 'pouch' ? 'ui.shop.full' : 'ui.shop.soldout') : `${svg('coin')}${price}`}</span>
+      <span class="opt-stock">${tr('ui.event.stock', { n: stock })}</span>
+      <span class="opt-price ${can ? '' : 'no'}">${priceTx}</span>
     </button>`;
   }).join('');
   const sub = kind === 'shopRelic'
@@ -1260,7 +1264,7 @@ function openHelp() {
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.event.h')}</h3>
-      <p class="help-p">${tr('ui.help.event.p', { min: G.EVENT_GAP_MIN, max: G.EVENT_GAP_MAX, shopCap: G.RELIC_SHOP_CAP })}</p>
+      <p class="help-p">${tr('ui.help.event.p', { shopCap: G.RELIC_SHOP_CAP })}</p>
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.solve.h')}</h3>

@@ -304,13 +304,14 @@ test('卷轴安全探明 3×3 并拆除陷阱', () => {
   const trap = find(s, 'trap')[0];
   const hp0 = s.player.hp;
   const area = new Set([trap.i, ...G.neighbors(trap.i)]);
+  const preRev = new Set(s.tiles.filter((t) => t.revealed).map((t) => t.i));
   G.setMode(s, 'scroll');
   const evs = G.tapTile(s, trap.i);
   assert.equal(evs.filter((e) => e.type === 'scroll').length, 1);
   assert.equal(s.player.hp, hp0);
   assert.equal(s.tiles[trap.i].used, true);
   for (const j of area) assert.equal(s.tiles[j].revealed, true);
-  for (const t of s.tiles) if (!area.has(t.i)) assert.equal(t.revealed, false, '卷轴不应连锁展开');
+  for (const t of s.tiles) if (!area.has(t.i) && !preRev.has(t.i)) assert.equal(t.revealed, false, '卷轴不应连锁展开');
   assert.equal(s.pendingCombat, -1, '卷轴不应弹出战斗');
   assert.equal(s.mode, 'explore');
 });
@@ -2480,22 +2481,16 @@ test('反震甲：它省的是回合数，不是每击伤害', () => {
   assert.ok(b.take < a.take, '反震减少承伤');
 });
 
-test('事件调度：每 3-5 层一个，三类轮转都出现', () => {
+test('事件调度：每层一个，遗物商店权重更低', () => {
   for (const seed of [1, 7, 19, 42]) {
     const s = G.createRun('normal', seed);
     const sch = s.eventSchedule;
-    assert.ok(sch.length >= 4, '30 层应有数个事件');
-    let prev = 0;
-    const kinds = new Set();
-    for (const e of sch) {
-      const gap = e.floor - prev;
-      assert.ok(gap >= G.EVENT_GAP_MIN && gap <= G.EVENT_GAP_MAX, `间距 ${gap} 超出 3-5`);
-      assert.ok(G.EVENT_KINDS.includes(e.kind));
-      kinds.add(e.kind);
-      prev = e.floor;
-    }
-    assert.equal(kinds.size, 3, '三类事件都应出现');
+    assert.equal(sch.length, G.MAX_FLOOR, '每层一个事件');
+    sch.forEach((e, i) => { assert.equal(e.floor, i + 1); assert.ok(G.EVENT_KINDS.includes(e.kind)); });
   }
+  const counts = { shopSupply: 0, shopRelic: 0, shrine: 0 };
+  for (let seed = 1; seed <= 40; seed++) G.createRun('normal', seed).eventSchedule.forEach((e) => counts[e.kind]++);
+  assert.ok(counts.shopRelic < counts.shopSupply && counts.shopRelic < counts.shrine, '遗物商店应明显更少');
 });
 
 test('事件格：出现即亮、非威胁，点开设置 pendingEvent', () => {
@@ -2513,19 +2508,23 @@ test('事件格：出现即亮、非威胁，点开设置 pendingEvent', () => {
   assert.equal(s.pendingEvent, -1);
 });
 
-test('事件购买：按格子类别 gating，价格与商店一致且可反复交易', () => {
+test('事件购买：类别 gating、价格一致、库存扣减与售罄', () => {
   const s = G.createRun('normal', 7);
-  s.floor = s.eventSchedule[0].floor; G.buildFloor(s); G.ensureBoard(s, 30);
+  s.floor = 1; G.buildFloor(s); G.ensureBoard(s, 30);
   const t = s.tiles.find((x) => G.EVENT_KINDS.includes(x.kind));
-  s.player.gold = 500;
+  s.player.gold = 5000;
   const allowed = G.EVENT_ITEMS[t.kind][0];
   const price = G.shopPrice(s, allowed);
-  const evs = G.eventBuy(s, t.i, allowed);
-  assert.ok(evs.some((e) => e.type === 'buy'));
-  assert.equal(s.player.gold, 500 - price);
+  assert.ok(G.eventBuy(s, t.i, allowed).some((e) => e.type === 'buy'));
+  assert.equal(s.player.gold, 5000 - price);
   const other = G.SHOP.find((it) => !G.EVENT_ITEMS[t.kind].includes(it.id)).id;
   assert.ok(G.eventBuy(s, t.i, other).some((e) => e.type === 'deny'), '跨类别商品被拒');
-  assert.equal(t.used, false, '事件格可反复使用直到下楼');
+  const cap = G.EVENT_STOCK[t.kind][allowed];
+  for (let k = 1; k < cap; k++) G.eventBuy(s, t.i, allowed);
+  assert.equal(t.stock[allowed], 0);
+  assert.ok(G.eventBuy(s, t.i, allowed).some((e) => e.type === 'deny'), '卖空后再买被拒，同格不刷新');
+  for (const x of G.EVENT_ITEMS[t.kind]) while ((t.stock[x] || 0) > 0) G.eventBuy(s, t.i, x);
+  assert.equal(t.used, true, '整格买空标记 used');
 });
 
 test('逐击：strike 只走一刀一还手，预演与结算同值', () => {
