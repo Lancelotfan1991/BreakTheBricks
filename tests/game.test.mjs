@@ -3187,6 +3187,33 @@ test('角斗士：永久攻击增益额外 +1，升级奖励面板仍记录本�
   assert.equal(p.atk, atk1 + G.RELIC_WHETSTONE_ATK + 1, '遗物加攻同样额外 +1');
 });
 
+test('下楼清单：统计没拿的物品、没逛完的商店、没清的敌人', () => {
+  const s = arena(7);
+  assert.deepEqual(G.floorLeftovers(s), { items: 0, shops: 0, mobs: 0, total: 0 }, '空场没有遗留');
+
+  const pot = s.tiles[3]; pot.kind = 'potion'; pot.revealed = true; pot.used = false;
+  const chest = s.tiles[4]; chest.kind = 'chest'; chest.chest = { type: 'relic' }; chest.revealed = true; chest.used = false;
+  const shop = s.tiles[5]; shop.kind = 'shopSupply'; shop.revealed = true; shop.used = false; shop.stock = { potion: 2, scroll: 0, bomb: 0 };
+  putMob(s, 6, { hp: 10, atk: 1 });
+  let left = G.floorLeftovers(s);
+  assert.equal(left.items, 2, '药水 + 宝箱');
+  assert.equal(left.shops, 1, '还有货的事件格');
+  assert.equal(left.mobs, 1);
+  assert.equal(left.total, 4);
+
+  pot.used = true;
+  chest.used = true;
+  shop.stock = { potion: 0, scroll: 0, bomb: 0 };
+  shop.used = true;
+  s.tiles[6].mob.hp = 0;
+  left = G.floorLeftovers(s);
+  assert.deepEqual(left, { items: 0, shops: 0, mobs: 0, total: 0 }, '处理干净后清单归零');
+
+  // 没翻开的暗格不算「没拿的东西」，不提前泄密
+  const t = s.tiles[8]; t.kind = 'potion'; t.revealed = false; t.used = false;
+  assert.equal(G.floorLeftovers(s).items, 0);
+});
+
 test('格斗家成长是四项随机，且累计值写进 stats.brawler', () => {
   const seen = new Set();
   for (let seed = 1; seed <= 80; seed++) {

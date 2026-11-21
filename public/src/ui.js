@@ -32,6 +32,8 @@ let tiles = [];
 let sheetKind = null;
 let sheetLock = false;
 let busy = false;
+// 玩家已经确认过「这层还有东西没处理，仍然下楼」
+let descendAck = false;
 let toastTimer = 0;
 // 首次开局先选天赋，选完再把玩法说明推上来，两个锁定抽屉不抢同一张 sheet
 let firstRunHelp = false;
@@ -536,6 +538,26 @@ function openBonus() {
     <div class="sheet-actions"><button class="btn btn-primary btn-lg" data-sheet="close">${tr('ui.btn.close')}</button></div>`);
 }
 
+function openDescendConfirm(i, left) {
+  closeSheet();
+  const rows = [
+    left.items ? [svg('chest'), tr('ui.descend.confirm.items', { n: left.items })] : null,
+    left.shops ? [svg('stall'), tr('ui.descend.confirm.shops', { n: left.shops })] : null,
+    left.mobs ? [svg('skull'), tr('ui.descend.confirm.mobs', { n: left.mobs })] : null,
+  ].filter(Boolean).map(([ic, tx]) => `<div class="opt"><span class="opt-ic">${ic}</span>
+      <span class="opt-tx"><b>${tx}</b></span></div>`).join('');
+  openSheet('descend', `
+    <div class="sheet-head">
+      <div><h2 class="sheet-title">${tr('ui.descend.confirm.title')}</h2><p class="sheet-sub">${tr('ui.descend.confirm.sub')}</p></div>
+      <button class="icon-btn sheet-close" data-sheet="close" aria-label="${tr('ui.btn.close')}">${svg('close')}</button>
+    </div>
+    ${rows}
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" data-sheet="close">${tr('ui.descend.confirm.stay')}</button>
+      <button class="btn btn-primary" data-sheet="descendGo" data-i="${i}">${svg('down')}<span>${tr('ui.descend.confirm.go')}</span></button>
+    </div>`);
+}
+
 function openLog() {
   if (!S) return;
   const rows = S.log.slice().reverse().map((e) =>
@@ -898,6 +920,12 @@ function doTap(i) {
   if (guard()) return;
   audio.init();
   if (sheetKind && !sheetLock) closeSheet();
+  // 下楼前确认：这层还有没拿的东西/没逛的商店/没清的敌人时，先问一次
+  const tile = S.tiles[i];
+  if (!descendAck && tile && tile.kind === 'stairs' && tile.revealed && G.canDescend(S)) {
+    const left = G.floorLeftovers(S);
+    if (left.total > 0) { openDescendConfirm(i, left); return; }
+  }
   apply(G.tapTile(S, i));
 }
 function doFlag(i) {
@@ -1645,6 +1673,14 @@ el.sheetBody.addEventListener('click', (e) => {
     case 'bomb': { const i = +b.dataset.i; forceClose(); G.setMode(S, 'bomb'); apply(G.tapTile(S, i)); break; }
     case 'potion': { const i = +b.dataset.i; consume(G.usePotion(S)); render(); saveRun(); openCombat(i); break; }
     case 'altar': { const i = +b.dataset.i; closeSheet(); apply(G.altarChoose(S, i, b.dataset.choice)); break; }
+    case 'descendGo': {
+      const i = +b.dataset.i;
+      descendAck = true;
+      closeSheet();
+      apply(G.tapTile(S, i));
+      descendAck = false;
+      break;
+    }
     case 'doorGo': { const i = +b.dataset.i; closeSheet(); apply(G.useDoor(S, i)); break; }
     case 'theme': { const id = b.dataset.choice; closeSheet(); apply(G.chooseTheme(S, id)); break; }
     case 'eventBuy': {

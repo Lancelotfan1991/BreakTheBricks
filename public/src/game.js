@@ -2147,6 +2147,21 @@ export function canDescend(s) {
   return s.floor === 1 || s.hasKey;
 }
 
+// 下楼前的「你还有事没办」清单：只统计真会错过的东西
+//   items：已翻开、还没拿的宝箱/消耗品/祭坛/敌人掉落
+//   shops：还有货没买完的事件格
+//   mobs ：还活着的敌人（HUD 本来就显示剩余威胁数，不算泄密）
+export function floorLeftovers(s) {
+  const tiles = s.tiles || [];
+  const items = tiles.filter((t) => t.revealed && !t.used
+    && (t.kind === 'chest' || t.kind === 'potion' || t.kind === 'bomb'
+      || t.kind === 'scroll' || t.kind === 'altar' || t.relicDrop)).length;
+  const shops = tiles.filter((t) => EVENT_KINDS.includes(t.kind) && !t.used
+    && Object.values(t.stock || {}).some((n) => n > 0)).length;
+  const mobs = tiles.filter((t) => t.mob && t.mob.hp > 0).length;
+  return { items, shops, mobs, total: items + shops + mobs };
+}
+
 export function tryDescend(s) {
   const out = [];
   if (s.status !== 'playing') return out;
