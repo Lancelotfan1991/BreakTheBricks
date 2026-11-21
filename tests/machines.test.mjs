@@ -48,7 +48,9 @@ function summonArena(seed = 7, floor = 14) {
 }
 
 // ---------- 石墙 ----------
+// 石墙在正式玩法里暂时下线（RULES.walls = false），这里临时打开以覆盖机制本身
 test('石墙：未解锁时点击与插旗都被拒绝，相邻非墙格全揭开后可以手动拆', () => {
+  G.RULES.walls = true;
   let s = null, wall = null;
   for (let seed = 1; seed <= 40 && !wall; seed++) {
     s = atFloor(G.createRun('normal', seed), 3);
@@ -77,9 +79,11 @@ test('石墙：未解锁时点击与插旗都被拒绝，相邻非墙格全揭�
   G.tapTile(s, wall.i);
   assert.equal(wall.revealed, true, '解锁后可以手动拆除');
   assert.equal(s.stats.turns, turns + 1);
+  G.RULES.walls = false;
 });
 
 test('石墙：炸弹直接轰开，卷轴探明会被石墙挡住，石墙不拖住完全识破', () => {
+  G.RULES.walls = true;
   const s = atFloor(G.createRun('normal', 11), 3);
   const wall = find(s, 'wall').find((t) => !t.revealed);
   s.player.bombs = 1;
@@ -114,9 +118,11 @@ test('石墙：炸弹直接轰开，卷轴探明会被石墙挡住，石墙不�
   G.tapTile(s3, last.i);
   assert.equal(s3.solved, true, '空地翻开后即识破，石墙不构成信息缺口');
   assert.ok(walls.some((t) => !t.revealed), '未拆的石墙不必参与识破');
+  G.RULES.walls = false;
 });
 
 test('石墙：给相邻的暗格插旗也算处理完毕，旗子不会把墙一起锁死', () => {
+  G.RULES.walls = true;
   const s = atFloor(G.createRun('normal', 21), 3);
   const wall = find(s, 'wall').find((t) => !t.revealed && !G.wallOpen(s, t.i));
   assert.ok(wall, '应找到尚未解锁的石墙');
@@ -130,6 +136,7 @@ test('石墙：给相邻的暗格插旗也算处理完毕，旗子不会把墙�
   G.toggleFlag(s, blocker);
   assert.equal(s.tiles[blocker].flagged, true);
   assert.equal(G.wallOpen(s, wall.i), true, '插旗等同已处理，墙可以开');
+  G.RULES.walls = false;
 });
 
 // ---------- 火焰地板 ----------
@@ -155,21 +162,21 @@ test('火焰：亲手翻开只灼烧一次并熄灭，卷轴探明不烧，火�
   G.setMode(s2, 'scroll');
   G.tapTile(s2, 0);
   assert.equal(s2.player.hp, 200, '卷轴是安全探明，不触发灼烧');
-  assert.equal(mob.revealed, true);
-  assert.equal(s2.tiles[0].fire, false, '探明同样会熄灭火');
+  assert.equal(mob.revealed, false, '卷轴不揭怪');
+  assert.equal(mob.autoFlag, true, '卷轴只给怪物打记号');
+  assert.equal(s2.tiles[0].fire, true, '没揭开的格子火还在（卷轴不翻怪）');
 
   const s3 = arena();
   s3.tiles[0].kind = 'chest';
-  s3.tiles[0].chest = { type: 'gold', amount: 5 };
+  s3.tiles[0].chest = { type: 'relic' };
   s3.tiles[0].fire = true;
   s3.player.hp = s3.player.maxHp = 200;
   G.tapTile(s3, 0);
   assert.equal(s3.tiles[0].kind, 'chest', '火没有烧毁宝箱');
   assert.equal(s3.tiles[0].used, false, '宝箱仍需再点一次才开启');
-  const gold = s3.player.gold;
   G.tapTile(s3, 0);
   assert.equal(s3.tiles[0].used, true);
-  assert.ok(s3.player.gold > gold, '火上的宝箱照常开出战利品');
+  assert.ok(Array.isArray(s3.relicChoices) && s3.relicChoices.length, '火上的宝箱照常开出遗物');
 });
 
 test('火焰：每 5 个花费操作蔓延一格，封顶 12 格，且不蔓延到阶梯等机关格', () => {

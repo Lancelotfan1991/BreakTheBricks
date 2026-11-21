@@ -7,6 +7,7 @@ export const ROWS = 9;
 export const SIZE = COLS * ROWS;
 export const MAX_FLOOR = 30;
 export const BOSS_EVERY = 10;
+export const MINI_EVERY = 5;   // 每 5 层一只小 BOSS（10/20/30 由关底 Boss 顶替）
 export const SAVE_VERSION = 17;
 export const isBossFloor = (f) => f % BOSS_EVERY === 0;
 export const isFinalFloor = (f) => f >= MAX_FLOOR;
@@ -30,14 +31,15 @@ export function themePairFor(s, act) {
   return [s.actThemes[2] === 'inferno' ? 'totem' : 'inferno', 'grave'];
 }
 
+// gold 是开局金币：第一层必定落一个消耗品商店（见 planEvents），而第 1 层的
+// 消耗品单价被深度折扣压到 20，所以三档难度开局都至少买得起一件。
 export const DIFFICULTIES = {
-  easy: { id: 'easy', threat: 0.78, power: 0.82, loot: 1.35, hp: 38, gold: 25, potions: 2, flags: 4 },
-  normal: { id: 'normal', threat: 1, power: 1, loot: 1, hp: 32, gold: 10, potions: 2, flags: 3 },
-  hard: { id: 'hard', threat: 1.22, power: 1.1, loot: 0.8, hp: 28, gold: 0, potions: 2, flags: 2 },
+  easy: { id: 'easy', threat: 0.78, power: 0.61, loot: 1.35, hp: 38, gold: 40, potions: 2, flags: 4 },
+  normal: { id: 'normal', threat: 1, power: 0.71, loot: 1, hp: 32, gold: 30, potions: 2, flags: 3 },
+  hard: { id: 'hard', threat: 1.22, power: 0.72, loot: 0.8, hp: 28, gold: 20, potions: 2, flags: 2 },
 };
 export const difficultyName = (d) => tr('difficulty.' + d.id + '.name');
 export const difficultyTag = (d) => tr('difficulty.' + d.id + '.tag');
-export const difficultyDesc = (d) => tr('difficulty.' + d.id + '.desc');
 
 // 两条构筑轴：推理流把「插对的旗」换成战力，体魄流把「生命上限」换成战力。
 // 所有加成都是确定性的加减，预演数字仍然等于实际结算。
@@ -78,6 +80,9 @@ export const EVENT_STOCK = {
 export const WALL_MIN_FLOOR = 3;       // 石墙是全地城共有的结构，从第 3 层起每层都有
 export const WALL_MIN = 3;             // 一簇石墙的格数
 export const WALL_MAX = 5;
+// 石墙暂时下线：它挡路又会吃掉可推理的格子，玩家反馈「干扰推理」。
+// 机制代码保留（地图生成、拆除、炸弹轰开、帮助页都有开关），重新设计后再打开。
+export const RULES = { walls: false };
 export const FIRE_BASE = 3;            // 火焰：基础灼烧
 export const FIRE_F = 1.5;             // 火焰：每点深度的加成
 export const FIRE_CAP = 12;            // 同层同时燃烧的格数上限
@@ -95,7 +100,18 @@ export const GRAVE_REVIVE_PCT = 0.5;   // 寂静墓园：怪物以半血复活�
 export const DOOR_MIN_FLOOR = 11;      // 大地之门只出现在主题区，回退 5 层
 export const DOOR_BACK = 5;
 
-// 固定单价：不再随购买次数涨价（避免心智负担），靠「高价 + 每格限量库存」控制膨胀。
+// 单价 = 基准价 × 深度系数 × 遗物倍率。同一层内价格固定（不随购买次数涨价），
+// 但会随深度上浮：金币收入跟着层数涨（怪物 2+f、宝箱 8+3f），单价若恒定，
+// 第 1 层永远买不起、第 20 层又无处可花。基准价从第 1 层的 40% 起，
+// 每下一层 +6%，第 SHOP_PRICE_FULL_FLOOR 层起回到基准价。
+export const SHOP_PRICE_FLOOR1 = 0.4;
+export const SHOP_PRICE_STEP = 0.06;
+export const SHOP_PRICE_FULL_FLOOR = 11;
+export function shopDepthMult(f) {
+  const depth = Math.max(1, Math.floor(Number(f) || 1));
+  return Math.min(1, SHOP_PRICE_FLOOR1 + SHOP_PRICE_STEP * (depth - 1));
+}
+// 基准单价（第 SHOP_PRICE_FULL_FLOOR 层及以后的实际价格）。
 export const SHOP = [
   { id: 'potion', icon: 'potion', base: 50 },
   { id: 'whet', icon: 'sword', base: 100 },
@@ -161,6 +177,13 @@ const ELITES = {
   inferno: { id: 'emberWarden', icon: 'guardian', race: 'construct', hp: 1, atk: 1, def: 0 },
   totem: { id: 'totemWarden', icon: 'guardian', race: 'construct', hp: 1, atk: 1, def: 0 },
   grave: { id: 'graveKeeper', icon: 'guardian', race: 'undead', hp: 1, atk: 1, def: 0 },
+};
+// 小 BOSS：不拿钥匙、但比钥匙守卫更硬，击杀掉宝箱
+const MINIS = {
+  base: { id: 'miniWarden', icon: 'crown', race: 'construct', hp: 1, atk: 1, def: 1 },
+  inferno: { id: 'miniEmber', icon: 'crown', race: 'demon', hp: 1, atk: 1, def: 1 },
+  totem: { id: 'miniTotem', icon: 'crown', race: 'construct', hp: 1, atk: 1, def: 1 },
+  grave: { id: 'miniGrave', icon: 'crown', race: 'undead', hp: 1, atk: 1, def: 1 },
 };
 const BOSSES = {
   base: { id: 'dragon', icon: 'dragon', race: 'dragon', hp: 1, atk: 1, def: 0 },
@@ -239,12 +262,17 @@ export const RELIC_DEED_GOLD = 30;      // 矿脉契：每次下行的金币
 export const RELIC_INTEREST_RATE = 0.1; // 高利贷：每次下行按当前金币结算的利息
 export const RELIC_AMBUSH_HALF = 0.5;   // 定神符：偷袭伤害减半
 export const RELIC_BELL_CHEST = 1;      // 寻宝铃：每层额外宝箱
+export const RELIC_GREEDY_KILL_GOLD = 1.5; // 贪婪之心：击杀金币倍率
 export const RELIC_KILL_POTION_CHANCE = 0.15; // 猎手水囊：击杀掉药水的概率
 export const RELIC_POTION_FLAT = 30;    // 浓炼药液：每瓶药水额外回复
 
 // ---------- 升级奖励 ----------
 // 升级不只涨基础面板：每次升级三选一，让「升级」也成为构筑决策。
-// 三档稀有度只改数值不改机制，选中的加成直接落在面板与规则里。
+// 数值刻意给得克制：这张表一局会被抽到 40 次以上，单点数字会被放大成主要成长来源。
+//   · 面板型：攻击 / 防御 / 生命上限（立刻生效）
+//   · 每层型：金币 / 回血 / 经验 / 攻击 / 防御（下楼时结算，按层数累积）
+//   · 每击杀型：经验 / 金币 / 回血（击杀时结算）
+// `minRarity` 让特别强的项从更低的出现概率起步（目前只有每击杀经验）。
 export const LEVEL_DRAW_COUNT = 3;
 export const LEVEL_REROLL_BASE = 4;     // 本批首次重置的金币
 export const LEVEL_REROLL_STEP = 4;     // 每次重置的涨价
@@ -252,13 +280,32 @@ export const LEVEL_STATS = [
   { id: 'atk', icon: 'sword', vals: { common: 1, rare: 2, epic: 3 } },
   { id: 'def', icon: 'shield', vals: { common: 1, rare: 2, epic: 3 } },
   { id: 'maxHp', icon: 'heart', vals: { common: 6, rare: 12, epic: 18 } },
-  { id: 'gold', icon: 'coin', vals: { common: 4, rare: 8, epic: 12 } },
-  { id: 'heal', icon: 'potion', vals: { common: 4, rare: 8, epic: 12 } },
-  { id: 'xpKill', icon: 'sparkle', vals: { common: 2, rare: 4, epic: 6 } },
-  { id: 'xpFloor', icon: 'book', vals: { common: 5, rare: 10, epic: 15 } },
+  { id: 'gold', icon: 'coin', vals: { common: 10, rare: 20, epic: 30 } },
+  { id: 'heal', icon: 'potion', vals: { common: 10, rare: 20, epic: 30 } },
+  { id: 'xpFloor', icon: 'book', vals: { common: 4, rare: 8, epic: 12 } },
+  // 每层成长只出史诗档：一局抽不到几次，拿到一次就是「+1 攻/防 每层」
+  { id: 'atkFloor', icon: 'sword', minRarity: 'epic', vals: { common: 1, rare: 1, epic: 1 } },
+  { id: 'defFloor', icon: 'shield', minRarity: 'epic', vals: { common: 1, rare: 1, epic: 1 } },
+  { id: 'goldKill', icon: 'coin', vals: { common: 1, rare: 2, epic: 3 } },
+  { id: 'healKill', icon: 'fang', vals: { common: 1, rare: 2, epic: 3 } },
+  // 每击杀经验是全表最强的一项：从稀有起步，不出普通档，压低出现概率
+  { id: 'xpKill', icon: 'sparkle', minRarity: 'rare', vals: { common: 2, rare: 2, epic: 3 } },
 ];
+// 牌池有 11 类，如果等概率出现，核心三项（攻/防/血）每级只有约 27% 的机会露面，
+// 整体强度会被稀释。这里给不同类一点出现权重：面板型常驻，情境型偶尔出现。
+export const LEVEL_WEIGHT = {
+  atk: 2.0, def: 2.0, maxHp: 2.0,
+  gold: 1.1, heal: 1.1,
+  atkFloor: 1.0, defFloor: 1.0,
+  goldKill: 0.8, healKill: 0.8, xpFloor: 0.9,
+  xpKill: 1.0,
+};
+
 export const levelStat = (id) => LEVEL_STATS.find((st) => st.id === id);
 export const levelStatName = (st) => tr('level.' + st.id + '.name');
+
+// 每层成长：拿到一次就是「每进入新层 +1」，下楼时直接累加（不再拆成每 4 层）。
+// 靠 minRarity: 'epic' 控制出现频率，不靠把数字摊薄。
 export const levelChoiceStat = (id) => id.split(':')[0];
 export const levelChoiceRarity = (id) => id.split(':')[1];
 export const levelChoiceAmount = (id) => levelStat(levelChoiceStat(id)).vals[levelChoiceRarity(id)];
@@ -307,9 +354,9 @@ export const BRAWLER_ATK = 1;
 export const BRAWLER_HEAL = 1;
 export const BRAWLER_TYPES = ['hp', 'def', 'atk', 'heal'];
 
-// 宝藏猎人：每层宝箱 +1（上限 9），开箱额外掉遗物的概率。
-// 满程 normal 约 190 箱，10% ≈ 19 件额外遗物；实战多半走到十几层，实测约 +5 件。
-export const CHEST_RELIC_CHANCE = 0.10;
+// 探险家（宝藏猎人）：亲手翻空地时，每格有 5% 额外发现一只遗物宝箱（每层最多 1 只）。
+// 满程约 200 次翻格，按每层封顶算，期望约 +0.05×翻格数、且实际大多被 1 只/层钳住。
+export const CHEST_FIND_CHANCE = 0.03;
 
 // 越深越容易遇到高品质遗物。权重随层数连续漂移：
 // 第 1 层 60/30/10，第 30 层 30/45/30，中间平滑过渡。
@@ -489,7 +536,7 @@ export function neighbors(i) {
     }
   return out;
 }
-const isThreat = (t) => t.kind === 'monster' || t.kind === 'elite' || t.kind === 'trap' || t.kind === 'boss';
+const isThreat = (t) => t.kind === 'monster' || t.kind === 'elite' || t.kind === 'trap' || t.kind === 'boss' || t.kind === 'mini';
 // 数字只统计「尚未探明」的威胁：探明或清除后数字会减小，快速展开因此始终可用
 const liveHidden = (t) => isThreat(t) && !t.revealed;
 function hiddenThreatCount(s, i) {
@@ -517,7 +564,7 @@ export function ambushDamage(p, mob) {
 }
 // atk 允许传入“当前有效攻击”（角斗士翻倍）；默认仍读面板，老调用不需要改。
 export function forecast(p, mob, atk = p.atk) {
-  const deal = hitDamage(atk, mob.def) + (mob.elite || mob.boss ? (p.eliteAtkBonus || 0) : 0);
+  const deal = hitDamage(atk, mob.def) + (mob.elite || mob.boss || mob.mini ? (p.eliteAtkBonus || 0) : 0);
   const T = p.thorns;
   // 墓园的复活是这场战斗的第二管血：预演直接把两段生命一起算进去，
   // 否则玩家看到「三回合击杀」，结算时却多挨一轮反击，数字就撒了谎。
@@ -579,6 +626,7 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
     flagBonus: 0,
     solved: false,
     solvedFlags: 0,
+    chestFound: false,
     defDebt: 0,
     pendingCombat: -1,
     forcedCombat: -1,
@@ -586,7 +634,7 @@ export function createRun(difficulty = 'normal', seed = Date.now()) {
     pendingDoor: -1,
     pendingEvent: -1,
     eventSchedule: [],
-    stats: { kills: 0, revealed: 0, goldEarned: 0, damage: 0, turns: 0, chests: 0, chestRelics: 0 },
+    stats: { kills: 0, revealed: 0, goldEarned: 0, damage: 0, turns: 0, chests: 0, chestRelics: 0, brawler: { hp: 0, atk: 0, def: 0, heal: 0 } },
     log: [],
     logId: 0,
   };
@@ -636,6 +684,7 @@ export function buildFloor(s) {
   s.flags = 0;
   s.solved = false;
   s.solvedFlags = 0;
+  s.chestFound = false;
   s.mode = 'explore';
   s.pendingCombat = -1;
   s.forcedCombat = -1;
@@ -659,14 +708,49 @@ export function buildFloor(s) {
 const depthOf = (f) => (f <= 8 ? f : 8 + (f - 8) * 0.5);
 
 // 每层必落一个事件格，保证每层至少一个建筑；类型按权重随机，遗物商店明显更少。
+// 第 1 层固定给消耗品商店：开局金币足以买一件（第 1 层单价 20），
+// 先把「点开事件格 → 花金币换补给」这件事教给玩家，也避免首层就是买不起的遗物/神龛。
 function planEvents(s) {
   const list = [];
   for (let f = 1; f <= MAX_FLOOR; f++) {
+    if (f === 1) { list.push({ floor: f, kind: 'shopSupply' }); continue; }
     const r = rand(s);
     const kind = r < 0.4 ? 'shopSupply' : r < 0.8 ? 'shrine' : 'shopRelic';
     list.push({ floor: f, kind });
   }
+  // 纯随机偶尔会连续 5 个神龛、或者一整局都不出遗物商店。
+  // 两个约束交替修：每个区（10 层）至少一家遗物商店；同一类不连发三次。
+  const other = (k) => (k === 'shrine' ? 'shopSupply' : 'shrine');
+  const actOf = (floor) => Math.ceil(floor / 10);
+  const relicsInAct = (act) => list.filter((e) => actOf(e.floor) === act && e.kind === 'shopRelic').length;
+  for (let pass = 0; pass < 4; pass++) {
+    let changed = false;
+    for (let act = 1; act <= 3; act++) {
+      if (relicsInAct(act)) continue;
+      const slice = list.filter((e) => actOf(e.floor) === act);
+      const spot = slice.filter((e) => e.kind === 'shrine').pop()
+        || slice.filter((e) => e.kind === 'shopSupply').pop() || slice[0];
+      if (spot) { spot.kind = 'shopRelic'; changed = true; }
+    }
+    for (let i = 2; i < list.length; i++) {
+      const a = list[i - 2].kind, b = list[i - 1].kind, c = list[i].kind;
+      if (a !== c || b !== c) continue;
+      // 拆到本区唯一一家遗物商店时，改前一层而不是改它
+      if (c === 'shopRelic' && relicsInAct(actOf(list[i].floor)) <= 1) {
+        list[i - 1].kind = other(list[i - 1].kind);
+      } else {
+        list[i].kind = other(c);
+      }
+      changed = true;
+    }
+    if (!changed) break;
+  }
   return list;
+}
+
+// 宝箱数量：本身不再按层刷，只有寻宝铃这类「额外宝箱」来源；精英/关底 Boss 掉的箱子另算
+export function planChestCount(f, loot, extra = 0) {
+  return Math.max(0, extra);
 }
 
 function planFloor(s, f, d) {
@@ -676,10 +760,11 @@ function planFloor(s, f, d) {
   // 63 格里要塞下整层内容：深层靠更狠的怪而不是更多怪施压，否则满盘都是威胁，数字就不再提供信息
   const monsters = Math.round(Math.min(20, Math.max(5, (6 + f * 1.3) * d.threat)) * (boss ? 0.7 : 1));
   const traps = Math.min(6, Math.max(1, Math.round((1 + f * 0.35) * d.threat)));
-  const hunter = hasTalent(s, 'treasureHunter');
-  const extraChests = (hunter ? 1 : 0) + (hasRelic(s, 'treasureBell') ? RELIC_BELL_CHEST : 0);
-  const chests = Math.min(8 + extraChests, Math.max(2, Math.round((3 + f * 0.15) * d.loot)) + extraChests);
-  const potions = Math.max(1, d.potions);
+  const extraChests = hasRelic(s, 'treasureBell') ? RELIC_BELL_CHEST : 0;
+  // 宝箱只装「值得开」的东西（永久属性 / 大额金币 / 小概率遗物），数量减半。
+  const chests = planChestCount(f, d.loot, extraChests);
+  // 消耗品直接摆在地板上：药水 / 炸弹 / 卷轴，翻开后点一下就能拿
+  const drops = Math.max(2, Math.round((1.8 + f * 0.1) * d.loot));
   // 火只铺在灼热地狱的普通层；图腾按区内的固定轮换出现，Boss 层三座齐上；
   // 墓园是整层被动，Boss 与精英同样会复活一次。
   const firePatches = !boss && theme === 'inferno' ? INFERNO_FIRE_PATCHES[zd - 1] : 0;
@@ -687,12 +772,13 @@ function planFloor(s, f, d) {
     ? (boss ? ['magic', 'death', 'summon'] : [TOTEM_CYCLE[(zd - 1) % TOTEM_CYCLE.length]])
     : [];
   return {
-    monsters, traps, chests, potions,
+    monsters, traps, chests, drops,
     elite: boss || f < 2 ? 0 : 1, boss: boss ? 1 : 0,
+    mini: !boss && f % MINI_EVERY === 0 ? 1 : 0,
     altar: f >= 2 ? 1 : 0, stairs: 1,
     event: (s.eventSchedule.find((e) => e.floor === f) || {}).kind || null,
     // 石墙是全地城的结构，不随主题走；Boss 层保持一对一的决斗空间。
-    walls: !boss && f >= WALL_MIN_FLOOR ? Math.min(WALL_MAX, WALL_MIN + Math.floor((f - WALL_MIN_FLOOR) / 8)) : 0,
+    walls: RULES.walls && !boss && f >= WALL_MIN_FLOOR ? Math.min(WALL_MAX, WALL_MIN + Math.floor((f - WALL_MIN_FLOOR) / 8)) : 0,
     firePatches,
     totemTypes,
     revive: theme === 'grave',
@@ -719,8 +805,9 @@ function makeMob(s, f, d, type) {
   const zd = zoneDepth(f);
   const pool = roster.filter((b) => zd >= b.min && zd <= b.max);
   const b = type === 'elite' ? ELITES[region]
-    : type === 'boss' ? BOSSES[region]
-      : pick(s, pool.length ? pool : roster);
+    : type === 'mini' ? MINIS[region]
+      : type === 'boss' ? BOSSES[region]
+        : pick(s, pool.length ? pool : roster);
   const P = d.power;
   const B = BAL;
   const depth = depthOf(f);
@@ -731,8 +818,9 @@ function makeMob(s, f, d, type) {
   let xp = Math.round((2 + 1.2 * f) * (b.hp + b.atk) / 2);
   let gold = Math.round((BAL.mobGold + BAL.mobGoldF * f) * d.loot);
   if (type === 'elite') { hp = Math.round(hp * 1.9); atk = Math.round(atk * 1.3); xp *= 3; gold = Math.round(gold * 3.2); }
+  if (type === 'mini') { hp = Math.round(hp * 2.6); atk = Math.round(atk * 1.45); xp *= 5; gold = Math.round(gold * 5); }
   if (type === 'boss') { hp = Math.round(hp * 3.4); atk = Math.round(atk * 1.45); xp = 120; gold = 260; }
-  return { id: b.id, icon: b.icon, race: b.race, hp, maxHp: hp, atk, def, xp, gold, elite: type === 'elite', boss: type === 'boss' };
+  return { id: b.id, icon: b.icon, race: b.race, hp, maxHp: hp, atk, def, xp, gold, elite: type === 'elite', boss: type === 'boss', mini: type === 'mini' };
 }
 
 export function ensureBoard(s, safeIndex) {
@@ -814,6 +902,15 @@ export function ensureBoard(s, safeIndex) {
     t.mob = makeMob(s, f, d, 'elite');
     applyDeathAura(t, deathTotem);
   }
+  if (p.mini) {
+    const t = s.tiles[take(far)];
+    t.kind = 'mini';
+    t.mob = makeMob(s, f, d, 'mini');
+    applyDeathAura(t, deathTotem);
+    // 小 BOSS 和关底 Boss 一样亮在棋盘上：看见它再决定打不打，不搞偷袭
+    t.revealed = true;
+    say(s, 'log.mini.spawn', { mob: ref('mob.' + t.mob.id + '.name') }, 'bad');
+  }
   for (let k = 0; k < p.monsters; k++) {
     const t = s.tiles[take()];
     t.kind = 'monster';
@@ -821,8 +918,11 @@ export function ensureBoard(s, safeIndex) {
     applyDeathAura(t, deathTotem);
   }
   for (let k = 0; k < p.traps; k++) s.tiles[take()].kind = 'trap';
-  for (let k = 0; k < p.chests; k++) { const i = take(); s.tiles[i].kind = 'chest'; s.tiles[i].chest = rollChest(s, f, d); }
-  for (let k = 0; k < p.potions; k++) s.tiles[take()].kind = 'potion';
+  for (let k = 0; k < p.chests; k++) { const i = take(); s.tiles[i].kind = 'chest'; s.tiles[i].chest = relicChest(); }
+    // 地板补给以药水为主：每层至少一瓶，其余按权重刷
+  for (let k = 0; k < p.drops; k++) {
+    s.tiles[take()].kind = k === 0 ? 'potion' : pick(s, ['potion', 'potion', 'bomb', 'scroll']);
+  }
   // 墓园：整层怪物都带一管半血复活，Boss 与精英也不例外。
   if (p.revive) {
     for (const t of s.tiles) {
@@ -904,15 +1004,8 @@ function layFirePatch(s, pool) {
   for (const j of cells) s.tiles[j].fire = true;
 }
 
-function rollChest(s, f, d) {
-  const bag = ['gold', 'gold', 'potion', 'weapon', 'armor', 'scroll', 'scroll', 'bomb', 'bomb'];
-  if (d.loot > 1) bag.push('potion', 'gold');
-  const type = pick(s, bag);
-  if (type === 'gold') return { type, amount: Math.round((BAL.chestGold + BAL.chestGoldF * f) * d.loot) + ri(s, 0, 6) };
-  if (type === 'weapon') return { type, amount: 1 };
-  if (type === 'armor') return { type, amount: 1 };
-  return { type, amount: 1 };
-}
+// 遗物宝箱：内容只有遗物，开箱走 offerRelics 的三选一
+const relicChest = () => ({ type: 'relic' });
 
 // ---------- helpers ----------
 // 日志存 key + 参数，不存译文：换语言、调数值都不必重新生成历史文本。
@@ -1112,10 +1205,12 @@ export function shopPrice(s, id) {
   const item = SHOP.find((x) => x.id === id);
   if (!item) return 0;
   // 折扣可能带出小数，统一取整到 5，避免 23、54 这类零碎价格
-  return Math.max(5, Math.round(item.base * shopMult(s, id) / 5) * 5);
+  const mult = shopDepthMult(s ? s.floor : 1) * shopMult(s, id);
+  return Math.max(5, Math.round(item.base * mult / 5) * 5);
 }
 export function relicPrice(s, rarity) {
-  return Math.max(5, Math.round((RELIC_PRICE[rarity] || RELIC_PRICE.common) * shopMult(s, 'relic') / 5) * 5);
+  const mult = shopDepthMult(s ? s.floor : 1) * shopMult(s, 'relic');
+  return Math.max(5, Math.round((RELIC_PRICE[rarity] || RELIC_PRICE.common) * mult / 5) * 5);
 }
 
 // 角斗士：每次永久获得攻击力都额外 +1；失去攻击力（如静默誓约）不返还。
@@ -1149,20 +1244,63 @@ function gainXp(s, amount, out) {
 }
 
 // ---------- 升级奖励 ----------
-function rollLevelRarity(s) {
-  const w = relicRarityWeights(s.floor);
-  const ids = ['common', 'rare', 'epic'];
-  const total = ids.reduce((a, id) => a + w[id], 0);
-  let x = rand(s) * total;
-  for (const id of ids) { x -= w[id]; if (x < 0) return id; }
-  return 'common';
+const RARITY_ORDER = ['common', 'rare', 'epic'];
+
+// 升级奖励的稀有度曲线：史诗刻意压低（第 1 层 5%，第 30 层 15%），
+// 让「史诗档」是一局里少数几次的惊喜，而不是每次三选一都有。
+export const LEVEL_RARITY_START = { common: 70, rare: 25, epic: 5 };
+export const LEVEL_RARITY_END = { common: 40, rare: 45, epic: 15 };
+export function levelRarityWeights(f) {
+  const t = Math.min(1, Math.max(0, ((f || 1) - 1) / (MAX_FLOOR - 1)));
+  return {
+    common: LEVEL_RARITY_START.common + (LEVEL_RARITY_END.common - LEVEL_RARITY_START.common) * t,
+    rare: LEVEL_RARITY_START.rare + (LEVEL_RARITY_END.rare - LEVEL_RARITY_START.rare) * t,
+    epic: LEVEL_RARITY_START.epic + (LEVEL_RARITY_END.epic - LEVEL_RARITY_START.epic) * t,
+  };
 }
 
-function rollLevelChoices(s, exclude = []) {
+// 每张卡独立掷稀有度；带 minRarity 的项（如每击杀经验、每层成长）不会掉到更低的档
+function rollLevelRarity(s, stat) {
+  const w = levelRarityWeights(s.floor);
+  const total = RARITY_ORDER.reduce((a, id) => a + w[id], 0);
+  let x = rand(s) * total;
+  let got = 'common';
+  for (const id of RARITY_ORDER) { x -= w[id]; if (x < 0) { got = id; break; } }
+  const floor = stat && stat.minRarity ? RARITY_ORDER.indexOf(stat.minRarity) : 0;
+  return RARITY_ORDER[Math.max(floor, RARITY_ORDER.indexOf(got))];
+}
+
+export // 出现权重：带 minRarity 的项（史诗/稀有起步）还要乘上它所在档位的概率，
+// 否则「只出史诗」会变成「每批都有史诗」，反而比普通牌更常见。
+function levelDrawWeight(s, id) {
+  const st = levelStat(id);
+  const base = LEVEL_WEIGHT[id] || 1;
+  if (!st || !st.minRarity) return base;
+  const w = levelRarityWeights(s.floor);
+  const total = RARITY_ORDER.reduce((a, k) => a + w[k], 0);
+  return base * (w[st.minRarity] / total);
+}
+
+export function rollLevelChoices(s, exclude = []) {
   const all = LEVEL_STATS.map((st) => st.id);
   const fresh = all.filter((id) => !exclude.includes(id));
-  const pool = shuffle(s, fresh.length >= LEVEL_DRAW_COUNT ? fresh : all.slice());
-  return pool.slice(0, LEVEL_DRAW_COUNT).map((id) => id + ':' + rollLevelRarity(s));
+  const items = (fresh.length >= LEVEL_DRAW_COUNT ? fresh : all.slice()).slice();
+  const picks = [];
+  while (picks.length < LEVEL_DRAW_COUNT && items.length) {
+    const total = items.reduce((a, id) => a + levelDrawWeight(s, id), 0);
+    let x = rand(s) * total, at = items.length - 1;
+    for (let i = 0; i < items.length; i++) {
+      x -= levelDrawWeight(s, items[i]);
+      if (x < 0) { at = i; break; }
+    }
+    const id = items.splice(at, 1)[0];
+    picks.push(id + ':' + rollLevelRarity(s, levelStat(id)));
+  }
+  // 三张全是普通会让这一级毫无手感：保底把第一张升到稀有。
+  if (picks.every((id) => levelChoiceRarity(id) === 'common')) {
+    picks[0] = levelChoiceStat(picks[0]) + ':rare';
+  }
+  return picks;
 }
 
 function openLevelOffer(s, out) {
@@ -1249,36 +1387,29 @@ function addGold(s, amount, out) {
 }
 
 // ---------- reveal ----------
+// 宝箱＝遗物容器：开箱直接进遗物三选一。只由精英/关底 Boss、寻宝铃与探险家发现。
 function lootChest(s, i, out) {
-  const t = s.tiles[i], p = s.player;
-  let type = t.chest.type, amount = t.chest.amount;
+  const t = s.tiles[i];
   t.used = true;
   s.stats.chests++;
-  if (hasRelic(s, 'greedyHeart')) {
-    if (type === 'gold') amount *= 2;
-  }
-  if (type === 'gold') { const got = addGold(s, amount, out); say(s, 'log.chest.gold', { n: got }, 'good'); }
-  else if (type === 'potion') { p.potions++; say(s, 'log.chest.potion', 'good'); ev(out, 'item', { item: 'potion' }); }
-  else if (type === 'weapon') { const gain = addAtk(s, amount); say(s, 'log.chest.weapon', { n: gain }, 'good'); ev(out, 'item', { item: 'weapon' }); }
-  else if (type === 'armor') { p.def += amount; say(s, 'log.chest.armor', { n: amount }, 'good'); ev(out, 'item', { item: 'armor' }); }
-  else if (type === 'scroll') { p.scrolls++; say(s, 'log.chest.scroll', 'good'); ev(out, 'item', { item: 'scroll' }); }
-  else { p.bombs++; say(s, 'log.chest.bomb', 'good'); ev(out, 'item', { item: 'bomb' }); }
+  say(s, 'log.chest.relic', 'magic');
   ev(out, 'loot', { i });
-  if (hasTalent(s, 'treasureHunter') && rand(s) < CHEST_RELIC_CHANCE) {
-    const pool = relicPool(s);
-    if (pool.length) {
-      s.stats.chestRelics++;
-      say(s, 'log.chest.relic', 'magic');
-      grantRelic(s, takeWeighted(s, pool, relicRarityWeights(s.floor)).id, out);
-    }
-  }
+  const pool = relicPool(s);
+  if (!pool.length) return;
+  s.stats.chestRelics++;
+  offerRelics(s, out);
 }
 
+// 地板上的消耗品（药水 / 炸弹 / 卷轴）翻到后点一下直接进包
 function pickPotion(s, i, out) {
-  s.tiles[i].used = true;
-  s.player.potions++;
-  say(s, 'log.pickup.potion', 'good');
-  ev(out, 'item', { item: 'potion' });
+  const t = s.tiles[i];
+  t.used = true;
+  const kind = t.kind === 'bomb' || t.kind === 'scroll' ? t.kind : 'potion';
+  if (kind === 'bomb') s.player.bombs++;
+  else if (kind === 'scroll') s.player.scrolls++;
+  else s.player.potions++;
+  say(s, 'log.pickup.' + kind, 'good');
+  ev(out, 'item', { item: kind });
   ev(out, 'loot', { i });
 }
 
@@ -1290,7 +1421,7 @@ function openTile(s, i, out, opts = {}) {
   const wasFire = t.fire;
   if (wasFire) t.fire = false;
   t.revealed = true;
-  if (t.flagged) { t.flagged = false; s.flags--; }
+  if (t.flagged) { t.flagged = false; if (t.autoFlag) t.autoFlag = false; else s.flags--; }
   s.stats.revealed++;
   ev(out, 'reveal', { i, kind: t.kind });
   const p = s.player;
@@ -1355,9 +1486,9 @@ function openTile(s, i, out, opts = {}) {
     ev(out, 'discover', { i, kind: 'chest' });
     return;
   }
-  if (t.kind === 'potion') {
-    say(s, 'log.discover.potion', 'good');
-    ev(out, 'discover', { i, kind: 'potion' });
+  if (t.kind === 'potion' || t.kind === 'bomb' || t.kind === 'scroll') {
+    say(s, 'log.discover.' + t.kind, 'good');
+    ev(out, 'discover', { i, kind: t.kind });
     return;
   }
   if (t.kind === 'altar') {
@@ -1370,6 +1501,16 @@ function openTile(s, i, out, opts = {}) {
     const key = isBossFloor(s.floor) ? 'log.discover.stairs.boss' : s.floor === 1 ? 'log.discover.stairs' : 'log.discover.stairs.locked';
     say(s, key, 'magic');
     ev(out, 'stairs', { i });
+    return;
+  }
+  // 探险家：亲手翻空地时小概率额外发现一只宝箱（每层最多一只）
+  if (t.kind === 'empty' && !opts.silent && hasTalent(s, 'treasureHunter')
+    && !s.chestFound && rand(s) < CHEST_FIND_CHANCE) {
+    s.chestFound = true;
+    t.kind = 'chest';
+    t.chest = relicChest();
+    say(s, 'log.chest.find', 'good');
+    ev(out, 'chestFound', { i });
     return;
   }
   if (!opts.noFlood && hiddenThreatCount(s, i) === 0) flood(s, i, out, opts);
@@ -1512,13 +1653,29 @@ function tapInner(s, i) {
   }
 
   if (s.mode === 'scroll') {
+    // 先把棋盘生成了再判断：卷轴也可能是这一局的第一步
+    ensureBoard(s, i);
+    const area = [i, ...neighbors(i)];
+    // 3×3 内一格暗格都没有时，这一卷轴什么也不会翻开——按「无效点击免费」的原则拒掉，
+    // 否则玩家点到自己已经翻烂的区域会白白丢掉一枚卷轴。
+    if (!area.some((j) => !s.tiles[j].revealed)) { say(s, 'log.scroll.empty', 'warn'); return free; }
     s.player.scrolls--;
     s.mode = 'explore';
     ev(out, 'scroll', { i });
-    ensureBoard(s, i);
-    const area = [i, ...neighbors(i)];
     const surveyed = area.filter((j) => !s.tiles[j].revealed && isThreat(s.tiles[j])).length;
-    for (const j of area) openTile(s, j, out, { safe: true, silent: true, noFlood: true });
+    // 卷轴只探明地形，不把怪物掀出来：怪物位置改成自动标记（红色感叹号），
+    // 这样「场上出现的怪物」永远来自偷袭或完美识破，不会白嫖。
+    let scouted = 0;
+    for (const j of area) {
+      const u = s.tiles[j];
+      if (u.revealed) continue;
+      if (u.kind === 'monster' || u.kind === 'elite' || u.kind === 'boss') {
+        if (!u.flagged) { u.flagged = true; u.autoFlag = true; scouted++; }
+        continue;
+      }
+      openTile(s, j, out, { safe: true, silent: true, noFlood: true });
+    }
+    if (scouted) ev(out, 'scout', { i, n: scouted });
     say(s, 'log.scroll', 'magic');
     if (hasRelic(s, 'cartographer') && surveyed) {
       const add = Math.min(RELIC_SURVEY_CAP - s.relicState.survey, surveyed);
@@ -1580,7 +1737,7 @@ function tapInner(s, i) {
   if (t.kind === 'altar' && !t.used) { s.pendingAltar = i; ev(out, 'altar', { i }); return free; }
   if (EVENT_KINDS.includes(t.kind) && !t.used) { s.pendingEvent = i; ev(out, 'event', { i, kind: t.kind }); return free; }
   if (t.kind === 'chest' && !t.used) { lootChest(s, i, out); return { out, spent: true }; }
-  if (t.kind === 'potion' && !t.used) { pickPotion(s, i, out); return { out, spent: true }; }
+  if ((t.kind === 'potion' || t.kind === 'bomb' || t.kind === 'scroll') && !t.used) { pickPotion(s, i, out); return { out, spent: true }; }
   if (t.kind === 'stairs') return { out: out.concat(tryDescend(s)), spent: false };
   // 能走到这里的都是空地或占用已失效的格子，数字同样支持双击展开
   if (t.n > 0) {
@@ -1612,6 +1769,12 @@ export function chord(s, i) {
   ev(out, 'chord', { i });
   for (const j of hidden) {
     if (s.status !== 'playing') break;
+    const u = s.tiles[j];
+    // 插错旗导致连锁翻出怪物：这是推理失误，照常吃偷袭并进入战斗
+    if (u.kind === 'monster' || u.kind === 'elite' || u.kind === 'boss') {
+      openTile(s, j, out);
+      break;
+    }
     openTile(s, j, out, { silent: true });
   }
   return finish(s, out);
@@ -1655,6 +1818,8 @@ function brawlerGrow(s, out) {
   else p.killHeal += BRAWLER_HEAL;
   syncRelicMods(s);
   const n = type === 'hp' ? BRAWLER_HP : type === 'def' ? BRAWLER_DEF : type === 'atk' ? BRAWLER_ATK : BRAWLER_HEAL;
+  s.stats.brawler = s.stats.brawler || { hp: 0, atk: 0, def: 0, heal: 0 };
+  s.stats.brawler[type] = (s.stats.brawler[type] || 0) + n;
   say(s, 'log.brawler.' + type, { n }, 'magic');
   return ev(out, 'brawlerGrow', { stat: type, n });
 }
@@ -1673,9 +1838,13 @@ function killMob(s, t, out, opts = {}) {
   const xp = Math.round(m.xp * (opts.bomb && hasRelic(s, 'fuse') ? 1 + RELIC_FUSE_XP : 1))
     + ((s.levelTaken || {}).xpKill || 0);
   ev(out, 'kill', { i: t.i, mob: m, xp });
+  // 升级奖励的「每击杀」收益：金币与回血在击杀瞬间结算
+  const lvTaken = s.levelTaken || {};
+  if (lvTaken.goldKill) addGold(s, lvTaken.goldKill, out);
+  if (lvTaken.healKill) heal(s, lvTaken.healKill, out);
   if (opts.bomb && hasRelic(s, 'forge')) s.relicState.bombForge = (s.relicState.bombForge || 0) + RELIC_FORGE_GROW;
-  addGold(s, m.gold + (hasRelic(s, 'lootSack') ? RELIC_LOOT_SACK_GOLD : 0)
-    + (hasRelic(s, 'bounty') ? RELIC_BOUNTY_GOLD : 0), out);
+  addGold(s, Math.round((m.gold + (hasRelic(s, 'lootSack') ? RELIC_LOOT_SACK_GOLD : 0)
+    + (hasRelic(s, 'bounty') ? RELIC_BOUNTY_GOLD : 0)) * (hasRelic(s, 'greedyHeart') ? RELIC_GREEDY_KILL_GOLD : 1)), out);
   gainXp(s, xp, out);
   if (hasRelic(s, 'momentum') && !s.relicState.firstKill) { s.relicState.firstKill = true; syncRelicMods(s); }
   if (hasRelic(s, 'vampiricEdge')) heal(s, 4, out);
@@ -1697,22 +1866,24 @@ function killMob(s, t, out, opts = {}) {
   }
   // 召唤出来的精锐只是图腾的增援：给经验与金币，但不掉守卫钥匙、也不掉遗物，
   // 否则召唤图腾反而成了稳定的白嫖来源。
+  if (t.kind === 'mini' && !t.summoned) {
+    t.kind = 'chest';
+    t.chest = relicChest();
+    t.used = false;
+    say(s, 'log.chest.drop', 'magic');
+    ev(out, 'chestDrop', { i: t.i });
+  }
   if (t.kind === 'elite' && !t.summoned) {
     s.hasKey = true;
     say(s, 'log.key', 'magic');
     ev(out, 'key', { i: t.i });
-    if (isRelicFloor(s.floor)) {
-      t.relicDrop = true;
-      say(s, 'log.relic.drop', 'magic');
-      ev(out, 'relicDrop', { i: t.i });
-    }
   }
   return xp;
 }
 
 // 单次交换的预演：只算这一刀与它这一口反击，供逐击战斗使用。
 export function forecastOnce(p, mob, atk = p.atk) {
-  const deal = hitDamage(atk, mob.def) + (mob.elite || mob.boss ? (p.eliteAtkBonus || 0) : 0);
+  const deal = hitDamage(atk, mob.def) + (mob.elite || mob.boss || mob.mini ? (p.eliteAtkBonus || 0) : 0);
   const reviveHp = mob.reviveHp && !mob.revived ? mob.reviveHp : 0;
   const kill = deal >= mob.hp && !reviveHp;
   const revive = deal >= mob.hp && !!reviveHp;
@@ -2009,6 +2180,11 @@ export function tryDescend(s) {
     const h = heal(s, lv.heal, out);
     if (h) say(s, 'log.level.heal', { n: h }, 'good');
   }
+  if (lv.atkFloor) say(s, 'log.level.atk', { n: addAtk(s, lv.atkFloor) }, 'good');
+  if (lv.defFloor) {
+    s.player.def += lv.defFloor;
+    say(s, 'log.level.def', { n: lv.defFloor }, 'good');
+  }
   if (lv.xpFloor) {
     gainXp(s, lv.xpFloor, out);
     say(s, 'log.level.xp', { n: lv.xpFloor }, 'good');
@@ -2047,9 +2223,12 @@ function defeatBoss(s, t, out) {
   s.bossDown = true;
   say(s, 'log.boss.down', { mob: ref('mob.' + t.mob.id + '.name') }, 'good');
   ev(out, 'bossDown', { floor: s.floor });
-  t.relicDrop = true;
-  say(s, 'log.relic.drop', 'magic');
-  ev(out, 'relicDrop', { i: t.i });
+  // 关底 Boss 掉宝箱
+  t.kind = 'chest';
+  t.chest = relicChest();
+  t.used = false;
+  say(s, 'log.chest.drop', 'magic');
+  ev(out, 'chestDrop', { i: t.i });
   // 击破第 10 / 20 层的 Boss 后，下一区的主题摆上来让玩家自己选。
   const act = actOf(s.floor);
   if (act < ACTS && s.floor % BOSS_EVERY === 0) {
@@ -2086,7 +2265,7 @@ export const hasRelic = (s, id) => s.relics.includes(id);
 
 // 战斗修正全部落在 player 上，forecast 因此无需知道遗物系统的存在，
 // 预演与结算读到的永远是同一份数字。
-function syncRelicMods(s) {
+export function syncRelicMods(s) {
   const p = s.player;
   p.takeMul = hasRelic(s, 'glassCannon') ? 2 : 1;
   p.takeFlat = (hasRelic(s, 'thornMail') ? 2 : 0)
@@ -2237,9 +2416,42 @@ export function deserialize(text) {
     s.talent = talentById(s.talent) ? s.talent : null;
     s.talentPending = !!s.talentPending && !s.talent;
     s.player.killHeal = Number.isFinite(s.player.killHeal) ? Math.max(0, s.player.killHeal) : 0;
+    // 存档在本地，可能被手改、也可能跨版本残留：后续代码会直接把这些字段当数组/对象用，
+    // 缺一个（或类型错）就会在下一层 buy() / tapTile() 里抛异常——玩家看到的是界面卡死。
+    // 所以这里一律按白名单重建，而不是「有就用」。
+    s.relics = Array.isArray(s.relics) ? [...new Set(s.relics.filter((id) => relicById(id)))] : [];
+    s.relicChoices = Array.isArray(s.relicChoices) ? s.relicChoices.filter((id) => relicById(id)) : null;
+    if (!s.relicChoices || !s.relicChoices.length) s.relicChoices = null;
+    s.relicReroll = Number.isFinite(s.relicReroll) ? Math.max(0, s.relicReroll) : 0;
+    const rs = s.relicState && typeof s.relicState === 'object' ? s.relicState : {};
+    s.relicState = {
+      whet: Math.max(0, Math.floor(rs.whet || 0)),
+      firstKill: !!rs.firstKill,
+      trapWard: Math.max(0, Math.floor(rs.trapWard || 0)),
+      survey: Math.max(0, Math.floor(rs.survey || 0)),
+      heart: Math.max(0, Math.floor(rs.heart || 0)),
+      bombForge: Math.max(0, Math.floor(rs.bombForge || 0)),
+    };
+    s.bought = s.bought && typeof s.bought === 'object' ? s.bought : {};
+    s.log = Array.isArray(s.log) ? s.log.filter((e) => e && typeof e.k === 'string') : [];
+    s.logId = Number.isFinite(s.logId) ? Math.max(0, s.logId) : s.log.length;
+    s.mode = ['explore', 'flag', 'bomb', 'scroll'].includes(s.mode) ? s.mode : 'explore';
+    s.flags = Number.isFinite(s.flags) ? Math.max(0, Math.floor(s.flags)) : 0;
+    s.flagBonus = Number.isFinite(s.flagBonus) ? Math.min(FLAG_BONUS_CAP, Math.max(0, Math.floor(s.flagBonus))) : 0;
+    s.stairsIndex = Number.isFinite(s.stairsIndex) ? s.stairsIndex : -1;
+    s.solvedFlags = Number.isFinite(s.solvedFlags) ? Math.max(0, Math.floor(s.solvedFlags)) : 0;
+    s.defDebt = Number.isFinite(s.defDebt) ? Math.max(0, Math.floor(s.defDebt)) : 0;
+    // 面板数值同样要能兜住：NaN/负数会让 HUD 与战斗预演一起算错
+    const pd = DIFFICULTIES[s.difficulty];
+    const num = (v, fallback) => (Number.isFinite(v) ? v : fallback);
+    s.player.maxHp = Math.max(1, Math.floor(num(s.player.maxHp, pd.hp)));
+    s.player.hp = Math.min(s.player.maxHp, Math.max(0, Math.floor(num(s.player.hp, s.player.maxHp))));
+    s.player.def = Math.max(0, Math.floor(num(s.player.def, 1)));
+    s.player.atk = Math.max(1, Math.floor(num(s.player.atk, 5)));
+    for (const k of ['gold', 'potions', 'bombs', 'scrolls']) s.player[k] = Math.max(0, Math.floor(num(s.player[k], 0)));
     // 承伤/增伤从百分比改为具体数值：这些派生字段一律按遗物重建，
     // 老存档里的 0.75 倍承伤、0.6 倍精英承伤都已作废。龙鳞护符改成防御，按差额补上。
-    const owned = Array.isArray(s.relics) ? s.relics : [];
+    const owned = s.relics;
     const relic = (id) => owned.includes(id);
     s.player.takeMul = relic('glassCannon') ? 2 : 1;
     s.player.eliteAtkBonus = relic('guardianBane') ? RELIC_ELITE_DMG : 0;
@@ -2250,6 +2462,10 @@ export function deserialize(text) {
     s.stats = s.stats && typeof s.stats === 'object' ? s.stats : {};
     s.stats.chests = Number.isFinite(s.stats.chests) ? Math.max(0, s.stats.chests) : 0;
     s.stats.chestRelics = Number.isFinite(s.stats.chestRelics) ? Math.max(0, s.stats.chestRelics) : 0;
+    s.stats.brawler = s.stats.brawler && typeof s.stats.brawler === 'object' ? s.stats.brawler : { hp: 0, atk: 0, def: 0, heal: 0 };
+    for (const k of ['hp', 'atk', 'def', 'heal']) {
+      s.stats.brawler[k] = Number.isFinite(s.stats.brawler[k]) ? Math.max(0, s.stats.brawler[k]) : 0;
+    }
     // 机关字段同样是后加的：老存档补默认值，火层缺失就当没火
     s.doorUsed = !!s.doorUsed;
     s.hazardClock = Number.isFinite(s.hazardClock) ? Math.max(0, s.hazardClock) : 0;
@@ -2258,6 +2474,15 @@ export function deserialize(text) {
     s.eventSchedule = Array.isArray(s.eventSchedule)
       ? s.eventSchedule.filter((e) => e && Number.isFinite(e.floor) && EVENT_KINDS.includes(e.kind))
       : [];
+    // 事件表缺失或被清洗成空时补齐到 30 层：否则从某层起就再也没有商店与神龛，
+    // 而且玩家完全看不出异常。补全用确定性生成，结束后恢复随机流，不影响这一局后续的随机。
+    if (new Set(s.eventSchedule.map((e) => e.floor)).size < MAX_FLOOR) {
+      const kept = new Map(s.eventSchedule.map((e) => [e.floor, e.kind]));
+      const rng = Number.isFinite(s.rng) ? s.rng : (Number.isFinite(s.seed) ? s.seed | 0 : 1);
+      const filled = planEvents(s);
+      s.rng = rng;
+      s.eventSchedule = filled.map((e) => ({ floor: e.floor, kind: kept.get(e.floor) || e.kind }));
+    }
     // 主题字段同样是后加的：按白名单重建，首区永远常规
     const themes = Array.isArray(s.actThemes) ? s.actThemes : [];
     s.actThemes = [null, null, null, null];
@@ -2274,6 +2499,9 @@ export function deserialize(text) {
         t.stock.relic = t.relicOffer.length;
       }
     }
+    // 本层配方（s.plan）是生成棋盘前的唯一依据：缺了它 ensureBoard 会直接抛异常，
+    // 而它是纯函数、不消耗随机数，重算一边最安全。
+    if (!s.plan || typeof s.plan !== 'object') s.plan = planFloor(s, s.floor, DIFFICULTIES[s.difficulty]);
     return s;
   } catch { return null; }
 }
@@ -2294,12 +2522,18 @@ export function tileLabel(t) {
     return t.mob.reviveHp && !t.mob.revived ? tr('tile.mob.revive', { name, hp: t.mob.reviveHp }) : tr('tile.mob', { name });
   }
   if (t.relicDrop) return tr('tile.relic.drop');
+  if (t.kind === 'chest') {
+    const nm = tr(t.used ? 'tile.chest.used' : 'tile.chest');
+    return t.n ? tr('tile.spent.danger', { name: nm, n: t.n }) : nm;
+  }
   if (t.kind === 'stairs') return t.n ? tr('tile.stairs.danger', { n: t.n }) : tr('tile.stairs');
   const name = t.mob ? tr('tile.mob.cleared', { name: ref('mob.' + t.mob.id + '.name') })
     : t.kind === 'trap' ? tr(t.used ? 'tile.trap.used' : 'tile.trap')
     : t.kind === 'altar' ? tr(t.used ? 'tile.altar.used' : 'tile.altar')
     : t.kind === 'chest' ? tr(t.used ? 'tile.chest.used' : 'tile.chest')
     : t.kind === 'potion' ? tr(t.used ? 'tile.potion.used' : 'tile.potion')
+    : t.kind === 'bomb' ? tr(t.used ? 'tile.bomb.used' : 'tile.bomb')
+    : t.kind === 'scroll' ? tr(t.used ? 'tile.scroll.used' : 'tile.scroll')
     : EVENT_KINDS.includes(t.kind) ? tr('tile.' + t.kind)
     : null;
   if (name == null) return t.n ? tr('tile.danger', { n: t.n }) : tr('tile.empty');

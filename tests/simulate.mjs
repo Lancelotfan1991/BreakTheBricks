@@ -138,21 +138,29 @@ const BUILD_PREF = {
     'pawnTicket'],
 };
 
-// 升级三选一：攻击/防御优先，血线吃紧时生命也加分；数值本身已含稀有度差异
-function pickLevel(s) {
+// 升级三选一：按「此刻的实际缺口」估值；每层/每击杀类按剩余层数与击杀数折算
+export function levelValue(s, id) {
   const p = s.player;
-  const val = (id) => {
-    const stat = levelChoiceStat(id), n = levelChoiceAmount(id);
-    if (stat === 'atk') return n * 9;
-    if (stat === 'def') return n * 7;
-    if (stat === 'maxHp') return n * 2 + (p.hp < p.maxHp * 0.5 ? n * 2 : 0);
-    if (stat === 'xpKill') return n * 2.2;
-    if (stat === 'heal') return n * 1.1;
-    if (stat === 'gold') return n * 0.7;
-    if (stat === 'xpFloor') return n * 0.8;
-    return 0;
-  };
-  return s.levelChoices.slice().sort((a, b) => val(b) - val(a))[0];
+  const stat = levelChoiceStat(id), n = levelChoiceAmount(id);
+  const missing = Math.max(0, p.maxHp - p.hp);
+  const left = Math.max(1, MAX_FLOOR - s.floor);   // 还剩几层
+  const kills = 12;                                 // 每层大约击杀数
+  if (stat === 'atk') return n * 6;
+  if (stat === 'def') return n * 10;
+  if (stat === 'maxHp') return n * 1.4 + Math.min(n, missing) * 0.6;
+  if (stat === 'heal') return Math.min(n * left, missing * 3) * 0.15;
+  if (stat === 'gold') return Math.min(n * left, Math.max(0, 160 - p.gold)) * 0.06;
+  if (stat === 'xpKill') return n * kills * left * 0.22;
+  if (stat === 'xpFloor') return n * left * 0.9;
+  if (stat === 'atkFloor') return n * left * 6;
+  if (stat === 'defFloor') return n * left * 10;
+  if (stat === 'goldKill') return n * kills * left * 0.12;
+  if (stat === 'healKill') return n * kills * left * 0.2;
+  return 0;
+}
+
+function pickLevel(s) {
+  return s.levelChoices.slice().sort((a, b) => levelValue(s, b) - levelValue(s, a))[0];
 }
 
 // 主题按种子固定挑选，保证两种区域都会被跑到；第三区同样由种子决定拿哪个
@@ -263,7 +271,8 @@ export function playRun(difficulty, seed, verbose = false, prefer = null, build 
     if (drop) { run(tapTile, drop.i); continue; }
     const p = s.player;
     if (flagPass(s)) continue;
-    const loot = s.tiles.find((t) => t.revealed && !t.used && (t.kind === 'chest' || t.kind === 'potion'));
+    const loot = s.tiles.find((t) => t.revealed && !t.used
+      && (t.kind === 'chest' || t.kind === 'potion' || t.kind === 'bomb' || t.kind === 'scroll'));
     if (loot) { run(tapTile, loot.i); continue; }
     // 祭坛／宝箱／药水翻开后都留在原地，必须再点一次才交互
     const altar = s.tiles.find((t) => t.revealed && !t.used && t.kind === 'altar');

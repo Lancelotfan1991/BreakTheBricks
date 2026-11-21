@@ -21,7 +21,7 @@ test('解析器：插值、数组连接、嵌套引用与缺键回显', () => {
   assert.equal(t('difficulty.easy.name'), '地窖');
   assert.equal(t('difficulty.flags', { n: 4 }), '初始旗 4 面');
   assert.equal(t('tile.danger', { n: 3 }), '危险 3');
-  assert.equal(t('ui.combat.cut', { parts: ['防御 −1', '攻击 −2'].join(t('ui.combat.cut.sep')) }), '本层已识破，它被削弱了：防御 −1、攻击 −2。下面的属性与预演都已计入。');
+  assert.equal(t('ui.combat.cut', { parts: ['防御 −1', '攻击 −2'].join(t('ui.combat.cut.sep')) }), '已识破：防御 −1、攻击 −2。');
 
   const saved = locale();
   setLocale('zh-CN');
@@ -50,7 +50,7 @@ test('目录：每个值都是非空字符串，且没有只差大小写的重�
 test('动态键族：难度/商店/怪物/楼层/遗物/祭坛/稀有度/分类都能解析出文案', () => {
   for (const d of Object.values(G.DIFFICULTIES)) {
     assert.notEqual(G.difficultyName(d), `difficulty.${d.id}.name`);
-    assert.ok(G.difficultyTag(d) && G.difficultyDesc(d));
+    assert.ok(G.difficultyTag(d));
   }
   for (const it of G.SHOP) {
     assert.ok(G.shopName(it) && G.shopDesc(it), `shop.${it.id}`);

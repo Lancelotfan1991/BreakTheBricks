@@ -36,7 +36,8 @@
 <symbol id="i-sword" viewBox="0 0 32 32"><path d="M26.6 3.4l-13 13 2 2 13-13z" fill="currentColor"/><path d="M13.6 16.4l-3.2 3.2 2 2 3.2-3.2z" fill="currentColor" opacity=".6"/><path d="M8.4 18.6l5 5-2.4 2.4-5-5z" fill="currentColor"/><path d="M6.4 22.6l3 3-4.2 2.2z" fill="currentColor" opacity=".8"/></symbol>
 <symbol id="i-shield" viewBox="0 0 32 32"><path d="M16 3l11 3.6v9c0 6.6-4.6 11.6-11 13.4C9.6 27.2 5 22.2 5 15.6v-9z" fill="currentColor"/><path d="M16 7.4l7 2.2v6c0 4.4-3 7.8-7 9-4-1.2-7-4.6-7-9v-6z" fill="var(--eye,#120a18)" opacity=".35"/><path d="M16 10.6v10M11.6 15.6h8.8" stroke="#fff" stroke-width="1.8" opacity=".5"/></symbol>
 <symbol id="i-heart" viewBox="0 0 32 32"><path d="M16 27.4C6.4 21 3 16.6 3 12.2 3 8.2 6.2 5 10 5c2.4 0 4.6 1.2 6 3.2C17.4 6.2 19.6 5 22 5c3.8 0 7 3.2 7 7.2 0 4.4-3.4 8.8-13 15.2z" fill="currentColor"/></symbol>
-<symbol id="i-coin" viewBox="0 0 32 32"><circle cx="16" cy="16" r="12.4" fill="currentColor"/><circle cx="16" cy="16" r="8.6" fill="var(--eye,#120a18)" opacity=".28"/><path d="M16 9.4l1.9 4.2 4.5.5-3.4 3.1 1 4.5-4-2.4-4 2.4 1-4.5-3.4-3.1 4.5-.5z" fill="#fff8e8" opacity=".85"/></symbol>
+<symbol id="i-coin" viewBox="0 0 32 32"><circle cx="16" cy="16" r="12.4" fill="currentColor"/><circle cx="16" cy="16" r="9" fill="none" stroke="var(--eye,#120a18)" stroke-width="1.6" opacity=".5"/><rect x="12.7" y="12.7" width="6.6" height="6.6" rx="1" fill="var(--eye,#120a18)" opacity=".72"/><path d="M8.4 11.6a9.6 9.6 0 018.4-5.6" fill="none" stroke="#fff8e8" stroke-width="1.8" stroke-linecap="round" opacity=".4"/></symbol>
+<symbol id="i-stall" viewBox="0 0 32 32"><path d="M4.6 10.4h22.8v3.6H4.6z" fill="currentColor"/><path d="M6.2 5.4h19.6l1.6 5H4.6z" fill="currentColor" opacity=".7"/><path d="M6.4 14h19.2v11.4H6.4z" fill="currentColor" opacity=".42"/><path d="M12.6 14v11.4M19.4 14v11.4" stroke="var(--eye,#120a18)" stroke-width="1.5" opacity=".35"/><path d="M4.6 25.4h22.8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M4.6 25.4h22.8" stroke="#fff" stroke-width="1" stroke-linecap="round" opacity=".25"/></symbol>
 <symbol id="i-flag" viewBox="0 0 32 32"><path d="M8 3.4v25.2" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/><path d="M10.4 5.2l14 4.6-14 4.6z" fill="currentColor"/></symbol>
 <symbol id="i-eye" viewBox="0 0 32 32"><path d="M1.6 16S7 7.4 16 7.4 30.4 16 30.4 16 25 24.6 16 24.6 1.6 16 1.6 16z" fill="none" stroke="currentColor" stroke-width="2.6"/><circle cx="16" cy="16" r="4.6" fill="currentColor"/></symbol>
 <symbol id="i-hand" viewBox="0 0 32 32"><path d="M11 17V6.6a2.2 2.2 0 014.4 0V15m0-1.4V4.8a2.2 2.2 0 014.4 0v9m0-1.2V7.4a2.2 2.2 0 014.4 0v12.4c0 5-3.4 8.6-8.4 8.6-4.4 0-6.6-2.4-8.6-6L4 17.4a2.3 2.3 0 013.8-2.5L11 18.6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
@@ -82,7 +83,6 @@
       <div class="torch-row"><span class="torch"></span><span class="torch"></span></div>
       <p class="eyebrow">MINESWEEPER × ROGUELITE</p>
       <h1 class="logo"><span class="logo-cn" data-i18n="ui.logo.cn">破砖深渊</span><span class="logo-en">BREAK THE BRICK</span></h1>
-      <p class="tagline" data-i18n-html="ui.title.tagline">砖石之下藏着怪物、宝藏与通往下一层的阶梯。<br>用数字推理出安全的落脚点，一路走到第三十层。</p>
       <div class="diff-grid" id="diffGrid" role="radiogroup" aria-label="难度选择" data-i18n-aria="ui.title.diffAria"></div>
       <button class="btn btn-primary btn-lg" data-act="start"><svg class="ic"><use href="#i-down"/></svg><span data-i18n="ui.btn.start">开始探索</span></button>
       <div class="title-row">
@@ -115,7 +115,7 @@
       <div class="hero-main">
         <div class="hp-row">
           <svg class="ic ic-heart"><use href="#i-heart"/></svg>
-          <div class="bar hp-bar"><i id="hpFill"></i><span id="hpText">32 / 32</span></div>
+          <div class="bar hud-hp"><i id="hpFill"></i><span id="hpText">32 / 32</span></div>
         </div>
         <div class="chips">
           <span class="chip chip-atk"><svg class="ic"><use href="#i-sword"/></svg><b id="atkVal">5</b></span>
@@ -159,7 +159,6 @@
       <button class="act" data-mode="scroll"><svg class="ic"><use href="#i-scroll"/></svg><span data-i18n="ui.act.scroll">卷轴</span><em id="scrollCount">1</em></button>
       <button class="act" data-mode="bomb"><svg class="ic"><use href="#i-bomb"/></svg><span data-i18n="ui.act.bomb">炸弹</span><em id="bombCount">1</em></button>
       <button class="act act-potion" data-act="potion"><svg class="ic"><use href="#i-potion"/></svg><span data-i18n="ui.act.potion">药水</span><em id="potionCount">2</em></button>
-      <button class="act act-descend" data-act="descend" id="btnDescend" disabled><svg class="ic"><use href="#i-down"/></svg><span data-i18n="ui.act.descend">下一层</span></button>
     </nav>
   </main>
 </div>

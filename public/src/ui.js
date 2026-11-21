@@ -12,11 +12,11 @@ const el = {
   title: $('#screen-title'), game: $('#screen-game'), board: $('#board'), wrap: $('#boardWrap'),
   frame: document.querySelector('.board-frame'),
   floorNum: $('#floorNum'), floorName: $('#floorName'), floorSub: $('#floorSub'),
-  hpFill: $('#hpFill'), hpText: $('#hpText'), hpBar: document.querySelector('.hp-bar'),
+  hpFill: $('#hpFill'), hpText: $('#hpText'), hpBar: document.querySelector('.hud-hp'),
   atk: $('#atkVal'), def: $('#defVal'), gold: $('#goldVal'), lv: $('#lvNum'), ring: $('#xpRing'),
   threat: $('#threatVal'), threatChip: $('#threatChip'), keyChip: $('#keyChip'), themeChip: $('#themeChip'),
   potion: $('#potionCount'), bomb: $('#bombCount'), scroll: $('#scrollCount'), flag: $('#flagCount'),
-  descend: $('#btnDescend'), log: $('#logLine'), ticker: document.querySelector('.ticker'),
+  log: $('#logLine'), ticker: document.querySelector('.ticker'),
   scrim: $('#scrim'), sheet: $('#sheet'), sheetBody: $('#sheetBody'),
   toast: $('#toast'), floorCard: $('#floorCard'), fcDepth: $('#fcDepth'), fcName: $('#fcName'),
   diffGrid: $('#diffGrid'), record: $('#record'), medals: $('#medals'), btnContinue: $('#btnContinue'), actionbar: $('#actionbar'),
@@ -108,6 +108,10 @@ function bindTile(b, i) {
   b.addEventListener('click', () => { if (longed) { longed = false; return; } doTap(i); });
 }
 
+const numBadge = (n) => `<span class="tile-num${n ? '' : ' tile-zero'}">${n}</span>`;
+// 图标格左上角的邻格威胁数：解完一层后不再画暗 0（和其它格一致）
+const iconNum = (n) => (n || !S.solved) ? numBadge(n) : '';
+
 function tileView(t) {
   const rev = t.revealed;
   let cls = 'tile', inner = '', n = 0, label = G.tileLabel(t);
@@ -119,6 +123,10 @@ function tileView(t) {
     } else if (t.fire) {
       cls += ' tile-fire';
       inner = svg('flame') + (t.flagged ? `<span class="tile-fire-flag">${svg('flag')}</span>` : '');
+    } else if (t.autoFlag) {
+      // 卷轴打上的记号：不揭怪，只标一个红色感叹号（相当于自动插旗）
+      cls += ' tile-scout';
+      inner = '<span class="tile-scout-mark">!</span>';
     } else if (t.flagged) inner = svg('flag');
     label = tr('ui.board.pos', { row: Math.floor(t.i / G.COLS) + 1, col: (t.i % G.COLS) + 1, label });
     return { cls, inner, n, label };
@@ -151,7 +159,7 @@ function tileView(t) {
   }
   if (t.mob && t.mob.hp > 0) {
     const m = t.mob;
-    cls += t.kind === 'boss' ? ' tile-boss' : t.kind === 'elite' ? ' tile-elite' : ' tile-mob';
+    cls += t.kind === 'boss' ? ' tile-boss' : t.kind === 'mini' ? ' tile-mini' : t.kind === 'elite' ? ' tile-elite' : ' tile-mob';
     if (t.summoned) cls += ' tile-summoned';
     if (m.reviveHp && !m.revived) cls += ' tile-revive';
     // 裸数字会被误读成邻雷数，三项属性各带图标；防御为 0 的怪省略，省出横向空间
@@ -162,8 +170,10 @@ function tileView(t) {
       + '</span></span>';
     // 召唤出来的精锐不掉钥匙：角标改成法术纹，避免玩家误以为它是钥匙守卫
     if (t.summoned) inner += `<span class="tile-summon">${svg('sparkle')}</span>`;
-    else if (t.kind !== 'monster') inner += `<span class="tile-crown">${svg(t.kind === 'boss' ? 'crown' : 'key')}</span>`;
+    else if (t.kind !== 'monster') inner += `<span class="tile-crown">${svg(t.kind === 'boss' || t.kind === 'mini' ? 'crown' : 'key')}</span>`;
     if (m.reviveHp && !m.revived) inner += `<span class="tile-revive-badge">${svg('skull')}</span>`;
+    // 已现身但还没打的怪：红色感叹号提醒「点它会进战斗」，避免误触
+    inner += '<span class="tile-alert" aria-hidden="true">!</span>';
     label += ' ' + tr('ui.board.stats', { hp: m.hp, atk: m.atk, def: m.def });
     return { cls, inner, n, label };
   }
@@ -174,7 +184,7 @@ function tileView(t) {
     const locked = !G.canDescend(S);
     if (locked) { inner += `<span class="tile-lock">${svg('lock')}</span>`; label += tr('ui.board.locked'); }
     // 阶梯格同样要交出邻格威胁数：数字缩进左上角徽章，出口图形与推理线索两不误
-    inner += `<span class="tile-num${n ? '' : ' tile-zero'}">${n}</span>`;
+    if (n || !S.solved) inner += `<span class="tile-num${n ? '' : ' tile-zero'}">${n}</span>`;
     return { cls, inner, n, label };
   }
   // 精英/龙王留下的遗物：和宝箱一样留在地板上，点一下才开始三选一
@@ -183,20 +193,24 @@ function tileView(t) {
     return { cls, inner: svg('relic'), n, label };
   }
   if (!t.used) {
-    if (t.kind === 'trap') { cls += ' tile-trap'; inner = svg('trap'); return { cls, inner, n, label }; }
+    if (t.kind === 'trap') { cls += ' tile-trap'; n = t.n; inner = svg('trap') + iconNum(n); return { cls, inner, n, label }; }
     if (t.kind === 'chest') { cls += ' tile-chest tile-pick'; inner = svg('chest'); return { cls, inner, n, label }; }
     if (t.kind === 'potion') { cls += ' tile-potion tile-pick'; inner = svg('potion'); return { cls, inner, n, label }; }
-    if (t.kind === 'altar') { cls += ' tile-altar'; inner = svg('altar'); return { cls, inner, n, label }; }
-    if (t.kind === 'shopSupply') { cls += ' tile-event tile-supply tile-pick'; inner = svg('coin'); return { cls, inner, n, label }; }
-    if (t.kind === 'shopRelic') { cls += ' tile-event tile-relicshop tile-pick'; inner = svg('relic'); return { cls, inner, n, label }; }
-    if (t.kind === 'shrine') { cls += ' tile-event tile-shrine tile-pick'; inner = svg('altar'); return { cls, inner, n, label }; }
+    if (t.kind === 'bomb') { cls += ' tile-bomb tile-pick'; inner = svg('bomb'); return { cls, inner, n, label }; }
+    if (t.kind === 'scroll') { cls += ' tile-scroll tile-pick'; inner = svg('scroll'); return { cls, inner, n, label }; }
+    if (t.kind === 'altar') { cls += ' tile-altar'; n = t.n; inner = svg('altar') + iconNum(n); return { cls, inner, n, label }; }
+    if (t.kind === 'shopSupply') { cls += ' tile-event tile-supply tile-pick'; n = t.n; inner = svg('stall') + numBadge(n); return { cls, inner, n, label }; }
+    if (t.kind === 'shopRelic') { cls += ' tile-event tile-relicshop tile-pick'; n = t.n; inner = svg('relic') + numBadge(n); return { cls, inner, n, label }; }
+    if (t.kind === 'shrine') { cls += ' tile-event tile-shrine tile-pick'; n = t.n; inner = svg('altar') + numBadge(n); return { cls, inner, n, label }; }
   }
   // 占用失效后必须和空地一样给出邻雷数，否则这些格子会成为推断雷位的信息黑洞
   n = t.n;
   cls += t.kind === 'empty' ? (n ? '' : ' tile-empty') : ' tile-dead';
   // 数字只统计未探明的威胁，翻开怪物后会减小；减到 0 时留一个暗 0，
   // 否则空白格会被当成「这里没给信息」，玩家以为数字丢了。
-  inner = n ? `<span class="tile-num">${n}</span>` : '<span class="tile-num tile-zero">0</span>';
+  // 但整层解完后满屏暗 0 只是噪声：这时不再画数字。
+  inner = n ? `<span class="tile-num">${n}</span>`
+    : S.solved ? '' : '<span class="tile-num tile-zero">0</span>';
   return { cls, inner, n, label };
 }
 
@@ -361,16 +375,9 @@ function renderHud() {
   for (const k of ['atk', 'def', 'gold', 'lv']) if (prev[k] != null && prev[k] !== shown[k]) bump(el[k].parentElement.classList.contains('chip') ? el[k].parentElement : el.lv.parentElement);
   prev = shown;
 
+  // 下行入口只有棋盘上的阶梯格本身：阶梯是明牌，锁着的阶梯自带锁标与提示文案，
+  // 底部再放一个常驻按钮只是重复入口（且大多数时候是禁用态），这里不再同步它。
   for (const b of el.actionbar.querySelectorAll('[data-mode]')) b.classList.toggle('is-on', b.dataset.mode === S.mode);
-  const can = G.canDescend(S);
-  const locked = S.stairsFound && !can;
-  const bossLocked = locked && G.isBossFloor(S.floor);
-  el.descend.disabled = !S.stairsFound;
-  el.descend.classList.toggle('locked', locked);
-  el.descend.querySelector('use').setAttribute('href', locked ? '#i-lock' : '#i-down');
-  el.descend.querySelector('span').textContent = locked
-    ? tr(bossLocked ? 'ui.descend.boss' : 'ui.descend.locked')
-    : tr('ui.descend.next');
 
   const last = S.log[S.log.length - 1];
   if (last && el.log.dataset.id !== String(last.id)) {
@@ -430,14 +437,13 @@ function openRelicDraw() {
   openSheet('relic', `
     <div class="sheet-head">
       <div><h2 class="sheet-title">${tr('ui.relic.draw.title')}</h2><p class="sheet-sub">${tr('ui.relic.draw.sub', { n: S.relics.length })}</p></div>
-      <button class="icon-btn sheet-close" data-sheet="codex" aria-label="${tr('ui.relic.codex.aria')}">${svg('relic')}</button>
+      <button class="icon-btn sheet-close" data-sheet="close" aria-label="${tr('ui.btn.close')}">${svg('close')}</button>
     </div>
     <div class="rcards">${cards}</div>
-    <p class="rcard-hint">${tr('ui.relic.draw.hint')}</p>
     <div class="sheet-actions">
       <button class="btn btn-primary" data-sheet="reroll" ${S.player.gold >= rerollCost ? '' : 'disabled'}>${svg('coin')}<span>${rerollTx}</span></button>
       <button class="btn btn-ghost" data-sheet="codex">${svg('relic')}<span>${tr('ui.relic.codex.btn')}</span></button>
-    </div>`, true);
+    </div>`);
 }
 
 // 开局选天赋：和遗物三选一同一套卡片语言，但锁定到选定为止
@@ -458,8 +464,7 @@ function openTalentDraw() {
     <div class="sheet-head">
       <div><h2 class="sheet-title">${tr('ui.talent.draw.title')}</h2><p class="sheet-sub">${tr('ui.talent.draw.sub')}</p></div>
     </div>
-    <div class="rcards${G.TALENTS.length > 3 ? ' rcards-4' : ''}">${cards}</div>
-    <p class="rcard-hint">${tr('ui.talent.draw.hint')}</p>`, true);
+    <div class="rcards${G.TALENTS.length > 3 ? ' rcards-4' : ''}">${cards}</div>`, true);
 }
 
 function talentNote(s) {
@@ -469,10 +474,14 @@ function talentNote(s) {
   }
   if (s.talent === 'brawler') {
     const done = s.stats.kills % G.BRAWLER_EVERY;
-    return tr('ui.talent.note.brawler', { left: G.BRAWLER_EVERY - done, heal: s.player.killHeal });
+    const b = (s.stats && s.stats.brawler) || { hp: 0, atk: 0, def: 0, heal: 0 };
+    return tr('ui.talent.note.brawler', { left: G.BRAWLER_EVERY - done, hp: b.hp, atk: b.atk, def: b.def, heal: b.heal });
   }
   if (s.talent === 'treasureHunter') {
-    return tr('ui.talent.note.treasureHunter', { pct: Math.round(G.CHEST_RELIC_CHANCE * 100), n: s.stats.chestRelics || 0 });
+    return tr('ui.talent.note.treasureHunter', {
+      pct: Math.round(G.CHEST_FIND_CHANCE * 100),
+      n: (s.stats && s.stats.chests) || 0,
+    });
   }
   if (s.talent === 'healer') {
     return tr('ui.talent.note.healer', { extra: G.HEALER_POTION_HEAL, hp: G.HEALER_POTION_MAXHP });
@@ -499,7 +508,6 @@ function openLevelDraw() {
       <div><h2 class="sheet-title">${tr('ui.level.title')}</h2><p class="sheet-sub">${tr('ui.level.sub', { lv: S.player.lv })}</p></div>
     </div>
     <div class="rcards">${cards}</div>
-    <p class="rcard-hint">${tr('ui.level.hint', { n: G.LEVEL_REROLL_STEP })}</p>
     <div class="sheet-actions">
       <button class="btn btn-primary" data-sheet="levelReroll" ${S.player.gold >= rerollCost ? '' : 'disabled'}>${svg('coin')}<span>${rerollTx}</span></button>
     </div>`, true);
@@ -565,26 +573,12 @@ function openCodex() {
     const total = G.RELICS.filter((r) => r.cat === cat).length;
     return `<div class="help-sec"><h3 class="help-h">${G.catName(cat)}<i class="cx-count">${n}/${total}</i></h3>${rows}</div>`;
   }).join('');
-  const rarityIds = Object.keys(G.RELIC_RARITY);
-  const oddsAt = (f) => {
-    const w = G.relicRarityWeights(f);
-    const sum = rarityIds.reduce((a, id) => a + w[id], 0);
-    return rarityIds.map((id) => {
-      const r = G.RELIC_RARITY[id];
-      return `<span style="color:${r.color}">${G.rarityName(id)} ${Math.round(w[id] / sum * 100)}%</span>`;
-    }).join(tr('list.sep'));
-  };
-  const floorNow = S ? S.floor : 1;
   openSheet('codex', `
     <div class="sheet-head">
       <div><h2 class="sheet-title">${tr('ui.codex.title')}</h2><p class="sheet-sub">${tr('ui.codex.sub', { total: G.RELICS.length, own: owned.length })}</p></div>
       <button class="icon-btn sheet-close" data-sheet="${back}" aria-label="${tr('ui.btn.close')}">${svg('close')}</button>
     </div>
     ${mine}
-    <div class="help-sec">
-      <h3 class="help-h">${tr('ui.codex.how')}</h3>
-      <p class="help-p">${tr('ui.codex.how.body', { draw: G.RELIC_DRAW_COUNT, total: G.RELICS.length, floor: floorNow, odds: oddsAt(floorNow), maxFloor: G.MAX_FLOOR, deepOdds: oddsAt(G.MAX_FLOOR), pCommon: G.RELIC_PRICE.common, pRare: G.RELIC_PRICE.rare, pEpic: G.RELIC_PRICE.epic })}</p>
-    </div>
     ${groups}
     <div class="sheet-actions"><button class="btn btn-primary btn-lg" data-sheet="${back}">${S && S.relicChoices ? tr('ui.codex.back') : tr('ui.codex.close')}</button></div>`, !!(S && S.relicChoices));
 }
@@ -1023,7 +1017,7 @@ function openCombat(i) {
   // 偷袭战没有逃跑：不渲染关闭/再想想，面板本身也锁住，直到把它打倒
   openSheet('combat', `
     <div class="sheet-head">
-      <div><h2 class="sheet-title">${tr(forced ? 'ui.combat.title.ambush' : 'ui.combat.title')}</h2><p class="sheet-sub">${tr(forced ? 'ui.combat.sub.ambush' : 'ui.combat.sub')}</p></div>
+      <div><h2 class="sheet-title">${tr(forced ? 'ui.combat.title.ambush' : 'ui.combat.title')}</h2></div>
       ${forced ? '' : `<button class="icon-btn sheet-close" data-sheet="close" aria-label="${tr('ui.btn.close')}">${svg('close')}</button>`}
     </div>
     <div class="mob-card ${kind}">
@@ -1059,7 +1053,6 @@ function openCombat(i) {
     <div class="sheet-foot">
       <p class="fc-hint">${tr('ui.combat.hold')}</p>
       <div class="sheet-actions">
-        ${forced ? '' : `<button class="btn btn-ghost" data-sheet="close">${tr('ui.combat.again')}</button>`}
         ${p.potions > 0 && p.hp < p.maxHp ? `<button class="btn" data-sheet="potion" data-i="${i}">${svg('potion')}<span>${tr('ui.combat.potion')}</span></button>` : ''}
         ${p.bombs > 0 ? `<button class="btn" data-sheet="bomb" data-i="${i}">${svg('bomb')}<span>${tr('ui.combat.bomb')}</span></button>` : ''}
         <button class="btn ${f.lethal ? 'btn-danger' : 'btn-primary'}" data-sheet="attack" data-i="${i}">${svg('sword')}<span>${tr(f.lethal ? (forced ? 'ui.combat.attack.doom' : 'ui.combat.attack.lethal') : 'ui.combat.attack')}</span></button>
@@ -1100,7 +1093,6 @@ function openDoor(i) {
       <button class="icon-btn sheet-close" data-sheet="skip" aria-label="${tr('ui.door.leave')}">${svg('close')}</button>
     </div>
     <div class="gold-line">${svg('down')}<span>${tr('ui.door.depth')}</span><b>${to}</b></div>
-    <p class="help-p">${tr('ui.door.note', { to })}</p>
     <div class="sheet-actions">
       <button class="btn btn-ghost" data-sheet="skip">${tr('ui.door.leave')}</button>
       <button class="btn btn-primary" data-sheet="doorGo" data-i="${i}">${svg('gate')}<span>${tr('ui.door.go')}</span></button>
@@ -1122,7 +1114,6 @@ function openTheme() {
       <div><h2 class="sheet-title">${tr('ui.theme.title', { act: S.pendingTheme })}</h2><p class="sheet-sub">${tr('ui.theme.sub')}</p></div>
       <button class="icon-btn sheet-close" data-sheet="close" aria-label="${tr('ui.btn.close')}">${svg('close')}</button>
     </div>
-    <p class="help-p">${tr('ui.theme.note')}</p>
     ${cards}`);
   audio.play('altar');
 }
@@ -1131,15 +1122,23 @@ function openEvent(i) {
   const t = S.tiles[i], p = S.player;
   const kind = t.kind;
   let rows, sub;
+  // 有没有「还能买」的货：买到买不起时要把原因说清楚，否则整页灰色像是商店坏了。
+  let anyForSale = false, anyAffordable = false;
   if (kind === 'shopRelic') {
     const offers = Array.isArray(t.relicOffer) ? t.relicOffer : [];
-    sub = tr('ui.event.shopRelic.sub');
+    sub = tr('ui.event.shopRelic.sub', {
+      common: G.relicPrice(S, 'common'),
+      rare: G.relicPrice(S, 'rare'),
+      epic: G.relicPrice(S, 'epic'),
+    });
     rows = offers.length
       ? `<div class="rcards">${offers.map((rid) => {
           const r = G.relicById(rid);
           const price = G.relicPrice(S, r.rarity);
           const owned = G.hasRelic(S, rid);
           const can = !owned && p.gold >= price;
+          if (!owned) anyForSale = true;
+          if (can) anyAffordable = true;
           const priceTx = owned ? tr('ui.event.relic.owned') : `${svg('coin')}${price}`;
           return `<button class="rcard" data-sheet="eventBuy" data-i="${i}" data-id="relic" data-relic="${rid}" style="--rc:${G.RELIC_RARITY[r.rarity].color}" ${can ? '' : 'disabled'}>
             <span class="rcard-rar">${G.rarityName(r.rarity)}</span>
@@ -1159,6 +1158,8 @@ function openEvent(i) {
       const capped = id === 'pouch' && G.flagBonusLeft(S) <= 0;
       const soldout = stock <= 0 || capped;
       const can = !soldout && p.gold >= price;
+      if (!soldout) anyForSale = true;
+      if (can) anyAffordable = true;
       const priceTx = soldout ? tr(id === 'pouch' && capped ? 'ui.shop.full' : 'ui.shop.soldout') : `${svg('coin')}${price}`;
       return `<button class="opt" data-sheet="eventBuy" data-i="${i}" data-id="${id}" ${can ? '' : 'disabled'}>
         <span class="opt-ic">${svg(it.icon)}</span>
@@ -1167,11 +1168,15 @@ function openEvent(i) {
         <span class="opt-price ${can ? '' : 'no'}">${priceTx}</span>
       </button>`;
     }).join('');
-    sub = tr('ui.event.' + kind + '.sub');
+    // 单价随深度变化，标题下的说明必须报当前层的真实价格，不能写死
+    sub = tr('ui.event.' + kind + '.sub', { price: G.shopPrice(S, G.EVENT_ITEMS[kind][0]) });
   }
   const statline = kind === 'shrine'
-    ? `<div class="statline">${tr('ui.event.stat.atk')} <b>${p.atk}</b> · ${tr('ui.event.stat.def')} <b>${p.def}</b> · ${tr('ui.event.stat.hp')} <b>${p.maxHp}</b> · ${tr('ui.event.stat.flag')} <b>${p.flagBonus}/${G.FLAG_BONUS_CAP}</b></div>`
+    // 旗数上限的加成记在局（S.flagBonus）上，不在 S.player 上——这里取错对象就会显示 undefined
+    ? `<div class="statline">${tr('ui.event.stat.atk')} <b>${p.atk}</b> · ${tr('ui.event.stat.def')} <b>${p.def}</b> · ${tr('ui.event.stat.hp')} <b>${p.maxHp}</b> · ${tr('ui.event.stat.flag')} <b>${Math.min(G.FLAG_BONUS_CAP, S.flagBonus || 0)}/${G.FLAG_BONUS_CAP}</b></div>`
     : '';
+  // 有货但一件都买不起：告诉玩家这是「钱不够」而不是「商店没东西」。
+  const hint = anyAffordable || !anyForSale ? '' : `<p class="shop-hint">${tr('ui.shop.poor')}</p>`;
   openSheet('event', `
     <div class="sheet-head">
       <div><h2 class="sheet-title">${tr('event.' + kind + '.name')}</h2><p class="sheet-sub">${sub}</p></div>
@@ -1179,6 +1184,7 @@ function openEvent(i) {
     </div>
     <div class="gold-line">${svg('coin')}<span>${tr('ui.shop.hold')}</span><b>${p.gold}</b></div>
     ${statline}
+    ${hint}
     ${rows}
     <div class="sheet-actions"><button class="btn btn-ghost" data-sheet="skip">${tr('ui.event.leave')}</button></div>`);
   audio.play('altar');
@@ -1199,7 +1205,6 @@ function openHelp() {
     ['relic', 'ui.help.lg.relicShop', '#c9a3ff'],
     ['altar', 'ui.help.lg.shrine', '#7dff5a'],
     ['relic', 'ui.help.lg.relic', '#c9a3ff'],
-    ['wall', 'ui.help.lg.wall', '#b9a9c6'],
     ['flame', 'ui.help.lg.fire', '#ff9f3a'],
     ['totem', 'ui.help.lg.totem', '#c9a3ff'],
     ['skull', 'ui.help.lg.totemDeath', '#ff6b8a'],
@@ -1207,7 +1212,10 @@ function openHelp() {
     ['gate', 'ui.help.lg.door', '#8bff63'],
     ['stairs', 'ui.help.lg.stairs', '#3fe0ff'],
     ['dragon', 'ui.help.lg.dragon', '#ff8ae8'],
-  ].map(([ic, k, c]) => `<div class="lg"><span class="lg-ic" style="color:${c}">${svg(ic)}</span><span class="lg-tx"><b>${tr(k + '.t')}</b><span>${tr(k + '.d')}</span></span></div>`).join('');
+  ];
+  if (G.RULES.walls) legend.splice(12, 0, ['wall', 'ui.help.lg.wall', '#b9a9c6']);
+  const legendHtml = legend
+    .map(([ic, k, c]) => `<div class="lg"><span class="lg-ic" style="color:${c}">${svg(ic)}</span><span class="lg-tx"><b>${tr(k + '.t')}</b><span>${tr(k + '.d')}</span></span></div>`).join('');
   const nums = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => `<span data-n="${n}" class="tile" style="position:relative"><span class="tile-num" style="font-size:14px;color:${['', '#5fe3ff', '#8bff63', '#ffd54a', '#ff9f3a', '#ff6b4a', '#ff3b5c', '#ff4fd8', '#e6dcff'][n]}">${n}</span></span>`).join('');
   const P = {
     flagBases,
@@ -1219,7 +1227,7 @@ function openHelp() {
     reroll: G.RELIC_REROLL_BASE, rerollStep: G.RELIC_REROLL_STEP,
     lvReroll: G.LEVEL_REROLL_BASE, lvRerollStep: G.LEVEL_REROLL_STEP,
     every: G.BRAWLER_EVERY, hp: G.BRAWLER_HP, def: G.BRAWLER_DEF, atk: G.BRAWLER_ATK, heal: G.BRAWLER_HEAL,
-    chestPct: Math.round(G.CHEST_RELIC_CHANCE * 100),
+    chestPct: Math.round(G.CHEST_FIND_CHANCE * 100),
     healerHeal: G.HEALER_POTION_HEAL, healerHp: G.HEALER_POTION_MAXHP,
     wallMin: G.WALL_MIN_FLOOR, wallCount: G.WALL_MIN, wallCountMax: G.WALL_MAX,
     fireBase: G.FIRE_BASE, fireF: G.FIRE_F, fireCap: G.FIRE_CAP, acts: G.ACTS,
@@ -1274,7 +1282,7 @@ function openHelp() {
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.machine.h')}</h3>
       <p class="help-p">${tr('ui.help.machine.themes', P)}</p>
-      <p class="help-p">${tr('ui.help.machine.wall', P)}</p>
+      ${G.RULES.walls ? `<p class="help-p">${tr('ui.help.machine.wall', P)}</p>` : ''}
       <p class="help-p">${tr('ui.help.machine.fire', P)}</p>
       <p class="help-p">${tr('ui.help.machine.totem', P)}</p>
       <p class="help-p">${tr('ui.help.machine.grave', P)}</p>
@@ -1307,7 +1315,7 @@ function openHelp() {
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.legend.h')}</h3>
-      <div class="legend">${legend}</div>
+      <div class="legend">${legendHtml}</div>
     </div>
     <div class="help-sec">
       <h3 class="help-h">${tr('ui.help.keys.h')}</h3>
@@ -1360,7 +1368,7 @@ function endSequence(win) {
       </div>
       ${newMedal ? `<div class="medal-new" style="--mc:${G.talentById(S.talent).color}">
         <span class="medal-new-ic">${svg(G.talentById(S.talent).icon)}</span>
-        <span><b>${tr('ui.result.medal', { name: G.talentName(G.talentById(S.talent)) })}</b><span>${tr('ui.result.medal.sub')}</span></span>
+        <span><b>${tr('ui.result.medal', { name: G.talentName(G.talentById(S.talent)) })}</b></span>
       </div>` : ''}
       <div class="res-grid">
         <div class="stat"><i>${tr('ui.result.depth')}</i><b>${S.floor}</b></div>
@@ -1530,13 +1538,13 @@ function renderTitle() {
   el.diffGrid.innerHTML = Object.values(G.DIFFICULTIES).map((d) => {
     const c = d.id === 'easy' ? '#7dff5a' : d.id === 'normal' ? '#ffab2e' : '#ff3b5c';
     return `<button class="diff" role="radio" data-diff="${d.id}" style="--dc:${c}" aria-checked="${d.id === difficulty}">
-      <b>${G.difficultyName(d)}</b><i>${G.difficultyTag(d)}</i><s>${G.difficultyDesc(d)}<br>${tr('difficulty.flags', { n: d.flags })}</s></button>`;
+      <b>${G.difficultyName(d)}</b><i>${G.difficultyTag(d)}</i><s>${tr('difficulty.flags', { n: d.flags })}</s></button>`;
   }).join('');
   const has = !!G.deserialize(localStorage.getItem(RUN_KEY) || '');
   el.btnContinue.hidden = !has;
-  el.record.innerHTML = meta.runs
-    ? tr('ui.title.record', { wins: meta.wins, runs: meta.runs })
-    : tr('ui.title.first');
+  // 没有战绩就整行不显示，别用「第一次下潜？」这类话占位
+  el.record.hidden = !meta.runs;
+  if (meta.runs) el.record.innerHTML = tr('ui.title.record', { wins: meta.wins, runs: meta.runs });
   const got = G.talentMedalCount(meta);
   el.medals.innerHTML = `<p class="medal-head">${tr('ui.title.medals', { got, total: G.TALENTS.length })}</p>
     <div class="medal-row">${G.TALENTS.map((t) => {
@@ -1576,7 +1584,6 @@ document.addEventListener('click', (e) => {
     case 'bonus': if (S && !S.levelChoices && !S.talentPending) openBonus(); break;
     case 'menu': if (S && !S.talentPending) openMenu(); break;
     case 'potion': if (S && !guard()) apply(G.usePotion(S)); break;
-    case 'descend': if (S && !guard()) apply(G.tryDescend(S)); break;
   }
 });
 
