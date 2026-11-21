@@ -98,7 +98,11 @@ function bindTile(b, i) {
     if (e.button !== 0) return;
     sx = e.clientX; sy = e.clientY; longed = false;
     clear();
-    timer = setTimeout(() => { longed = true; doFlag(i); }, 420);
+    timer = setTimeout(() => {
+      longed = true;
+      if (!S.tiles[i].revealed) doFlag(i);
+      else openDetail(i);
+    }, 420);
   });
   b.addEventListener('pointermove', (e) => {
     if (timer && (Math.abs(e.clientX - sx) > 12 || Math.abs(e.clientY - sy) > 12)) clear();
@@ -535,6 +539,44 @@ function openBonus() {
     </div>
     ${talentRow}
     ${rows || (t ? '' : `<p class="log-empty">${tr('ui.bonus.empty')}</p>`)}
+    <div class="sheet-actions"><button class="btn btn-primary btn-lg" data-sheet="close">${tr('ui.btn.close')}</button></div>`);
+}
+
+// 长按已翻开的怪物 / 图腾：把数值和机制摊开讲清楚（尤其是图腾）
+const DETAIL_KINDS = ['totemMagic', 'totemDeath', 'totemSummon'];
+function openDetail(i) {
+  const t = S.tiles[i];
+  if (!t || !t.revealed) return;
+  const rows = [];
+  if (t.mob && t.mob.hp > 0) {
+    const m = t.mob;
+    rows.push(`<div class="statline">${tr('ui.detail.stats', { hp: m.hp, atk: m.atk, def: m.def })}</div>`);
+    rows.push(`<p class="help-p">${tr('ui.detail.mob.reward', { xp: m.xp, gold: m.gold })}</p>`);
+    if (t.kind === 'elite') rows.push(`<p class="help-p">${tr('ui.detail.mob.elite')}</p>`);
+    if (t.kind === 'mini') rows.push(`<p class="help-p">${tr('ui.detail.mob.mini')}</p>`);
+    if (t.kind === 'boss') rows.push(`<p class="help-p">${tr('ui.detail.mob.boss')}</p>`);
+    if (t.summoned) rows.push(`<p class="help-p">${tr('ui.detail.mob.summoned')}</p>`);
+    if (m.aura) rows.push(`<p class="help-p">${tr('ui.detail.mob.aura', { atk: m.aura.atk, def: m.aura.def })}</p>`);
+    if (m.reviveHp && !m.revived) rows.push(`<p class="help-p">${tr('ui.detail.mob.revive', { hp: m.reviveHp })}</p>`);
+    const theme = G.themeOf(S);
+    if (theme === 'inferno') rows.push(`<p class="help-p">${tr('ui.detail.theme.fire')}</p>`);
+    else if (theme === 'totem') rows.push(`<p class="help-p">${tr('ui.detail.theme.totem')}</p>`);
+    else if (theme === 'grave') rows.push(`<p class="help-p">${tr('ui.detail.theme.grave')}</p>`);
+  } else if (DETAIL_KINDS.includes(t.kind)) {
+    const left = t.totem ? Math.max(0, t.totem.charges) : 0;
+    if (t.kind === 'totemMagic') rows.push(`<p class="help-p">${tr('ui.detail.totem.magic', { tick: G.HAZARD_TICK, dmg: t.totem.dmg, left })}</p>`);
+    else if (t.kind === 'totemDeath') rows.push(`<p class="help-p">${tr('ui.detail.totem.death', { atk: t.totem.atk, def: t.totem.def })}</p>`);
+    else rows.push(`<p class="help-p">${tr('ui.detail.totem.summon', { tick: G.HAZARD_TICK, left })}</p>`);
+    if (t.used) rows.push(`<p class="help-p">${tr('ui.detail.totem.spent')}</p>`);
+  } else {
+    return;
+  }
+  openSheet('detail', `
+    <div class="sheet-head">
+      <div><h2 class="sheet-title">${G.tileLabel(t).split('，')[0]}</h2><p class="sheet-sub">${t.mob ? G.mobFlavor(t.mob) : tr('ui.detail.sub')}</p></div>
+      <button class="icon-btn sheet-close" data-sheet="close" aria-label="${tr('ui.btn.close')}">${svg('close')}</button>
+    </div>
+    ${rows.filter(Boolean).join('')}
     <div class="sheet-actions"><button class="btn btn-primary btn-lg" data-sheet="close">${tr('ui.btn.close')}</button></div>`);
 }
 
