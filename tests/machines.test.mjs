@@ -326,9 +326,9 @@ test('召唤图腾：每 5 回合召一只精锐，最多 3 只；精锐给奖�
     assert.equal(u.mob.summoned, undefined, '标记记在格子上，不写进怪物数据');
   }
   const target = sums[0];
-  const xp0 = s.player.xp, gold0 = s.player.gold;
+  const xp0 = s.player.xp, gold0 = s.player.gold, lv0 = s.player.lv;
   G.attack(s, target.i);
-  assert.ok(s.player.xp > xp0, '召唤精锐照常给经验');
+  assert.ok(s.player.xp > xp0 || s.player.lv > lv0, '召唤精锐照常给经验（升级会清空当前经验条）');
   assert.ok(s.player.gold > gold0, '召唤精锐照常给金币');
   assert.equal(s.hasKey, false, '召唤精锐不算守卫，不掉钥匙');
   assert.ok(!target.relicDrop, '召唤精锐不掉遗物');

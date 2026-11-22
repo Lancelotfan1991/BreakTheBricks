@@ -18,7 +18,7 @@ const el = {
   potion: $('#potionCount'), bomb: $('#bombCount'), scroll: $('#scrollCount'), flag: $('#flagCount'),
   log: $('#logLine'), ticker: document.querySelector('.ticker'),
   scrim: $('#scrim'), sheet: $('#sheet'), sheetBody: $('#sheetBody'),
-  toast: $('#toast'), floorCard: $('#floorCard'), fcDepth: $('#fcDepth'), fcName: $('#fcName'),
+  toast: $('#toast'), combatPop: $('#combatPop'), floorCard: $('#floorCard'), fcDepth: $('#fcDepth'), fcName: $('#fcName'),
   diffGrid: $('#diffGrid'), record: $('#record'), medals: $('#medals'), btnContinue: $('#btnContinue'), actionbar: $('#actionbar'),
   relicBar: $('#relicBar'), relicSlots: $('#relicSlots'),
   bossBar: $('#bossBar'), bossName: $('#bossName'), bossFill: $('#bossFill'),
@@ -584,7 +584,6 @@ function openDescendConfirm(i, left) {
   closeSheet();
   const rows = [
     left.items ? [svg('chest'), tr('ui.descend.confirm.items', { n: left.items })] : null,
-    left.shops ? [svg('stall'), tr('ui.descend.confirm.shops', { n: left.shops })] : null,
     left.mobs ? [svg('skull'), tr('ui.descend.confirm.mobs', { n: left.mobs })] : null,
   ].filter(Boolean).map(([ic, tx]) => `<div class="opt"><span class="opt-ic">${ic}</span>
       <span class="opt-tx"><b>${tx}</b></span></div>`).join('');
@@ -961,6 +960,12 @@ function guard() { return busy || !S || S.status !== 'playing' || !!S.levelChoic
 function doTap(i) {
   if (guard()) return;
   audio.init();
+  // 战斗气泡开着时：点别处就收掉（偷袭战不许跑，只给个震感）
+  if (el.combatPop && !el.combatPop.hidden) {
+    if (S.forcedCombat >= 0) { fx.buzz(10); return; }
+    G.closePending(S);
+    hideCombatPop();
+  }
   if (sheetKind && !sheetLock) closeSheet();
   // 下楼前确认：这层还有没拿的东西/没逛的商店/没清的敌人时，先问一次
   const tile = S.tiles[i];
@@ -980,6 +985,8 @@ function doFlag(i) {
 
 /* ─────────── 抽屉 ─────────── */
 function openSheet(kind, html, lock = false) {
+  // 强制战期间允许翻日志/菜单，但先把战斗气泡收起来，避免压在抽屉上
+  if (S && S.forcedCombat >= 0 && kind !== 'combat') hideCombatPop();
   const wasHidden = el.sheet.hidden;
   sheetKind = kind; sheetLock = lock;
   el.sheetBody.innerHTML = html;
@@ -991,13 +998,24 @@ function openSheet(kind, html, lock = false) {
 }
 function closeSheet() {
   if (sheetLock) return;
+  hideCombatPop();
   clearTimeout(attackHoldTimer);
   attackHoldUsed = false;
   sheetKind = null;
   el.scrim.hidden = true;
   el.sheet.hidden = true;
   el.sheetBody.innerHTML = '';
-  if (S) { G.closePending(S); saveRun(); }
+  if (S) {
+    if (S.forcedCombat >= 0) {
+      // 强制战只允许「回到战斗」，关抽屉不能等于逃跑
+      S.pendingCombat = S.forcedCombat;
+      saveRun();
+      openCombat(S.forcedCombat);
+    } else {
+      G.closePending(S);
+      saveRun();
+    }
+  }
 }
 function forceClose() { sheetLock = false; closeSheet(); }
 
@@ -1047,87 +1065,113 @@ function playExchangeFx(f, b) {
   }
 }
 
+function hideCombatPop() {
+  if (el.combatPop) { el.combatPop.hidden = true; el.combatPop.innerHTML = ''; }
+}
+
+// 战斗气泡：贴着怪物的格子弹出来，只给这一场要用的东西
 function openCombat(i) {
-  const t = S.tiles[i], m = t.mob, p = S.player;
+  const t = S.tiles[i], m = t && t.mob, p = S.player;
+  if (!t || !m || m.hp <= 0) { hideCombatPop(); return; }
   const f = G.forecastOnce(p, m, G.atkOf(S));
   const forced = S.forcedCombat === i;
-  const kind = t.kind === 'boss' ? 'boss' : t.kind === 'elite' ? 'elite' : '';
-  const tag = t.kind === 'boss' ? `<span class="mob-tag boss">${tr('ui.combat.tag.boss')}</span>` : t.kind === 'elite' ? `<span class="mob-tag">${tr('ui.combat.tag.elite')}</span>` : '';
-  const race = G.mobRace(m);
-  const raceTag = race ? `<span class="mob-race">${race}</span>` : '';
-  const cutParts = [
-    m.cut && m.cut.def ? tr('ui.combat.cut.def', { n: m.cut.def }) : '',
-    m.cut && m.cut.atk ? tr('ui.combat.cut.atk', { n: m.cut.atk }) : '',
-  ].filter(Boolean);
-  const cutNote = cutParts.length
-    ? `<p class="fc-note good">${tr('ui.combat.cut', { parts: cutParts.join(tr('ui.combat.cut.sep')) })}</p>`
-    : '';
-  const reviveNote = f.reviveHp
-    ? `<p class="fc-note danger">${tr('ui.combat.revive', { hp: f.reviveHp })}</p>`
-    : '';
+  const tag = t.kind === 'boss' ? tr('ui.combat.tag.boss')
+    : t.kind === 'mini' ? tr('ui.combat.tag.mini')
+      : t.kind === 'elite' ? tr('ui.combat.tag.elite') : '';
   const ambushDmg = forced ? G.ambushDamage(p, m) : 0;
   const ambushNote = forced
-    ? `<p class="fc-note${ambushDmg > 0 ? ' danger' : ''}">${tr(ambushDmg > 0 ? 'ui.combat.ambush.note' : 'ui.combat.ambush.note.block', { n: ambushDmg })}</p>`
+    ? tr(ambushDmg > 0 ? 'ui.combat.ambush.note' : 'ui.combat.ambush.note.block', { n: ambushDmg })
     : '';
-  const meAfter = Math.max(0, p.hp - f.take);
-  const onceNote = f.kill
-    ? tr('ui.combat.once.kill')
-    : f.lethal
-      ? tr(forced ? 'ui.combat.once.doom' : 'ui.combat.once.lethal', { take: f.take, hp: p.hp })
-      : f.revive
-        ? tr('ui.combat.once.revive', { hp: m.reviveHp, take: f.take })
-        : f.thornsKill
-          ? tr('ui.combat.once.thornsKill', { take: f.take })
-          : f.take === 0
-            ? tr('ui.combat.once.free')
-            : f.thorns > 0
-              ? tr('ui.combat.once.thorns', { n: f.thorns })
-              : '';
-  const onceCls = f.lethal || f.thornsKill ? ' danger' : f.kill ? ' good' : '';
-  // 偷袭战没有逃跑：不渲染关闭/再想想，面板本身也锁住，直到把它打倒
-  openSheet('combat', `
-    <div class="sheet-head">
-      <div><h2 class="sheet-title">${tr(forced ? 'ui.combat.title.ambush' : 'ui.combat.title')}</h2></div>
-      ${forced ? '' : `<button class="icon-btn sheet-close" data-sheet="close" aria-label="${tr('ui.btn.close')}">${svg('close')}</button>`}
+  const mePct = Math.max(0, Math.min(100, p.hp / p.maxHp * 100));
+  const foePct = Math.max(0, Math.min(100, m.hp / m.maxHp * 100));
+  // 这一击之后双方剩多少：直接在血条上画一段「将要掉的血」
+  const meAfterPct = Math.max(0, Math.min(100, (p.hp - f.take) / p.maxHp * 100));
+  const foeAfterPct = Math.max(0, Math.min(100, (m.hp - f.deal) / m.maxHp * 100));
+  // 损血段：只是把「这一下之后会空出来的部分」用浅色标出来，不写任何文字
+  const ghost = (cls, fromPct, toPct) => {
+    const w = Math.max(0, fromPct - toPct);
+    if (w <= 0.5) return '';
+    return `<i class="ghost ${cls}" style="left:${toPct}%;width:${w}%"></i>`;
+  };
+  const act = f.lethal && !forced ? 'ui.combat.attack.lethal' : 'ui.combat.attack';
+  // 击杀掉落：并进标题行，不再单独占一行
+  const drop = t.kind === 'elite' ? tr('ui.combat.trait.elite')
+    : t.kind === 'mini' ? tr('ui.combat.trait.mini')
+      : t.kind === 'boss' ? tr('ui.combat.trait.boss')
+        : t.summoned ? tr('ui.combat.trait.summoned') : '';
+  const auraNote = m.aura ? tr('ui.combat.aura', { atk: m.aura.atk, def: m.aura.def }) : '';
+  const statChip = (icon, label, val) => `<span class="cpop-stat">${svg(icon)}<i>${label}</i><b>${val}</b></span>`;
+  el.combatPop.innerHTML = `
+    <div class="cpop-head">
+      <b class="cpop-name">${G.mobName(m)}</b>
+      ${tag ? `<span class="cpop-tag">${tag}</span>` : ''}
+      ${drop ? `<span class="cpop-drop">${drop}</span>` : ''}
+      ${m.mini ? `<span class="cpop-drop pierce">${tr('ui.combat.trait.pierce')}</span>` : ''}
+      ${forced ? '' : `<button class="cpop-x" data-sheet="close" aria-label="${tr('ui.btn.close')}">×</button>`}
     </div>
-    <div class="mob-card ${kind}">
-      <div class="mob-portrait">${svg(m.icon)}</div>
-      <div class="mob-info"><h3 class="mob-name">${G.mobName(m)}${raceTag}${tag}</h3><p class="mob-flavor">${G.mobFlavor(m)}</p></div>
+    <div class="cpop-hprow">
+      <span class="who">${tr('ui.combat.me')}</span>
+      <span class="track"><i class="fill you${mePct >= 99.5 ? ' full' : ''}" style="width:${mePct}%"></i>${ghost('you', mePct, meAfterPct)}</span>
+      <span class="num">${p.hp}/${p.maxHp}</span>
     </div>
-    <div class="hp-duel">
-      <div class="hp-side you">
-        <div class="hp-top"><span class="hp-name">${tr('ui.combat.me')}</span><b class="hp-num">${p.hp}/${p.maxHp}</b></div>
-        <div class="hp-bar"><i class="hp-you-fill" style="width:${Math.max(0, p.hp / p.maxHp * 100)}%"></i></div>
-      </div>
-      <div class="hp-side foe">
-        <div class="hp-top"><span class="hp-name">${G.mobName(m)}</span><b class="hp-num">${m.hp}/${m.maxHp}</b></div>
-        <div class="hp-bar"><i class="hp-foe-fill" style="width:${Math.max(0, m.hp / m.maxHp * 100)}%"></i></div>
-      </div>
+    <div class="cpop-hprow">
+      <span class="who">${tr('ui.combat.foe')}</span>
+      <span class="track"><i class="fill foe${foePct >= 99.5 ? ' full' : ''}" style="width:${foePct}%"></i>${ghost('foe', foePct, foeAfterPct)}</span>
+      <span class="num">${m.hp}/${m.maxHp}</span>
     </div>
-    ${ambushNote}
-    <div class="stat-grid">
-      <div class="stat atk"><i>${tr('ui.combat.stat.atk')}</i><b>${m.atk}</b></div>
-      <div class="stat def"><i>${tr('ui.combat.stat.def')}</i><b>${m.def}</b></div>
-      <div class="stat xp"><i>${tr('ui.combat.stat.xp')}</i><b>${m.xp}</b></div>
-      <div class="stat gold"><i>${tr('ui.combat.stat.gold')}</i><b>${m.gold}</b></div>
+    <div class="cpop-stats">
+      ${statChip('sword', tr('ui.combat.stat.atk'), m.atk)}
+      ${statChip('shield', tr('ui.combat.stat.def'), m.def)}
+      ${statChip('sparkle', tr('ui.combat.stat.xp'), m.xp)}
+      ${statChip('coin', tr('ui.combat.stat.gold'), m.gold)}
     </div>
-    ${cutNote}
-    ${reviveNote}
-    <div class="forecast fc-preview" hidden>
-      <div class="fc-row"><span>${tr('ui.combat.once.deal')}</span><b>${f.deal}</b></div>
-      <div class="fc-row ${f.take ? 'hurt' : 'free'}"><span>${tr('ui.combat.once.take')}</span><b>${f.take}</b></div>
-      <div class="fc-row"><span>${tr('ui.combat.once.mobLeft')}</span><b>${f.mobAfter}</b></div>
-      <div class="fc-row ${meAfter > 0 ? '' : 'hurt'}"><span>${tr('ui.combat.once.youLeft')}</span><b>${meAfter}</b></div>
-      ${onceNote ? `<p class="fc-note${onceCls}">${onceNote}</p>` : ''}
-    </div>
-    <div class="sheet-foot">
-      <p class="fc-hint">${tr('ui.combat.hold')}</p>
-      <div class="sheet-actions">
-        ${p.potions > 0 && p.hp < p.maxHp ? `<button class="btn" data-sheet="potion" data-i="${i}">${svg('potion')}<span>${tr('ui.combat.potion')}</span></button>` : ''}
-        ${p.bombs > 0 ? `<button class="btn" data-sheet="bomb" data-i="${i}">${svg('bomb')}<span>${tr('ui.combat.bomb')}</span></button>` : ''}
-        <button class="btn ${f.lethal ? 'btn-danger' : 'btn-primary'}" data-sheet="attack" data-i="${i}">${svg('sword')}<span>${tr(f.lethal ? (forced ? 'ui.combat.attack.doom' : 'ui.combat.attack.lethal') : 'ui.combat.attack')}</span></button>
-      </div>
-    </div>`, forced);
+    ${f.lethal && !forced ? `<p class="cpop-warn">${tr('ui.combat.once.lethal', { take: f.take, hp: p.hp })}</p>` : ''}
+    ${auraNote ? `<p class="cpop-warn">${auraNote}</p>` : ''}
+    ${ambushNote ? `<p class="cpop-warn">${ambushNote}</p>` : ''}
+    ${f.revive ? `<p class="cpop-warn">${tr('ui.combat.once.revive', { hp: m.reviveHp, take: f.take })}</p>` : ''}
+    ${f.lethal && !forced ? `<p class="cpop-warn">${tr('ui.combat.once.lethal', { take: f.take, hp: p.hp })}</p>` : ''}
+    <div class="cpop-acts">
+      <button class="cpop-act ${f.lethal && !forced ? 'danger' : 'go'}" data-sheet="attack" data-i="${i}">${svg('sword')}<span>${tr(act)}</span></button>
+      ${p.bombs > 0 ? `<button class="cpop-act" data-sheet="bomb" data-i="${i}">${svg('bomb')}<b>${p.bombs}</b></button>` : ''}
+    </div>`;
+  el.combatPop.hidden = false;
+  placeCombatPop(i);
+}
+
+// 贴在格子上方；上方放不下就翻到下方，横向夹在屏幕内
+// 棋盘播抖动动画时 #board 带着 transform，格子的 getBoundingClientRect 会整体偏移
+// 一次；不抵消的话，每打一下气泡就会被放到新的偏移位置上。
+function boardShift() {
+  const st = getComputedStyle(el.board).transform;
+  if (!st || st === 'none') return { x: 0, y: 0 };
+  const m = st.match(/matrix(3d)?\(([^)]+)\)/);
+  if (!m) return { x: 0, y: 0 };
+  const p = m[2].split(',').map(Number);
+  return m[1] ? { x: p[12] || 0, y: p[13] || 0 } : { x: p[4] || 0, y: p[5] || 0 };
+}
+
+function placeCombatPop(i) {
+  const node = el.combatPop;
+  const tile = document.querySelectorAll('#board .tile')[i];
+  if (!node || node.hidden || !tile) return;
+  const raw = tile.getBoundingClientRect();
+  const sh = boardShift();
+  const r = { left: raw.left - sh.x, right: raw.right - sh.x, top: raw.top - sh.y, bottom: raw.bottom - sh.y, width: raw.width };
+  const w = node.offsetWidth, hgt = node.offsetHeight;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const gap = 8;
+  const board = el.wrap.getBoundingClientRect();
+  let top = r.top - hgt - gap;
+  let below = false;
+  // 上方不够（会压住 HUD）就翻到格子下方
+  if (top < board.top + 2) { top = r.bottom + gap; below = true; }
+  if (top + hgt > Math.min(vh - 8, board.bottom)) top = Math.max(board.top + 2, board.bottom - hgt - 2);
+  const left = Math.max(8, Math.min(vw - w - 8, r.left + r.width / 2 - w / 2));
+  node.style.left = `${Math.round(left)}px`;
+  node.style.top = `${Math.round(top)}px`;
+  node.classList.toggle('below', below);
+  const arrowX = Math.max(14, Math.min(w - 14, r.left + r.width / 2 - left));
+  node.style.setProperty('--arrow-x', `${Math.round(arrowX)}px`);
 }
 
 function openAltar(i) {
@@ -1686,7 +1730,7 @@ for (const evt of ['pointerup', 'pointercancel', 'pointerleave']) {
   el.sheetBody.addEventListener(evt, () => clearTimeout(attackHoldTimer));
 }
 
-el.sheetBody.addEventListener('click', (e) => {
+function onActionClick(e) {
   const b = e.target.closest('[data-sheet]');
   if (!b) return;
   const k = b.dataset.sheet;
@@ -1707,12 +1751,12 @@ el.sheetBody.addEventListener('click', (e) => {
       const snap = { i, mob: t.mob.hp, me: S.player.hp, mobMax: t.mob.maxHp, meMax: S.player.maxHp };
       const evs = G.strike(S, i);
       const dead = !t.mob || t.mob.hp <= 0;
-      if (dead || S.status !== 'playing') forceClose();
+      if (dead || S.status !== 'playing') { forceClose(); hideCombatPop(); }
       apply(evs, { keepSheet: true });
       if (!dead && S.status === 'playing' && sheetKind === 'combat') playExchangeFx(f, snap);
       break;
     }
-    case 'bomb': { const i = +b.dataset.i; forceClose(); G.setMode(S, 'bomb'); apply(G.tapTile(S, i)); break; }
+    case 'bomb': { const i = +b.dataset.i; forceClose(); hideCombatPop(); G.setMode(S, 'bomb'); apply(G.tapTile(S, i)); break; }
     case 'potion': { const i = +b.dataset.i; consume(G.usePotion(S)); render(); saveRun(); openCombat(i); break; }
     case 'altar': { const i = +b.dataset.i; closeSheet(); apply(G.altarChoose(S, i, b.dataset.choice)); break; }
     case 'descendGo': {
@@ -1752,7 +1796,9 @@ el.sheetBody.addEventListener('click', (e) => {
     case 'title': forceClose(); toTitle(); break;
     case 'again': { const d = S ? S.difficulty : difficulty; forceClose(); startRun(d); break; }
   }
-});
+}
+el.sheetBody.addEventListener('click', onActionClick);
+el.combatPop.addEventListener('click', onActionClick);
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { if (sheetKind && !sheetLock) closeSheet(); return; }
@@ -1786,6 +1832,9 @@ addEventListener('resize', fitBoard, { passive: true });
 addEventListener('orientationchange', () => setTimeout(fitBoard, 220));
 if (window.ResizeObserver) new ResizeObserver(fitBoard).observe(el.wrap);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) fitBoard(); });
+window.addEventListener('resize', () => {
+  if (el.combatPop && !el.combatPop.hidden && S && S.pendingCombat >= 0) placeCombatPop(S.pendingCombat);
+});
 document.addEventListener('pointerdown', () => audio.init(), { once: true });
 document.addEventListener('gesturestart', (e) => e.preventDefault());
 

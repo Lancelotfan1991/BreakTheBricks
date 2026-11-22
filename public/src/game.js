@@ -241,9 +241,9 @@ export const RELIC_SIEGE_MUL = 2;       // 破城雷管：对精英与龙王的�
 export const RELIC_FUSE_XP = 0.5;       // 引信：炸弹击杀额外经验
 export const RELIC_FORGE_GROW = 5;      // 锻膛：每次炸弹击杀，炸弹基础伤害永久 +5
 export const RELIC_BOMB_CACHE = 6;      // 军械箱：获得时立刻补充 6 枚炸弹
-export const RELIC_REROLL_BASE = 5;     // 遗物重置：本批首次重置的金币
-export const RELIC_REROLL_STEP = 5;     // 遗物重置：每次重置的涨价
-export const RELIC_REROLL_DISCOUNT = 5;// 典当票：每次重置减价
+export const RELIC_REROLL_BASE = 25;    // 遗物重置：本批首次重置的金币
+export const RELIC_REROLL_STEP = 20;    // 遗物重置：每次重置的涨价
+export const RELIC_REROLL_DISCOUNT = 25;// 典当票：每批首次重置直接免费（等于基础价）
 export const RELIC_RATION_HEAL = 0.1;   // 干粮：下行额外回复
 export const RELIC_TORCH_GOLD = 15;     // 火把：炸弹清除目标的额外金币
 export const RELIC_TORCH_SHOP = 0.5;    // 火把：炸弹售价倍率
@@ -469,7 +469,7 @@ const RELIC_PARAMS = {
   bombCache: { n: RELIC_BOMB_CACHE },
   fuse: { pct: Math.round(RELIC_FUSE_XP * 100) },
   forge: { n: RELIC_FORGE_GROW },
-  pawnTicket: { gold: RELIC_REROLL_DISCOUNT },
+  pawnTicket: { gold: 5 },
   bonePlate: { step: RELIC_PLATE_STEP, cap: RELIC_PLATE_CAP },
   torch: { gold: RELIC_TORCH_GOLD },
   rations: { pct: Math.round(RELIC_RATION_HEAL * 100) },
@@ -537,6 +537,8 @@ export function neighbors(i) {
   return out;
 }
 const isThreat = (t) => t.kind === 'monster' || t.kind === 'elite' || t.kind === 'trap' || t.kind === 'boss' || t.kind === 'mini';
+// 会打架的格子（含小 BOSS）：点它进战斗、卷轴标记它、双击连锁翻到它都要走同一条路
+const isMobKind = (k) => k === 'monster' || k === 'elite' || k === 'boss' || k === 'mini';
 // 数字只统计「尚未探明」的威胁：探明或清除后数字会减小，快速展开因此始终可用
 const liveHidden = (t) => isThreat(t) && !t.revealed;
 function hiddenThreatCount(s, i) {
@@ -557,8 +559,14 @@ export function atkOf(s) {
   return hasTalent(s, 'gladiator') && visibleMobs(s) === 1 ? p.atk * 2 : p.atk;
 }
 // 偷袭就是白挨一次普通攻击：攻击 − 防御，并按战斗同一套减伤结算。
+// 小 BOSS 的攻击带破甲：玩家的防御只按 30% 生效。
+// 深度越往后玩家防御涨得比怪物攻击快，不破甲的话它的每一口都会被压成 1 点。
+export const MINI_PIERCE = 0.7;
+export const mobPierce = (m) => (m && m.mini ? MINI_PIERCE : 0);
+const incoming = (p, m) => hitDamage(m.atk, Math.floor(p.def * (1 - mobPierce(m))));
+
 export function ambushDamage(p, mob) {
-  const perHit = hitDamage(mob.atk, p.def);
+  const perHit = incoming(p, mob);
   const mul = p.takeMul * (p.ambushMul ?? 1);
   return Math.max(0, Math.round(perHit * mul) - p.takeFlat);
 }
@@ -576,7 +584,7 @@ export function forecast(p, mob, atk = p.atk) {
   const rounds = Math.ceil(hp / (deal + T));
   const byThorns = T > 0 && rounds * deal + (rounds - 1) * T < hp;
   const counters = rounds - 1 + (byThorns ? 1 : 0);
-  const perHit = hitDamage(mob.atk, p.def);
+  const perHit = incoming(p, mob);
   let take = counters * perHit;
   take = Math.max(0, Math.round(take * p.takeMul) - p.takeFlat);
   if (p.freeKill) take = 0;
@@ -758,7 +766,9 @@ function planFloor(s, f, d) {
   const theme = themeAt(s, f);
   const zd = zoneDepth(f);
   // 63 格里要塞下整层内容：深层靠更狠的怪而不是更多怪施压，否则满盘都是威胁，数字就不再提供信息
-  const monsters = Math.round(Math.min(20, Math.max(5, (6 + f * 1.3) * d.threat)) * (boss ? 0.7 : 1));
+  // 前 5 层是旗子最紧的时候：起手 4 只、每层 +0.85，深了才慢慢逼近 20 只上限。
+  // 原来的 (6 + 1.3f) 到第 5 层就有 13 只，旗子完全跟不上。
+  const monsters = Math.round(Math.min(20, Math.max(4, (4 + f * 0.85) * d.threat)) * (boss ? 0.7 : 1));
   const traps = Math.min(6, Math.max(1, Math.round((1 + f * 0.35) * d.threat)));
   const extraChests = hasRelic(s, 'treasureBell') ? RELIC_BELL_CHEST : 0;
   // 宝箱只装「值得开」的东西（永久属性 / 大额金币 / 小概率遗物），数量减半。
@@ -815,10 +825,11 @@ function makeMob(s, f, d, type) {
   const late = Math.max(0, depth - 8);
   let hp = Math.round((B.mobHp + B.mobHpF * depth + B.mobHpQ * late * late) * b.hp * P);
   let atk = Math.round((B.mobAtk + B.mobAtkF * depth + B.mobAtkQ * late * late) * b.atk * P);
-  let xp = Math.round((2 + 1.2 * f) * (b.hp + b.atk) / 2);
+  // 怪物数量下调后单场击杀变少，经验系数跟着抬一点，等级节奏才不会塌
+  let xp = Math.round((2 + 1.45 * f) * (b.hp + b.atk) / 2);
   let gold = Math.round((BAL.mobGold + BAL.mobGoldF * f) * d.loot);
   if (type === 'elite') { hp = Math.round(hp * 1.9); atk = Math.round(atk * 1.3); xp *= 3; gold = Math.round(gold * 3.2); }
-  if (type === 'mini') { hp = Math.round(hp * 2.6); atk = Math.round(atk * 1.45); xp *= 5; gold = Math.round(gold * 5); }
+  if (type === 'mini') { hp = Math.round(hp * 2.8); atk = Math.round(atk * 1.8); xp *= 5; gold = Math.round(gold * 5); }
   if (type === 'boss') { hp = Math.round(hp * 3.4); atk = Math.round(atk * 1.45); xp = 120; gold = 260; }
   return { id: b.id, icon: b.icon, race: b.race, hp, maxHp: hp, atk, def, xp, gold, elite: type === 'elite', boss: type === 'boss', mini: type === 'mini' };
 }
@@ -1438,7 +1449,7 @@ function openTile(s, i, out, opts = {}) {
 
   if (t.kind === 'wall') return;
 
-  if (t.kind === 'monster' || t.kind === 'elite' || t.kind === 'boss') {
+  if (isMobKind(t.kind)) {
     if (!opts.silent) {
       // 偷袭只发生在「你亲手掀砖」的那一刻：卷轴、识破、连锁展开都是安全探明
       const dmg = ambushDamage(p, t.mob);
@@ -1669,7 +1680,7 @@ function tapInner(s, i) {
     for (const j of area) {
       const u = s.tiles[j];
       if (u.revealed) continue;
-      if (u.kind === 'monster' || u.kind === 'elite' || u.kind === 'boss') {
+      if (isMobKind(u.kind)) {
         if (!u.flagged) { u.flagged = true; u.autoFlag = true; scouted++; }
         continue;
       }
@@ -1704,7 +1715,7 @@ function tapInner(s, i) {
 
   // 已探明格
   if (t.kind === 'wall') return free;
-  if ((t.kind === 'monster' || t.kind === 'elite' || t.kind === 'boss') && t.mob.hp > 0) {
+  if (isMobKind(t.kind) && t.mob && t.mob.hp > 0) {
     s.pendingCombat = i;
     ev(out, 'encounter', { i });
     return free;
@@ -1771,7 +1782,7 @@ export function chord(s, i) {
     if (s.status !== 'playing') break;
     const u = s.tiles[j];
     // 插错旗导致连锁翻出怪物：这是推理失误，照常吃偷袭并进入战斗
-    if (u.kind === 'monster' || u.kind === 'elite' || u.kind === 'boss') {
+    if (isMobKind(u.kind)) {
       openTile(s, j, out);
       break;
     }
@@ -1887,7 +1898,7 @@ export function forecastOnce(p, mob, atk = p.atk) {
   const reviveHp = mob.reviveHp && !mob.revived ? mob.reviveHp : 0;
   const kill = deal >= mob.hp && !reviveHp;
   const revive = deal >= mob.hp && !!reviveHp;
-  const perHit = hitDamage(mob.atk, p.def);
+  const perHit = incoming(p, mob);
   let take = kill ? 0 : Math.max(0, Math.round(perHit * p.takeMul) - p.takeFlat);
   if (p.freeKill) take = 0;
   const mobAfter = kill ? 0 : revive ? reviveHp : Math.max(1, mob.hp - deal);
@@ -2147,19 +2158,17 @@ export function canDescend(s) {
   return s.floor === 1 || s.hasKey;
 }
 
-// 下楼前的「你还有事没办」清单：只统计真会错过的东西
+// 下楼前的「你还有事没办」清单：只统计真的会错过的内容
 //   items：已翻开、还没拿的宝箱/消耗品/祭坛/敌人掉落
-//   shops：还有货没买完的事件格
 //   mobs ：还活着的敌人（HUD 本来就显示剩余威胁数，不算泄密）
+// 商店/神龛这类建筑不参与判定：每层都提醒一次太烦
 export function floorLeftovers(s) {
   const tiles = s.tiles || [];
   const items = tiles.filter((t) => t.revealed && !t.used
     && (t.kind === 'chest' || t.kind === 'potion' || t.kind === 'bomb'
       || t.kind === 'scroll' || t.kind === 'altar' || t.relicDrop)).length;
-  const shops = tiles.filter((t) => EVENT_KINDS.includes(t.kind) && !t.used
-    && Object.values(t.stock || {}).some((n) => n > 0)).length;
   const mobs = tiles.filter((t) => t.mob && t.mob.hp > 0).length;
-  return { items, shops, mobs, total: items + shops + mobs };
+  return { items, mobs, total: items + mobs };
 }
 
 export function tryDescend(s) {

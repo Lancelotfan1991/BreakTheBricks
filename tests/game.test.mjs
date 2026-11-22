@@ -727,6 +727,9 @@ test('小 BOSS：每 5 层一只、生成即亮、击杀掉宝箱', () => {
   const s = G.createRun('normal', 5);
   s.floor = 5; G.buildFloor(s); G.ensureBoard(s, 30);
   const mini = find(s, 'mini')[0];
+  // 已现身的小 BOSS 必须能点开战斗（曾经因为只认 monster/elite/boss 点不动）
+  G.tapTile(s, mini.i);
+  assert.equal(s.pendingCombat, mini.i, '点小 BOSS 应进入战斗');
   s.player.atk = 99999; s.player.hp = s.player.maxHp = 99999;
   G.attack(s, mini.i);
   assert.equal(mini.kind, 'chest', '小 BOSS 死后原位掉宝箱');
@@ -1559,22 +1562,22 @@ test('炸弹炸死钥匙守卫同样只掉钥匙；遗物抽取不会重复给�
   assert.equal(new Set(c.relics).size, c.relics.length);
 });
 
-test('遗物重置：每批 5 金币起、每次 +5，典当票减 5 且不会为负', () => {
+test('遗物重置：每批 25 金币起、每次 +20，典当票减 5 且不会为负', () => {
   const s = fresh('normal', 95);
   s.player.gold = 40;
   G.offerRelics(s, []);
   const first = s.relicChoices.slice();
-  assert.equal(G.relicRerollCost(s), 5);
+  assert.equal(G.relicRerollCost(s), 25);
   const evs = G.rerollRelics(s);
-  assert.ok(evs.some((e) => e.type === 'reroll' && e.cost === 5));
-  assert.equal(s.player.gold, 35);
+  assert.ok(evs.some((e) => e.type === 'reroll' && e.cost === 25));
+  assert.equal(s.player.gold, 15);
   assert.equal(s.relicReroll, 1);
   assert.equal(s.relicChoices.length, G.RELIC_DRAW_COUNT);
   for (const id of s.relicChoices) {
     assert.ok(!s.relics.includes(id), '重置不会给到已拥有的遗物');
     assert.ok(!first.includes(id), '重置应换一批新选项');
   }
-  assert.equal(G.relicRerollCost(s), 10);
+  assert.equal(G.relicRerollCost(s), 45);
 
   s.player.gold = 9;
   const before = s.relicChoices.slice();
@@ -1588,7 +1591,7 @@ test('遗物重置：每批 5 金币起、每次 +5，典当票减 5 且不会�
   s.player.gold = 20;
   G.rerollRelics(s);
   assert.equal(s.player.gold, 20);
-  assert.equal(G.relicRerollCost(s), 5);
+  assert.equal(G.relicRerollCost(s), 20);
 
   assert.deepEqual(G.rerollRelics(G.createRun('normal', 1)), [], '没有挂起的抽取时不能重置');
 });
@@ -3189,7 +3192,7 @@ test('角斗士：永久攻击增益额外 +1，升级奖励面板仍记录本�
 
 test('下楼清单：统计没拿的物品、没逛完的商店、没清的敌人', () => {
   const s = arena(7);
-  assert.deepEqual(G.floorLeftovers(s), { items: 0, shops: 0, mobs: 0, total: 0 }, '空场没有遗留');
+  assert.deepEqual(G.floorLeftovers(s), { items: 0, mobs: 0, total: 0 }, '空场没有遗留');
 
   const pot = s.tiles[3]; pot.kind = 'potion'; pot.revealed = true; pot.used = false;
   const chest = s.tiles[4]; chest.kind = 'chest'; chest.chest = { type: 'relic' }; chest.revealed = true; chest.used = false;
@@ -3197,9 +3200,8 @@ test('下楼清单：统计没拿的物品、没逛完的商店、没清的敌�
   putMob(s, 6, { hp: 10, atk: 1 });
   let left = G.floorLeftovers(s);
   assert.equal(left.items, 2, '药水 + 宝箱');
-  assert.equal(left.shops, 1, '还有货的事件格');
   assert.equal(left.mobs, 1);
-  assert.equal(left.total, 4);
+  assert.equal(left.total, 3, '商店不再计入下楼提醒');
 
   pot.used = true;
   chest.used = true;
@@ -3207,7 +3209,7 @@ test('下楼清单：统计没拿的物品、没逛完的商店、没清的敌�
   shop.used = true;
   s.tiles[6].mob.hp = 0;
   left = G.floorLeftovers(s);
-  assert.deepEqual(left, { items: 0, shops: 0, mobs: 0, total: 0 }, '处理干净后清单归零');
+  assert.deepEqual(left, { items: 0, mobs: 0, total: 0 }, '处理干净后清单归零');
 
   // 没翻开的暗格不算「没拿的东西」，不提前泄密
   const t = s.tiles[8]; t.kind = 'potion'; t.revealed = false; t.used = false;
