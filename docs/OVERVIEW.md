@@ -2,7 +2,7 @@
 
 > **本文是什么**：接手这个仓库时最先读的一份总览 + 后续改动的操作手册。分系统细节见 [`docs/relics.md`](./relics.md) 与 [`docs/talents.md`](./talents.md)，本文只做索引与交叉引用，不重复。
 >
-> **行号快照**：所有 `文件:行号` 取自 **2026-11-20** 的工作区（`HEAD 4e778de` + 当时未提交的「深度定价 / 移除下一层按钮 / HUD 血条 / 存档清洗」改动；`npm test` 189/189 全绿）。当时各文件行数：`game.js` 2375 · `ui.js` 1739 · `index.html` 180 · `styles.css` 853 · `zh-CN.js` 893 · `game.test.mjs` 3207。项目正在高频迭代，行号会漂移——**先用标识符搜索，再核对行号**。本文对易漂移的位置同时给出常量名/函数名，那是更稳的定位锚。
+> **行号快照**：所有 `文件:行号` 取自 **2026-11-20** 的工作区（`HEAD 4e17bcf`，含深度定价 / 小 BOSS / 升级与宝箱重做 / 下楼确认 / 怪物详情 / 气泡战斗等改动；`npm test` 200/200 全绿）。当时各文件行数：`game.js` 2375 · `ui.js` 1739 · `index.html` 180 · `styles.css` 853 · `zh-CN.js` 893 · `game.test.mjs` 3207。项目正在高频迭代，行号会漂移——**先用标识符搜索，再核对行号**。本文对易漂移的位置同时给出常量名/函数名，那是更稳的定位锚。
 >
 > **路径缩写**：`game.js` = `public/src/game.js`，`ui.js` = `public/src/ui.js`，`zh-CN.js` = `public/src/locales/zh-CN.js`，`styles.css` = `public/styles.css`，`index.html` = `public/index.html`，`i18n.js` = `public/src/i18n.js`。
 
@@ -15,7 +15,7 @@
 | 这是什么 | 竖屏手机浏览器游戏：**扫雷 × Roguelite 地牢**。30 层、3 个区域、每 10 层一个 Boss，一层就是一个 7×9 的扫雷盘。 |
 | 技术栈 | 原生 JS ES Module，**无构建、无框架、无打包**。`index.html` 直接 `<script type="module" src="src/main.js">`（`index.html:172`）。 |
 | 怎么跑起来 | `npm run dev` → `node tools/serve.mjs` → <http://localhost:5173>（`tools/serve.mjs:6`，`PORT` 环境变量可改）。也可用任意静态服务器直接托管 `public/`。 |
-| 怎么测 | `npm test`（`node --test` 跑 4 个测试文件，194 条）；`npm run sim`（AI 自动打 600 局，看胜率/平衡）。 |
+| 怎么测 | `npm test`（`node --test` 跑 3 个测试文件，200 条）；`npm run sim`（AI 自动打 600 局，看胜率/平衡）。 |
 | 怎么发 | Web/PWA：`npm run deploy`（Cloudflare Pages，`wrangler.toml` 指向 `public`）。安卓：`npm run apk`（Capacitor 壳，产物在 `dist/`）。 |
 | 代码怎么分层 | `game.js` 纯逻辑（无 DOM，Node 可 import）；`ui.js` 全部 DOM 与交互；`i18n.js` + `locales/` 文案；`audio.js`/`fx.js` 表现层；`styles.css` 单文件样式。 |
 | 改东西最常去的三处 | 数值与规则 → `game.js` 顶部常量区与 `BAL`；界面 → `ui.js` 的 `renderHud`/`open*`；文案 → `zh-CN.js`。 |
@@ -33,8 +33,8 @@
 | 形态 | 纯静态 PWA（`public/manifest.webmanifest`、`public/sw.js`）+ Capacitor 安卓壳（`capacitor.config.json`，`appId: com.lancelotfan.breakthebrick`） |
 | 部署 | Cloudflare Pages：`wrangler.toml`（`pages_build_output_dir = "public"`），`npm run deploy` = `wrangler pages deploy public --project-name=break-the-brick` |
 | 代码量 | `game.js` ≈ 2326 行（纯逻辑）、`ui.js` ≈ 1738 行（DOM）、`zh-CN.js` ≈ 892 行文案、`styles.css` ≈ 853 行、`index.html` ≈ 180 行 |
-| 内容量 | 30 层 · 3 区域 · 3 主题 · 36 种怪（28 杂兵 + 4 守卫 + 4 首领）· 58 件遗物 · 4 个天赋 · 7 种商店条目 · 3 类事件格 · 5 类地城机关 · 7 类升级加成 |
-| 测试 | 189 条 `node:test` 用例（`game.test.mjs` 164、`machines.test.mjs` 18、`i18n.test.mjs` 7），当前全绿 |
+| 内容量 | 30 层 · 3 区域 · 3 主题 · 40 种怪（28 杂兵 + 4 守卫 + 4 小 BOSS + 4 首领）· 58 件遗物 · 4 个天赋 · 7 种商店条目 · 3 类事件格 · 5 类地城机关 · 11 类升级加成 |
+| 测试 | 200 条 `node:test` 用例（`game.test.mjs` 175、`machines.test.mjs` 18、`i18n.test.mjs` 7），当前全绿 |
 | 存档 | `localStorage`：`bbr.run`（当前局）、`bbr.meta`（跨局战绩/勋章）、`bbr.seen`（首局引导看过没）、`bbr.diff`（上次难度）、`bbr.audio`（音效开关，`audio.js:2`） |
 | 依赖 | 运行时零依赖；只有 Capacitor 相关（`@capacitor/core`、`@capacitor/android`、`@capacitor/haptics` + CLI `@capacitor/cli`） |
 
@@ -53,7 +53,7 @@
 | ③ 翻格 | 点击暗格 | 空白格（邻威胁 0）连锁 `flood` 展开，遇到威胁/墙/旗就停 | `game.js:1303`、`game.js:1396` |
 | ④ 数字推理 | — | 每个格子的 `n` = **周围 8 格内尚未探明的威胁数**，探明或清除后数字会变小（`hiddenThreatCount`） | `game.js:508` |
 | ⑤ 插旗 / 识破 | 标记模式、长按 420ms、右键、键盘 `f` | 旗子标记已确认的威胁，占旗子预算；所有安全格翻开即自动「完全识破」 | `ui.js:92`、`game.js:1422`、`game.js:1068` |
-| ⑥ 战斗 | 点到怪物（偷袭，强制战）或点已探明的怪物（可选战） | 逐击：点一次＝你砍一刀＋它还手一次；长按 220ms 只看这一刀的预演 | `game.js:1758`、`ui.js:1604` |
+| ⑥ 战斗 | 点到怪物（偷袭，强制战）或点已探明的怪物（可选战） | 逐击：点一次＝你砍一刀＋它还手一次；战斗气泡贴着怪物格弹出，双方血条用浅色段直接预演这一击的掉血（无需长按） | `game.js:1758`、`ui.js:1073` |
 | ⑦ 事件 / 商店 / 祭坛 | 点开对应格 | 每层 1 个事件格（供给铺 / 遗物铺 / 神龛）、每层 1 座祭坛（第 2 层起） | `game.js:1904`、`game.js:1956` |
 | ⑧ 找阶梯 + 钥匙 | 击杀钥匙守卫 | 非 Boss 层必须持钥匙才能下楼（第 1 层免钥匙）；Boss 层必须击杀龙王 | `game.js:1990` |
 | ⑨ 下层 | 点阶梯格 | 结算金币/回血/遗物钩子 → 换区时先选主题 → `floor++` 并 `buildFloor` | `game.js:1997` |
@@ -128,9 +128,9 @@
 
 | id | `threat` 怪物量 | `power` 怪物强度 | `loot` 战利品 | 初始 hp | 初始 gold | 初始 potions | `flags` 旗子基数 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `easy` | 0.78 | 0.82 | 1.35 | 38 | 40 | 2 | 4 |
-| `normal` | 1 | 1 | 1 | 32 | 30 | 2 | 3 |
-| `hard` | 1.22 | 1.1 | 0.8 | 28 | 20 | 2 | 2 |
+| `easy` | 0.78 | 0.61 | 1.35 | 38 | 40 | 2 | 4 |
+| `normal` | 1 | 0.71 | 1 | 32 | 30 | 2 | 3 |
+| `hard` | 1.22 | 0.72 | 0.8 | 28 | 20 | 2 | 2 |
 
 - 三档的初始面板共用一套：`atk 5 / def 1 / lv 1 / xp 0 / xpNext 12 / bombs 1 / scrolls 1`（`game.js:557` 的 `createRun`）。
 - `flags` 是旗子预算的基数，`flagCap = 难度基数 + min(9, flagBonus)`（`flagCap`，`game.js:948`）。
@@ -303,7 +303,7 @@ gold = round((2 + 1×f) × loot)
 | --- | --- | --- |
 | `gladiator` 角斗士 | 单怪翻倍 | 场上存活怪物恰好 1 只 → `atk×2`（`atkOf`）；`addAtk` 每次永久加攻额外 +1 |
 | `brawler` 格斗家 | 击杀成长 | `BRAWLER_EVERY = 5`（`game.js:316`）：hp +6 / def +1 / atk +1 / killHeal +1，四类等概率 |
-| `treasureHunter` 探险家 | 宝箱 | 亲手翻地板时 3% 额外发现一只遗物宝箱（每层最多 1 只，`CHEST_FIND_CHANCE`） |
+| `treasureHunter` 宝藏猎人 | 宝箱 | 亲手翻地板时 3% 额外发现一只遗物宝箱（每层最多 1 只，`CHEST_FIND_CHANCE`） |
 | `healer` 医者 | 药剂 | `HEALER_POTION_HEAL = 10`、`HEALER_POTION_MAXHP = 10`（`game.js:312`） |
 
 细节与平衡快照见 [`docs/talents.md`](./talents.md)。
@@ -529,11 +529,11 @@ node --test tests/game.test.mjs tests/machines.test.mjs tests/i18n.test.mjs
 
 | 文件 | 条数 | 覆盖什么 |
 | --- | --- | --- |
-| `tests/game.test.mjs` | 164 | 棋盘规格与首点安全、每层实体数量、数字语义（含「已清除仍给数字」）、战斗数学、偷袭、识破（含完美识破）、炸弹、钥匙/阶梯、升级与三选一、商店深度定价、卷轴空放拦截、祭坛、事件与库存、遗物逐件行为、天赋逐条、存档往返/拒绝/脏存档清洗、随机可复现 |
+| `tests/game.test.mjs` | 175 | 棋盘规格与首点安全、每层实体数量、数字语义（含「已清除仍给数字」）、战斗数学、偷袭、识破（含完美识破）、炸弹、钥匙/阶梯、升级与三选一、商店深度定价、卷轴空放拦截、祭坛、事件与库存、遗物逐件行为、天赋逐条、存档往返/拒绝/脏存档清洗、随机可复现 |
 | `tests/machines.test.mjs` | 18 | 石墙（锁定/拆开/炸弹/不给识破添堵）、火焰（只烧亲手翻的、蔓延上限）、魔法图腾（无视防御、炸弹无效）、死亡图腾（增幅与精确回退）、召唤图腾（落点/上限/不掉钥匙）、墓园复活、大地之门 |
 | `tests/i18n.test.mjs` | 7 | 解析器（插值/数组/嵌套/缺键回显）、目录完整性、动态键族可解析、**源码不得含中文**、引用 key 必须存在 |
 
-当前状态：**194/194 全绿**（2026-11-21 快照）。
+当前状态：**200/200 全绿**（game.test 175 / machines 18 / i18n 7）。
 
 测试习惯：全部是**纯逻辑测试**（`import * as G from '../public/src/game.js'`），不碰 DOM、不开浏览器。`i18n.test.mjs` 会遍历 1–30 层真实生成一次，确保怪物文案齐全。
 
@@ -570,7 +570,7 @@ npm run dev            # node tools/serve.mjs → http://localhost:5173（PORT �
 | `__game.setDifficulty('hard')` | 切难度并重绘标题页 |
 
 - 无头验证的最小可行路径（不装新依赖）：用 `node --test` 覆盖规则（已经做得很密），UI 只验证「不抛异常 + 关键元素存在」——可以用 Chrome 的 `--headless --dump-dom` 或任意 DevTools 协议客户端连 5173，检查 `#board` 有 63 个 `.tile`、`#screen-game` 是否 `hidden`。
-- 移动端要看的四件事：① 竖屏 7×9 是否完整不裁切；② 375×667 与 428×926 两档下动作条/日志条不挤掉棋盘；③ 抽屉 `max-height:86dvh` 时按钮仍可点；④ 长按插旗（420ms）与长按预演（220ms）不互相抢。
+- 移动端要看的四件事：① 竖屏 7×9 是否完整不裁切；② 375×667 与 428×926 两档下动作条/日志条不挤掉棋盘；③ 抽屉 `max-height:86dvh` 时按钮仍可点；④ 长按插旗（420ms）不误触战斗气泡；战斗预演直接画在血条浅色段上，无需长按。
 
 ---
 
@@ -664,7 +664,7 @@ npm run dev            # node tools/serve.mjs → http://localhost:5173（PORT �
 
 **改之后（按顺序）**
 
-1. `npm test` —— 189 条必须全绿。重点看：遗物数量断言（`58`）、同层固定价/跨层上浮、卷轴空放、脏存档清洗、源码禁中文、引用 key 必须存在。
+1. `npm test` —— 200 条必须全绿。重点看：遗物数量断言（`58`）、同层固定价/跨层上浮、卷轴空放、脏存档清洗、源码禁中文、引用 key 必须存在。
 2. `npm run sim` —— 三档胜率与平均层数不出现断崖，`卡死` 必须为 0。
 3. `npm run dev` + 手机尺寸实机点一遍：首点安全 → 翻格 → 插旗 → 打怪 → 下楼 → 选主题 → Boss → 通关。
 4. 若动了存档字段：手动「开局 → 刷新页面 → 继续探索」，确认 `bbr.run` 能往返；再手动构造旧版本存档确认被拒。
