@@ -19,7 +19,7 @@ const el = {
   log: $('#logLine'), ticker: document.querySelector('.ticker'),
   scrim: $('#scrim'), sheet: $('#sheet'), sheetBody: $('#sheetBody'),
   toast: $('#toast'), combatPop: $('#combatPop'), floorCard: $('#floorCard'), fcDepth: $('#fcDepth'), fcName: $('#fcName'),
-  diffGrid: $('#diffGrid'), record: $('#record'), medals: $('#medals'), btnContinue: $('#btnContinue'), actionbar: $('#actionbar'),
+  diffGrid: $('#diffGrid'), record: $('#record'), medals: $('#medals'), btnPrimary: $('#btnPrimary'), btnNewRun: $('#btnNewRun'), actionbar: $('#actionbar'),
   relicBar: $('#relicBar'), relicSlots: $('#relicSlots'),
   bossBar: $('#bossBar'), bossName: $('#bossName'), bossFill: $('#bossFill'),
   bossHp: $('#bossHp'), bossAtk: $('#bossAtk'),
@@ -1655,7 +1655,14 @@ function renderTitle() {
       <b>${G.difficultyName(d)}</b><i>${G.difficultyTag(d)}</i><s>${tr('difficulty.flags', { n: d.flags })}</s></button>`;
   }).join('');
   const has = !!G.deserialize(localStorage.getItem(RUN_KEY) || '');
-  el.btnContinue.hidden = !has;
+  // 有存档：中央主按钮是「继续探索」，「开始探索」退到次级；无存档：主按钮即「开始探索」
+  const p = el.btnPrimary;
+  p.dataset.act = has ? 'continue' : 'start';
+  p.querySelector('use').setAttribute('href', has ? '#i-sparkle' : '#i-down');
+  const ps = p.querySelector('span');
+  ps.dataset.i18n = has ? 'ui.btn.continue' : 'ui.btn.start';
+  ps.textContent = tr(has ? 'ui.btn.continue' : 'ui.btn.start');
+  el.btnNewRun.hidden = !has;
   // 没有战绩就整行不显示，别用「第一次下潜？」这类话占位
   el.record.hidden = !meta.runs;
   if (meta.runs) el.record.innerHTML = tr('ui.title.record', { wins: meta.wins, runs: meta.runs });
