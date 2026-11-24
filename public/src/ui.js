@@ -142,20 +142,20 @@ function tileView(t) {
   if (t.kind === 'wall') {
     cls += ' tile-wall-open';
     n = t.n;
-    inner = svg('wall') + `<span class="tile-num${n ? '' : ' tile-zero'}">${n}</span>`;
+    inner = svg('wall') + iconNum(n);
     return { cls, inner, n, label };
   }
   if (t.kind === 'door') {
     cls += ` tile-gate${t.used ? ' tile-used' : ' tile-pick'}`;
     n = t.n;
-    inner = svg('gate') + `<span class="tile-num${n ? '' : ' tile-zero'}">${n}</span>`;
+    inner = svg('gate') + iconNum(n);
     return { cls, inner, n, label };
   }
   if (t.kind === 'totemMagic' || t.kind === 'totemDeath' || t.kind === 'totemSummon') {
     const kind = t.kind === 'totemMagic' ? 'magic' : t.kind === 'totemDeath' ? 'death' : 'summon';
     cls += ` tile-totem tile-totem-${kind}${t.used ? ' tile-used' : ''}`;
     n = t.n;
-    inner = svg('totem') + `<span class="tile-num${n ? '' : ' tile-zero'}">${n}</span>`;
+    inner = svg('totem') + iconNum(n);
     if (!t.used) {
       inner += kind === 'death'
         ? `<span class="tile-aura">${svg('skull')}</span>`
@@ -205,9 +205,9 @@ function tileView(t) {
     if (t.kind === 'bomb') { cls += ' tile-bomb tile-pick'; inner = svg('bomb'); return { cls, inner, n, label }; }
     if (t.kind === 'scroll') { cls += ' tile-scroll tile-pick'; inner = svg('scroll'); return { cls, inner, n, label }; }
     if (t.kind === 'altar') { cls += ' tile-altar'; n = t.n; inner = svg('altar') + iconNum(n); return { cls, inner, n, label }; }
-    if (t.kind === 'shopSupply') { cls += ' tile-event tile-supply tile-pick'; n = t.n; inner = svg('stall') + numBadge(n); return { cls, inner, n, label }; }
-    if (t.kind === 'shopRelic') { cls += ' tile-event tile-relicshop tile-pick'; n = t.n; inner = svg('relic') + numBadge(n); return { cls, inner, n, label }; }
-    if (t.kind === 'shrine') { cls += ' tile-event tile-shrine tile-pick'; n = t.n; inner = svg('altar') + numBadge(n); return { cls, inner, n, label }; }
+    if (t.kind === 'shopSupply') { cls += ' tile-event tile-supply tile-pick'; n = t.n; inner = svg('stall') + iconNum(n); return { cls, inner, n, label }; }
+    if (t.kind === 'shopRelic') { cls += ' tile-event tile-relicshop tile-pick'; n = t.n; inner = svg('relic') + iconNum(n); return { cls, inner, n, label }; }
+    if (t.kind === 'shrine') { cls += ' tile-event tile-shrine tile-pick'; n = t.n; inner = svg('altar') + iconNum(n); return { cls, inner, n, label }; }
   }
   // 占用失效后必须和空地一样给出邻雷数，否则这些格子会成为推断雷位的信息黑洞
   n = t.n;
